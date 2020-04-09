@@ -269,6 +269,7 @@
 
 			$this.popover({
 				placement: placement,
+				html:true,
 				trigger: trigger
 			});
 
@@ -297,6 +298,7 @@
 
 			$this.tooltip({
 				placement: placement,
+				html:true,
 				trigger: trigger
 			});
 
