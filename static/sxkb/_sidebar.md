@@ -1,4 +1,4 @@
-* [前言](/README.md)
+* [前言](/qianyan.md)
 
 * [一、课程性质](/xingzhi.md)
 
