@@ -12,7 +12,11 @@
     * [（二）图形与几何](/neirong_xx_txyjh.md)
     * [（三）统计与概率](/neirong_xx_tjygl.md)
     * [（四）综合与实践](/neirong_xx_zhysj.md)
-
+  * 初中部分
+    * [（一）数与代数](/neirong_cz_syds.md)
+    * [（二）图形与几何](/neirong_cz_txyjh.md)
+    * [（三）统计与概率](/neirong_cz_tjygl.md)
+    * [（四）综合与实践](/neirong_cz_zhysj.md)
 
 * [五、学业质量](/zhiliang.md)
 
