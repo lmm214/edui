@@ -7,8 +7,3 @@
 - 全文文字可复制；
 - 全文可搜索（左上角）；
 - 侧边栏目录（左下角“≡”）；
-
-<div style="text-align:center">
-    <img src="../res/kebiao.jpg"/>
-</div>
-

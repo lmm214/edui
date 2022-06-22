@@ -8,7 +8,3 @@
 - 全文可搜索（左上角）；
 - 侧边栏目录（左下角“≡”）；
 - 内容与实例可双向跳转。
-
-<div style="text-align:center">
-    <img src="../res/kebiao.jpg"/>
-</div>
