@@ -2,7 +2,7 @@
 
 * 教学助手
   * [语文](https://edui123.com/ebook/xxyw)
-  * [数学](https://edui123.com/ebook/xxsw)
+  * [数学](https://edui123.com/ebook/xxsx)
 
 * 课程标准
   * [语文](https://edui123.com/ywkb)
