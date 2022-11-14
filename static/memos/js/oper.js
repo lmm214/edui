@@ -188,14 +188,18 @@ $('#newtodo').click(function () {
 })
 
 $('#upres').click(async function () {
-  var file = null
-  const arrFileHandle = await window.showOpenFilePicker({multiple:false});
-  console.log(arrFileHandle)
-  for (const fileHandle of arrFileHandle) {
-      file = await fileHandle.getFile();
-  }
-  uploadImage(file)
+  $('#inFile').click()
 })
+
+$('#inFile').on('change', function(data){
+  var fileVal = $('#inFile').val();
+  var file = null
+  if(fileVal == '') {
+    return;
+  }
+  file= this.files[0];
+  uploadImage(file)
+});
 
 function add(str) {
   var tc = document.getElementById("content");
