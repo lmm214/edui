@@ -92,7 +92,7 @@ function uploadImage(data) {
   })
   //根据data判断是图片地址还是base64加密的数据
     const formData = new FormData()
-    if (apiUrl) {
+    if (localStorage.getItem('apiUrl')) {
       formData.append('file', data)
       $.ajax({
         url: apiUrl.replace(/api\/memo/,'api/resource'),
@@ -138,7 +138,7 @@ $('#saveKey').click(function () {
 })
 
 $('#tags').click(function () {
-  if (apiUrl) {
+  if (localStorage.getItem('apiUrl')) {
       var tagUrl = apiUrl.replace(/api\/memo/,'api/tag')
       var tagDom = ""
       $.get(tagUrl,function(data,status){
