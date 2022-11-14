@@ -27,9 +27,9 @@ $('#content').blur(function () {
   localStorage.setItem("contentNow", $('#content').val());
 })
 
+
 //监听拖拽事件，实现拖拽到窗口上传图片
 initDrag()
-
 //监听复制粘贴事件，实现粘贴上传图片
 document.addEventListener('paste', function (e) {
   let photo = null
@@ -185,6 +185,16 @@ $(document).on("click",".item-container",function () {
 $('#newtodo').click(function () {
   var tagHtml = "\n- [ ] "
   add(tagHtml);
+})
+
+$('#upres').click(async function () {
+  var file = null
+  const arrFileHandle = await window.showOpenFilePicker({multiple:false});
+  console.log(arrFileHandle)
+  for (const fileHandle of arrFileHandle) {
+      file = await fileHandle.getFile();
+  }
+  uploadImage(file)
 })
 
 function add(str) {
