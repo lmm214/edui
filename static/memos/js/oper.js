@@ -1,8 +1,3 @@
-/**
- * open_action: 打开这个页面执行的操作
- * open_text：打开这页面需要复原的输入框的内容
- */
-
 var apiUrl = localStorage.getItem('apiUrl') || ''
 var memoLock = localStorage.getItem('memoLock') || ''
 
