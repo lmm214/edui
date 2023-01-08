@@ -1,1 +1,1 @@
-?> <a class="zoom" href="https://cdn.edui.fun/images/pay.webp">赞赏</a>
+?> <a class="zoom" href="https://cdn.edui.fun/images/pay.webp">请 Ta 喝咖啡 ☕️</a>

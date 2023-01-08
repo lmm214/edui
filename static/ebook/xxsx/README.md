@@ -12,4 +12,4 @@
 
 已更新上册为 **2022最新插图版** 电子教材。另，召唤志同道合小伙伴，共同维护“单元内容文本及相关资源”。
 
-?> <a class="zoom" href="https://cdn.edui.fun/images/pay.webp">赞赏</a>
+?> <a class="zoom" href="https://cdn.edui.fun/images/pay.webp">请 Ta 喝咖啡 ☕️</a>
