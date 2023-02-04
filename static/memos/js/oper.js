@@ -152,6 +152,8 @@ $('#tags').click(function () {
 })
 
 $('#random').click(function () {
+  dayjs.extend(window.dayjs_plugin_relativeTime)
+  dayjs.locale('zh-cn')
   if (localStorage.getItem('apiUrl')) {
       apiUrl = localStorage.getItem('apiUrl')
       $("#randomlist").html('').hide()
@@ -165,7 +167,7 @@ $('#random').click(function () {
         })
       }else{
         var randomUrl1 = apiUrl.replace(/api\/memo/,'api/memo/amount')
-        $.get(randomUrl1,function(data,status){
+        $.get(randomUrl1,function(data){
           let randomNum = Math.floor(Math.random() * (data.data)) + 1;
           var randomUrl2 = apiUrl+'&rowStatus=NORMAL&limit=1&offset='+randomNum
           $.get(randomUrl2,function(data){
@@ -182,7 +184,7 @@ $('#random').click(function () {
 })
 
 function randDom(randomData,apiUrl){
-  var randomDom = '<div class="random-item"><div class="random-time"><span id="random-link" data-id="'+randomData.id+'">…</span>'+dayjs(randomData.createdTs).fromNow()+'</div><div class="random-content">'+randomData.content.replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div></div>'
+  var randomDom = '<div class="random-item"><div class="random-time"><span id="random-link" data-id="'+randomData.id+'">…</span>'+dayjs(new Date(randomData.createdTs)*1000).fromNow()+'</div><div class="random-content">'+randomData.content.replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div></div>'
   if(randomData.resourceList && randomData.resourceList.length > 0){
     var resourceList = randomData.resourceList;
     for(var j=0;j < resourceList.length;j++){
