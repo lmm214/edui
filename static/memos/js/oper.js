@@ -159,7 +159,7 @@ $('#random').click(function () {
       $("#randomlist").html('').hide()
       var nowTag = $("textarea[name=text]").val().replace(/#([^\s#]+)/,'$1') ;
       if( $("#taglist").is(':visible') && nowTag){
-        var tagUrl = apiUrl.replace(/api\/memo.*/,'api/memo/all?tag='+nowTag)
+        var tagUrl = apiUrl+'&rowStatus=NORMAL&tag='+nowTag
         $.get(tagUrl,function(data){
           let randomNum = Math.floor(Math.random() * (data.data.length));
           var randomData = data.data[randomNum]
