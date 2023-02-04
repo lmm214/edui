@@ -153,6 +153,7 @@ $('#tags').click(function () {
 
 $('#random').click(function () {
   if (localStorage.getItem('apiUrl')) {
+      apiUrl = localStorage.getItem('apiUrl')
       $("#randomlist").html('').hide()
       var nowTag = $("textarea[name=text]").val().replace(/#([^\s#]+)/,'$1') ;
       if( $("#taglist").is(':visible') && nowTag){
@@ -160,7 +161,7 @@ $('#random').click(function () {
         $.get(tagUrl,function(data){
           let randomNum = Math.floor(Math.random() * (data.data.length));
           var randomData = data.data[randomNum]
-          randDom(randomData)
+          randDom(randomData,apiUrl)
         })
       }else{
         var randomUrl1 = apiUrl.replace(/api\/memo/,'api/memo/amount')
@@ -169,7 +170,7 @@ $('#random').click(function () {
           var randomUrl2 = apiUrl+'&rowStatus=NORMAL&limit=1&offset='+randomNum
           $.get(randomUrl2,function(data){
             var randomData = data.data[0]
-            randDom(randomData)
+            randDom(randomData,apiUrl)
           });
         });
       }
@@ -180,7 +181,7 @@ $('#random').click(function () {
     }
 })
 
-function randDom(randomData){
+function randDom(randomData,apiUrl){
   var randomDom = '<div class="random-item"><div class="random-time"><span id="random-link" data-id="'+randomData.id+'">…</span>'+dayjs(new Date(randomData.createdTs * 1000).toLocaleString()).fromNow()+'</div><div class="random-content">'+randomData.content.replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div></div>'
   if(randomData.resourceList && randomData.resourceList.length > 0){
     var resourceList = randomData.resourceList;
