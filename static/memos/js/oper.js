@@ -181,6 +181,7 @@ $('#search').click(function () {
           }
           searchDom += '</div>'
         }
+        window.ViewImage && ViewImage.init('.random-image')
         $("#randomlist").html(searchDom).slideDown(500);
       });
     }else{
@@ -238,6 +239,7 @@ function randDom(randomData){
     }
   }
   randomDom += '</div>'
+  window.ViewImage && ViewImage.init('.random-image')
   $("#randomlist").html(randomDom).slideDown(500);
 }
 
