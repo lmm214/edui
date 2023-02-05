@@ -88,6 +88,7 @@ function uploadImage(data) {
   //根据data判断是图片地址还是base64加密的数据
     const formData = new FormData()
     if (localStorage.getItem('apiUrl')) {
+      apiUrl = localStorage.getItem('apiUrl')
       formData.append('file', data)
       $.ajax({
         url: apiUrl.replace(/api\/memo/,'api/resource'),
@@ -134,6 +135,7 @@ $('#saveKey').click(function () {
 
 $('#tags').click(function () {
   if (localStorage.getItem('apiUrl')) {
+    apiUrl = localStorage.getItem('apiUrl')
       var tagUrl = apiUrl.replace(/api\/memo/,'api/tag')
       var tagDom = ""
       $.get(tagUrl,function(data,status){
@@ -149,11 +151,51 @@ $('#tags').click(function () {
         message: '请先填写好 API 链接'
       })
     }
+
+})
+
+dayjs.extend(window.dayjs_plugin_relativeTime)
+dayjs.locale('zh-cn')
+
+$('#search').click(function () {
+  if (localStorage.getItem('apiUrl')) {
+    apiUrl = localStorage.getItem('apiUrl')
+    $("#randomlist").html('').hide()
+    var searchDom = ""
+    const pattern = $("textarea[name=text]").val()
+    if(pattern){
+      $.get(apiUrl,function(data){
+        const options = {keys: ['content']};
+        const fuse = new Fuse(data.data, options);
+        var searchData = fuse.search(pattern)
+        for(var i=0;i < searchData.length;i++){
+          searchDom += '<div class="random-item"><div class="random-time"><span id="random-link" data-id="'+searchData[i].item.id+'">…</span>'+dayjs(new Date(searchData[i].item.createdTs)*1000).fromNow()+'</div><div class="random-content">'+searchData[i].item.content.replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div>'
+          if(searchData[i].item.resourceList && searchData[i].item.resourceList.length > 0){
+            var resourceList = searchData[i].item.resourceList;
+            for(var j=0;j < resourceList.length;j++){
+              var restype = resourceList[j].type.slice(0,5);
+              if(restype == 'image'){
+                searchDom += '<img class="random-image" src="'+apiUrl.replace(/api\/memo.*/,'')+'o/r/'+resourceList[j].id+'/'+resourceList[j].filename+'"/>'
+              }
+            }
+          }
+          searchDom += '</div>'
+        }
+        $("#randomlist").html(searchDom).slideDown(500);
+      });
+    }else{
+      $.message({
+        message: '想搜点啥？'
+      })
+    }
+  } else {
+    $.message({
+      message: '请先填写好 API 链接'
+    })
+  }
 })
 
 $('#random').click(function () {
-  dayjs.extend(window.dayjs_plugin_relativeTime)
-  dayjs.locale('zh-cn')
   if (localStorage.getItem('apiUrl')) {
       apiUrl = localStorage.getItem('apiUrl')
       $("#randomlist").html('').hide()
@@ -163,7 +205,7 @@ $('#random').click(function () {
         $.get(tagUrl,function(data){
           let randomNum = Math.floor(Math.random() * (data.data.length));
           var randomData = data.data[randomNum]
-          randDom(randomData,apiUrl)
+          randDom(randomData)
         })
       }else{
         var randomUrl1 = apiUrl.replace(/api\/memo/,'api/memo/amount')
@@ -172,7 +214,7 @@ $('#random').click(function () {
           var randomUrl2 = apiUrl+'&rowStatus=NORMAL&limit=1&offset='+randomNum
           $.get(randomUrl2,function(data){
             var randomData = data.data[0]
-            randDom(randomData,apiUrl)
+            randDom(randomData)
           });
         });
       }
@@ -183,8 +225,9 @@ $('#random').click(function () {
     }
 })
 
-function randDom(randomData,apiUrl){
-  var randomDom = '<div class="random-item"><div class="random-time"><span id="random-link" data-id="'+randomData.id+'">…</span>'+dayjs(new Date(randomData.createdTs)*1000).fromNow()+'</div><div class="random-content">'+randomData.content.replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div></div>'
+function randDom(randomData){
+  apiUrl = localStorage.getItem('apiUrl')
+  var randomDom = '<div class="random-item"><div class="random-time"><span id="random-link" data-id="'+randomData.id+'">…</span>'+dayjs(new Date(randomData.createdTs)*1000).fromNow()+'</div><div class="random-content">'+randomData.content.replace(/!\[.*?\]\((.*?)\)/g,' <img class="random-image" src="$1"/> ').replace(/\[(.*?)\]\((.*?)\)/g,' <a href="$2" target="_blank">$1</a> ')+'</div>'
   if(randomData.resourceList && randomData.resourceList.length > 0){
     var resourceList = randomData.resourceList;
     for(var j=0;j < resourceList.length;j++){
@@ -194,6 +237,7 @@ function randDom(randomData,apiUrl){
       }
     }
   }
+  randomDom += '</div>'
   $("#randomlist").html(randomDom).slideDown(500);
 }
 
@@ -276,6 +320,7 @@ $('#content_submit_text').click(function () {
 
 function sendText() {
   if (localStorage.getItem('apiUrl')) {
+    apiUrl = localStorage.getItem('apiUrl')
       $.message({message: '发送中～～'})
       //$("#content_submit_text").attr('disabled','disabled');
       let content = $('#content').val()
