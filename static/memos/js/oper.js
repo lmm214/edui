@@ -134,20 +134,24 @@ $('#saveKey').click(function () {
 })
 
 $('#getone').click(function () {
-  if (localStorage.getItem('apiUrl')) {
-      apiUrl = localStorage.getItem('apiUrl')
-      $("#randomlist").html('').hide()
-          var getUrl = apiUrl+'&rowStatus=NORMAL&limit=1'
-          $.get(getUrl,function(data){
-            var getData = data.data[0]
-            randDom(getData)
-          });
-  } else {
-      $.message({
-        message: '请先填写好 API 链接'
-      })
-  }
+  getOne()
 })
+
+function getOne(){
+  if (localStorage.getItem('apiUrl')) {
+    apiUrl = localStorage.getItem('apiUrl')
+    $("#randomlist").html('').hide()
+        var getUrl = apiUrl+'&rowStatus=NORMAL&limit=1'
+        $.get(getUrl,function(data){
+          var getData = data.data[0]
+          randDom(getData)
+        });
+} else {
+    $.message({
+      message: '请先填写好 API 链接'
+    })
+}
+}
 
 $('#tags').click(function () {
   if (localStorage.getItem('apiUrl')) {
@@ -378,13 +382,13 @@ function sendText() {
         dataType:"json",
         success: function(result){
               //发送成功
-              console.log(result)
+              getOne()
               localStorage.removeItem("resourceIdList");
-                  $.message({
-                    message: '发送成功！😊'
-                  })
+              $.message({
+                message: '发送成功！😊'
+              })
                   //$("#content_submit_text").removeAttr('disabled');
-                  $('#content').val('')
+              $('#content').val('')
       },error:function(err){//清空open_action（打开时候进行的操作）,同时清空open_content
                 localStorage.removeItem("resourceIdList");
                   $.message({
