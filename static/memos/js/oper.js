@@ -146,11 +146,11 @@ function getOne(){
           var getData = data.data[0]
           randDom(getData)
         });
-} else {
+  } else {
     $.message({
       message: '请先填写好 API 链接'
     })
-}
+  }
 }
 
 $('#tags').click(function () {
