@@ -1,7 +1,10 @@
 var apiUrl = localStorage.getItem('apiUrl') || ''
 var memoLock = localStorage.getItem('memoLock') || ''
+var contentNow = localStorage.getItem('contentNow') || ''
 
-if (apiUrl) {
+if (apiUrl == '') {
+  $('#blog_info').show()
+}else{
   $('#blog_info').hide()
   $('#apiUrl').val(apiUrl)
 }
@@ -16,10 +19,14 @@ if(memoLock){
 }else{
   localStorage.setItem("memoLock","PUBLIC");
 }
+if (contentNow) {
+  $("textarea[name=text]").val(contentNow)
+}
+
 
 //监听输入结束，保存未发送内容到本地
-$('#content').blur(function () {
-  localStorage.setItem("contentNow", $('#content').val());
+$("textarea[name=text]").blur(function () {
+  localStorage.setItem("contentNow", $("textarea[name=text]").val());
 })
 
 
@@ -41,7 +48,7 @@ document.addEventListener('paste', function (e) {
 
 function initDrag() {
   var file = null
-  var obj = $('#content')[0]
+  var obj = $("textarea[name=text]")[0]
   obj.ondragenter = function (ev) {
     if (ev.target.className === 'common-editor-inputer') {
       $.message({
@@ -356,7 +363,7 @@ $('#blog_info_edit').click(function () {
 
 //发送操作
 $('#content_submit_text').click(function () {
-  var contentVal = $('#content').val()
+  var contentVal = $("textarea[name=text]").val()
   if(contentVal){
     sendText()
   }else{
@@ -369,7 +376,7 @@ function sendText() {
     apiUrl = localStorage.getItem('apiUrl')
       $.message({message: '发送中～～'})
       //$("#content_submit_text").attr('disabled','disabled');
-      let content = $('#content').val()
+      let content = $("textarea[name=text]").val()
       $.ajax({
         url:apiUrl,
         type:"POST",
@@ -384,12 +391,12 @@ function sendText() {
               //发送成功
               getOne()
               localStorage.removeItem("resourceIdList");
+              localStorage.removeItem("contentNow");
               $.message({
                 message: '发送成功！😊'
               })
-                  //$("#content_submit_text").removeAttr('disabled');
-              $('#content').val('')
-      },error:function(err){//清空open_action（打开时候进行的操作）,同时清空open_content
+              $("textarea[name=text]").val('')
+      },error:function(err){
                 localStorage.removeItem("resourceIdList");
                   $.message({
                     message: '网络问题，发送失败！😭（记得点下小锁图标，设置一下状态哦）'
