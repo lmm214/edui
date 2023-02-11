@@ -7,20 +7,6 @@ date: 2023-02-11T12:41:32+08:00
 
 ChatGPT模型是由[OpenAI](https://openai.com/)训练的大型语言模型，能够生成类人文本。通过向它提供提示，它可以生成继续对话或扩展给定提示的响应。
 
-在此存储库中，您将找到可与 ChatGPT 一起使用的各种提示。
-
-[点击这里](https://github.com/PlexPt/awesome-chatgpt-prompts-zh/edit/main/README.md) 可以将您自己的调教指南添加到列表中。
-
-只需使用 README.md 文件中的提示作为 ChatGPT 的输入。您还可以使用此文件中的提示作为创建您自己的提示的灵感。
-
-我们希望您发现这些调教指南很有用，并能从使用 ChatGPT 中获得乐趣！
-
-**[在 GitHub 上查看](https://github.com/PlexPt/awesome-chatgpt-prompts-zh)**
-
-**[在 Gitee 上查看](https://gitee.com/PlexPt/awesome-chatgpt-prompts-zh)**
-
-------
-
 ## 它能干什么? 直接问它
 
 > 我是一个训练有素的大型语言模型，可以帮助你回答各种问题，比如关于政治、历史、科学、技术、艺术等方面的问题。我可以帮助你理解一些概念，并为你提供有价值的信息和见解。你可以尝试提出一些问题，看看我能不能帮到你。
