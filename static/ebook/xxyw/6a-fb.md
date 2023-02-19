@@ -2,12 +2,12 @@
 
 > ## 写字表
 
-<Ebook grade="xxyw6a" :pages="126" :paged="127" ></Ebook> 
+<Epep grade="xxyw6a" :pep="1211001601191" :pages="126" :paged="127" ></Epep> 
 
 
 > ## 词语表
 
-<Ebook grade="xxyw6a" :pages="128" :paged="130" ></Ebook>
+<Epep grade="xxyw6a" :pep="1211001601191" :pages="128" :paged="130" ></Epep>
 
 
 

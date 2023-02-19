@@ -2,17 +2,17 @@
 
 > ## 识字表
 
-<Ebook grade="xxyw5a" :pages="119" :paged="121" ></Ebook> 
+<Epep grade="xxyw5a" :pep="1211001501191" :pages="119" :paged="121" ></Epep> 
 
 
 > ## 写字表
 
-<Ebook grade="xxyw5a" :pages="122" :paged="123" ></Ebook> 
+<Epep grade="xxyw5a" :pep="1211001501191" :pages="122" :paged="123" ></Epep> 
 
 
 > ## 词语表
 
-<Ebook grade="xxyw5a" :pages="124" :paged="126" ></Ebook>
+<Epep grade="xxyw5a" :pep="1211001501191" :pages="124" :paged="126" ></Epep>
 
 
 
