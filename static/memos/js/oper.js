@@ -146,8 +146,8 @@ $('#saveKey').click(function () {
   $('#blog_info').hide()
 })
 
-$('#getone').click(function () {
-  getOne()
+$('#opensite').click(function () {
+  window.location.href =  apiUrl.replace(/api\/memo.*/,'');
 })
 
 function getOne(){
