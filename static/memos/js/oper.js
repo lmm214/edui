@@ -9,15 +9,16 @@ if (apiUrl == '') {
   $('#apiUrl').val(apiUrl)
 }
 if(memoLock){
-  if(memoLock !== "PUBLIC"){
-    $('#locked').show()
-    $('#unlock').hide()
-  }else{
-    $('#locked').hide()
-    $('#unlock').show()
+  if(memoLock == "PUBLIC"){
+    $("#lock-now").text("所有人可见")
+  }else if(memoLock == "PRIVATE"){
+    $("#lock-now").text("仅自己可见")
+  }else if(memoLock == "PROTECTED"){
+    $("#lock-now").text("登录用户可见")
   }
 }else{
   localStorage.setItem("memoLock","PUBLIC");
+  $("#lock-now").text("所有人可见")
 }
 if (contentNow) {
   $("textarea[name=text]").val(contentNow)
@@ -29,6 +30,11 @@ $("textarea[name=text]").blur(function () {
   localStorage.setItem("contentNow", $("textarea[name=text]").val());
 })
 
+$("textarea[name=text]").on('keydown', function (ev) {
+  if (ev.code === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+    $('#content_submit_text').click()
+  }
+})
 
 //监听拖拽事件，实现拖拽到窗口上传图片
 initDrag()
@@ -323,25 +329,18 @@ $(document).on("click","#random-delete",function () {
   })
 })
 
-$('#unlock,#locked').click(function () {
-    var nowlock = localStorage.getItem('memoLock')
-    var lockDom = '<span class="item-lock'+ (nowlock == 'PUBLIC' ? ' lock-now' : '')+'" data-type="PUBLIC">公开</span><span class="item-lock'+ (nowlock == 'PRIVATE' ? ' lock-now' : '')+'" data-type="PRIVATE">仅自己</span><span class="item-lock'+ (nowlock == 'PROTECTED' ? ' lock-now' : '')+'" data-type="PROTECTED">登录可见</span>'
-    $("#visibilitylist").html(lockDom).slideToggle(500)
+$('#lock').click(function () {
+  $("#lock-wrapper").toggleClass( "!hidden", 1000 );
 })
+
 $(document).on("click",".item-lock",function () {
     _this = $(this)[0].dataset.type
-    if(_this !== "PUBLIC"){
-      $('#locked').show()
-      $('#unlock').hide()
-    }else{
-      $('#locked').hide()
-      $('#unlock').show()
-    }
     localStorage.setItem("memoLock", _this);
-        $.message({
-          message: '设置成功，当前为： '+ _this
-        })
-        $('#visibilitylist').hide()
+    $.message({
+      message: '设置成功'
+    })
+    $("#lock-wrapper").toggleClass( "!hidden", 1000 );
+    $("#lock-now").text($(this).text())
 })
 
 $(document).on("click",".item-container",function () {
