@@ -1,6 +1,10 @@
 var apiUrl = localStorage.getItem('apiUrl') || ''
 var memoLock = localStorage.getItem('memoLock') || ''
 var contentNow = localStorage.getItem('contentNow') || ''
+var hidetag = localStorage.getItem('hidetag') || ''
+var showtag = localStorage.getItem('showtag') || ''
+$('#hideInput').val(hidetag)
+$('#showInput').val(showtag)
 
 if (apiUrl == '') {
   $('#blog_info').show()
@@ -23,7 +27,6 @@ if(memoLock){
 if (contentNow) {
   $("textarea[name=text]").val(contentNow)
 }
-
 
 //监听输入结束，保存未发送内容到本地
 $("textarea[name=text]").blur(function () {
@@ -101,8 +104,13 @@ function uploadImage(data) {
   //根据data判断是图片地址还是base64加密的数据
     const formData = new FormData()
     if (localStorage.getItem('apiUrl')) {
+      let old_name = data.name.split('.');
+      let file_ext = data.name.split('.').pop();
+      let now = dayjs().format('YYYYMMDDHHmm')
+      let new_name = old_name[0] + '_' + now + '.' + file_ext;
+
       apiUrl = localStorage.getItem('apiUrl')
-      formData.append('file', data)
+      formData.append('file', data, new_name)
       $.ajax({
         url: apiUrl.replace(/api\/memo/,'api/resource/blob'),
         data: formData,
@@ -150,14 +158,13 @@ $('#opensite').click(function () {
   window.location.href =  apiUrl.replace(/api\/memo.*/,'');
 })
 
-function getOne(){
+function getOne(memosId){
   if (localStorage.getItem('apiUrl')) {
     apiUrl = localStorage.getItem('apiUrl')
     $("#randomlist").html('').hide()
-        var getUrl = apiUrl+'&rowStatus=NORMAL&limit=1'
+        var getUrl = apiUrl.replace(/api\/memo(.*)/,'api/memo/'+memosId+'$1')
         $.get(getUrl,function(data){
-          var getData = data.data[0]
-          randDom(getData)
+          randDom(data.data)
         });
   } else {
     $.message({
@@ -176,7 +183,7 @@ $('#tags').click(function () {
         $.each(arrData, function(i,obj){
           tagDom += '<span class="item-container">#'+obj+'</span>'
         });
-        //console.log(tagDom)
+        tagDom += '<svg id="hideTag" class="hidetag" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M78.807 362.435c201.539 314.275 666.962 314.188 868.398-.241 16.056-24.99 13.143-54.241-4.04-62.54-17.244-8.377-40.504 3.854-54.077 24.887-174.484 272.338-577.633 272.41-752.19.195-13.573-21.043-36.874-33.213-54.113-24.837-17.177 8.294-20.06 37.545-3.978 62.536z" fill="#fff"/><path d="M894.72 612.67L787.978 494.386l38.554-34.785 106.742 118.251-38.554 34.816zM635.505 727.51l-49.04-147.123 49.255-16.41 49.054 147.098-49.27 16.435zm-236.18-12.001l-49.568-15.488 43.29-138.48 49.557 15.513-43.28 138.455zM154.49 601.006l-38.743-34.565 95.186-106.732 38.763 34.566-95.206 106.731z" fill="#fff"/></svg>'
         $("#taglist").html(tagDom).slideToggle(500)
       });
     } else {
@@ -184,6 +191,20 @@ $('#tags').click(function () {
         message: '请先填写好 API 链接'
       })
     }
+})
+
+
+$(document).on("click","#hideTag",function () {
+  $('#taghide').slideToggle(500)
+})
+
+$('#saveTag').click(function () {
+  localStorage.setItem("hidetag",$('#hideInput').val());
+  localStorage.setItem("showtag",$('#showInput').val());
+      $.message({
+        message: '保存信息成功'
+      })
+      $('#taghide').hide()
 })
 
 dayjs.extend(window.dayjs_plugin_relativeTime)
@@ -401,19 +422,30 @@ function sendText() {
       $.message({message: '发送中～～'})
       //$("#content_submit_text").attr('disabled','disabled');
       let content = $("textarea[name=text]").val()
+      var hideTag = localStorage.getItem('hidetag') || ''
+      var showTag = localStorage.getItem('showtag') || ''
+      var nowTag = $("textarea[name=text]").val().match(/(#[^\s#]+)/)
+      var sendvisi = localStorage.getItem('memoLock') || ''
+      if(nowTag){
+        if(nowTag[1] == showTag){
+          sendvisi = 'PUBLIC'
+        }else if(nowTag[1] == hideTag){
+          sendvisi = 'PRIVATE'
+        }
+      }
       $.ajax({
         url:apiUrl,
         type:"POST",
         data:JSON.stringify({
           'content': content,
-          'visibility': localStorage.getItem('memoLock') || '',
+          'visibility': sendvisi,
           'resourceIdList': JSON.parse(localStorage.getItem("resourceIdList")) || [],
         }),
         contentType:"application/json;",
         dataType:"json",
         success: function(result){
-              //发送成功
-              getOne()
+          //发送成功
+              getOne(result.data.id)
               localStorage.removeItem("resourceIdList");
               localStorage.removeItem("contentNow");
               $.message({
