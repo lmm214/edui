@@ -15,6 +15,7 @@
 ### 整册在线浏览
 
 [一年级上册](https://book.pep.com.cn/1221001101121/) / [二年级上册](https://book.pep.com.cn/1221001201131/) / [三年级上册](https://book.pep.com.cn/1221001301141/) / [四年级上册](https://book.pep.com.cn/1221001401141/) / [五年级上册](https://book.pep.com.cn/1221001501141/) / [六年级上册](https://book.pep.com.cn/1221001601141/)
+[一年级下册](https://book.pep.com.cn/1221001102121/) / [二年级下册](https://book.pep.com.cn/1221001202131/) / [三年级下册](https://book.pep.com.cn/1221001302141/) / [四年级下册](https://book.pep.com.cn/1221001402131/) / [五年级下册](https://book.pep.com.cn/1221001502141/) / [六年级下册](https://book.pep.com.cn/1221001602141/)
 
 ### PDF 下载（右键另存为）
 
