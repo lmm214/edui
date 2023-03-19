@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         不学习何以强国-beta
 // @namespace    http://tampermonkey.net/
-// @version      20230318
+// @version      20230319
 // @description  问题反馈位置： https://github.com/TechXueXi/techxuexi-js/issues 。读文章,看视频，做习题。
 // @author       techxuexi ，荷包蛋。
 // @match        https://www.xuexi.cn
@@ -32,10 +32,6 @@ const VideosUrl1 = "https://www.xuexi.cn/lgdata/3o3ufqgl8rsn.json";
 const VideosUrl2 = "https://www.xuexi.cn/lgdata/1742g60067k.json";
 //每日答题页面
 const ExamPracticeUrl = "https://pc.xuexi.cn/points/exam-practice.html";
-//专项答题列表API
-const ExamPaperListUrl = "https://pc-proxy-api.xuexi.cn/api/exam/service/paper/pc/list?pageSize=50&pageNo={pageNo}";
-//专项测试页面
-const ExamPaperUrl = "https://pc.xuexi.cn/points/exam-paper-detail.html?id={id}";
 //文本服务器保存API
 const AnswerSaveUrl = "https://a6.qikekeji.com/txt/data/save/";
 //文本服务器获取API
@@ -52,17 +48,10 @@ var settingsDefault = {
     News: true, //0
     Video: true,//1
     ExamPractice: true, //6 每日答题
-    ExamPaper: true,//5 专项练习
     ShowMenu: false, //7 隐藏菜单
     AutoStart: false, //是否加载脚本后自动播放
 }
 var pause = false;//是否暂停答题
-//专项答题当前页码
-var examPaperPageNo = 1;
-//专项答题总页码
-var examPaperTotalPageCount = null;
-//专项答题开启逆序答题: false: 顺序答题; true: 逆序答题
-var examPaperReverse = false;
 
 //默认情况下, chrome 只允许 window.close 关闭 window.open 打开的窗口,所以我们就要用window.open命令,在原地网页打开自身窗口再关上,就可以成功关闭了
 function closeWin() {
@@ -419,113 +408,6 @@ async function waitingDependStartTime(startTime) {
         let second = (ratelimitms - remainms) / 1000
         await waitRandomBetween(second + 1, second + 3)
     }
-}
-//初始化专项答题总页数属性
-async function InitExamPaperAttr() {
-    let startTime = Date.now();
-    var data = await getExamPaperByPageNo(1); // 默认从第一页获取全部页属性
-    if (data) {
-        // 初始化总页码
-        examPaperTotalPageCount = data.totalPageCount;
-        // 若专项答题逆序, 则从最后一页开始
-        if (examPaperReverse) {
-            examPaperPageNo = examPaperTotalPageCount;
-        }
-    }
-    await waitingDependStartTime(startTime);
-}
-
-//获取指定页数的专项答题列表
-function getExamPaperByPageNo(examPaperPageNoParam) {
-    return new Promise(function (resolve) {
-        $.ajax({
-            type: "GET",
-            url: ExamPaperListUrl.replace("{pageNo}", examPaperPageNoParam),
-            xhrFields: {
-                withCredentials: true //如果没有这个请求失败
-            },
-            dataType: "json",
-            success: function (data) {
-                data = decodeURIComponent(escape(window.atob(data.data_str.replace(/-/g, "+").replace(/_/g, "/"))));
-                //JSON格式化
-                data = JSON.parse(data);
-                resolve(data);
-            },
-            error: function () {
-                resolve(new Array());
-            }
-        });
-    })
-}
-
-//查询专项答题列表看看还有没有没做过的，有则返回id
-async function findExamPaper() {
-    var continueFind = true;
-    var examPaperId = null;
-    console.log("初始化专项答题属性");
-    await InitExamPaperAttr();
-    console.log("正在寻找未完成的专项答题");
-    while (continueFind) {
-        let startTime = Date.now();
-
-        await getExamPaperByPageNo(examPaperPageNo).then(async (data) => {
-            if (data) {
-                let examPapers = data.list;//获取专项答题的列表
-                if (examPaperReverse) {
-                    // 若开启逆序答题, 则反转专项答题列表
-                    console.log("专项答题,开启逆序模式,从最早的题目开始答题");
-                    examPapers.reverse();
-                }
-                for (let j = 0; j < examPapers.length; j++) {
-                    //遍历查询有没有没做过的
-                    if (examPapers[j].status != 2) {//status： 1为"开始答题" , 2为"重新答题"
-                        //如果不是"重新答题"，则可以做
-                        examPaperId = examPapers[j].id;
-                        continueFind = false;
-                        break;
-                    }
-                }
-                if (!continueFind) {
-                } else {
-                    //增加页码 (若开启逆序翻页, 则减少页码)
-                    examPaperPageNo += examPaperReverse ? -1 : 1;
-                    if (examPaperTotalPageCount == null
-                        || examPaperPageNo > examPaperTotalPageCount
-                        || examPaperPageNo < 1) {
-                        //已经找完所有页码，还是没找到，不再继续查找
-                        continueFind = false;
-                    }
-                }
-            } else {
-                continueFind = false;
-            }
-            //fix code = 429
-            await waitingDependStartTime(startTime);
-        })
-    }
-    return examPaperId;
-}
-
-//做专项答题
-function doExamPaper() {
-    return new Promise(function (resolve) {
-        //查找有没有没做过的专项答题，有则返回ID
-        findExamPaper().then(examPaperId => {
-            if (examPaperId != null) {
-                console.log("正在做专项答题")
-                let newPage = GM_openInTab(ExamPaperUrl.replace("{id}", examPaperId), { active: true, insert: true, setParent: true });
-                let doing = setInterval(function () {
-                    if (newPage.closed) {
-                        clearInterval(doing);//停止定时器
-                        resolve('done');
-                    }
-                }, 1000);
-            } else {
-                console.log("没有找到未完成的专项答题，跳过")
-                resolve('noTest');
-            }
-        });
-    })
 }
 //获取答题按钮
 function getNextButton() {
@@ -898,9 +780,7 @@ function clickManualButton() {
 function createStartButton() {
     let base = document.createElement("div");
     var baseInfo = "";
-    baseInfo += "<form id=\"settingData\" class=\"egg_menu\" action=\"\" target=\"_blank\" onsubmit=\"return false\"><div class=\"egg_setting_box\"><div class=\"egg_setting_item\"><label>新闻<\/label><input class=\"egg_setting_switch\" type=\"checkbox\" name=\"News\" " + (settings.News ? 'checked' : '') + "\/>               <\/div>             <div class=\"egg_setting_item\">                    <label>视频<\/label>                  <input class=\"egg_setting_switch\" type=\"checkbox\" name=\"Video\" " + (settings.Video ? 'checked' : '') + "\/>               <\/div>             <div class=\"egg_setting_item\">                    <label>每日答题<\/label>                    <input class=\"egg_setting_switch\" type=\"checkbox\" name=\"ExamPractice\" " + (settings.ExamPractice ? 'checked' : '') + "\/>             <\/div><div class=\"egg_setting_item\">                 <label>专项练习<\/label>                    <input class=\"egg_setting_switch\" type=\"checkbox\" name=\"ExamPaper\" " + (settings.ExamPaper ? 'checked' : '') + "\/><\/div><hr \/><div title='Tip:开始学习后，隐藏相关页面和提示（不隐藏答题中的关闭自动答题按钮）' class=\"egg_setting_item\"> <label>运行隐藏<\/label> <input class=\"egg_setting_switch\" type=\"checkbox\" name=\"ShowMenu\"" + (settings.ShowMenu ? 'checked' : '') + "/></div>" +
-        "<div title='Tip:进入学习首页5秒后自动开始学习' class=\"egg_setting_item\"> <label>自动开始<\/label> <input class=\"egg_setting_switch\" type=\"checkbox\" name=\"AutoStart\"" + (settings.AutoStart ? 'checked' : '') + "/></div>"
-        +
+    baseInfo += "<form id=\"settingData\" class=\"egg_menu\" action=\"\" target=\"_blank\" onsubmit=\"return false\"><div class=\"egg_setting_box\"><div class=\"egg_setting_item\"><label>新闻<\/label><input class=\"egg_setting_switch\" type=\"checkbox\" name=\"News\" " + (settings.News ? 'checked' : '') + "\/>               <\/div>             <div class=\"egg_setting_item\">                    <label>视频<\/label>                  <input class=\"egg_setting_switch\" type=\"checkbox\" name=\"Video\" " + (settings.Video ? 'checked' : '') + "\/>               <\/div>             <div class=\"egg_setting_item\">                    <label>每日答题<\/label>                    <input class=\"egg_setting_switch\" type=\"checkbox\" name=\"ExamPractice\" " + (settings.ExamPractice ? 'checked' : '') + "\/>             <\/div><hr \/><div title='Tip:开始学习后，隐藏相关页面和提示（不隐藏答题中的关闭自动答题按钮）' class=\"egg_setting_item\"> <label>运行隐藏<\/label> <input class=\"egg_setting_switch\" type=\"checkbox\" name=\"ShowMenu\"" + (settings.ShowMenu ? 'checked' : '') + "/></div>" +
         "<a style=\"text-decoration: none;\" title=\"视频不自动播放？点此查看解决办法\" target=\"blank\" href=\"https://docs.qq.com/doc/DZllGcGlJUG1qT3Vx\"><div style=\"color:#5F5F5F;font-size:14px;\" class=\"egg_setting_item\"><label style=\"cursor: pointer;\">视频不自动播放?<\/label><\/div><\/a><\/div><\/form>";
     base.innerHTML = baseInfo;
     let body = document.getElementsByTagName("body")[0];
@@ -1006,20 +886,7 @@ async function start() {
                 }
                 tasks[3] = true
 
-                //检查专项练习
-                if (settings.ExamPaper && taskProgress[4].currentScore == 0) {
-                    tasks[4] = false;//只要还有要做的，就当做没完成
-                    console.log("5.做专项练习");
-                    let result = await doExamPaper();
-                    if (result == "noTest") {
-                        //如果是全都完成了，已经没有能做的了
-                        tasks[4] = true;
-                    }
-                } else {
-                    tasks[4] = true;
-                }
-
-                if (tasks[0] && tasks[1] && tasks[2] && tasks[3] && tasks[4]) {
+                if (tasks[0] && tasks[1] && tasks[2] && tasks[3]) {
                     //如果检查都做完了，就不用继续了
                     continueToDo = false;
                 }
