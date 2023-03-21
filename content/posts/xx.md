@@ -7,9 +7,9 @@ date: 2023-03-18T20:41:32+08:00
 
 ![](/xx/1.gif)
 
-Edge 插件安装 [Tampermonkey](https://microsoftedge.microsoft.com/addons/detail/iikmkjmpaadaobahmlepeloendndfphd) 
+Edge 浏览器安装插件 [Tampermonkey](https://microsoftedge.microsoft.com/addons/detail/iikmkjmpaadaobahmlepeloendndfphd) 
 
-（更多浏览器插件离线下载：[极简插件](https://chrome.zzzmh.cn/info/dhdgffkkebhmkfjojejmpbldmpobfkfo)）
+附：Edge 浏览器（[下载](https://www.microsoft.com/zh-cn/edge/download)，其他浏览器插件离线下载 [极简插件](https://chrome.zzzmh.cn/info/dhdgffkkebhmkfjojejmpbldmpobfkfo)。
 
 ### 二、添加脚本代码
 
