@@ -5,3 +5,6 @@ layout: 'posts'
 comment: true
 ---
 
+![qun](https://r2.edui123.com/2023/06/qun.jpg)
+
+欢迎入群拍砖，若过期可评论私发。
