@@ -522,7 +522,7 @@ function game_draw(isclock){
 	if (status1 == 4 && show_sol){ // show the solutions
 		draw_rect(rect_sol, "#fff", 4, "#366092");
 		draw_text(Array(width/2, rect_sol[3]*1.02 ), "点我 关闭", "#ec6941", "bold " + Math.round(rect_no_sol[3]/4) +"px sans-serif");
-		draw_text(Array(width/2, rect_sol[3]*1.07 ), "(微信公众号：决战24点)", "#366092", "bold " + Math.round(rect_no_sol[3]/6) +"px sans-serif");
+		// draw_text(Array(width/2, rect_sol[3]*1.07 ), "(微信公众号：决战24点)", "#366092", "bold " + Math.round(rect_no_sol[3]/6) +"px sans-serif");
 
 		draw_text(Array(width/2, rect_sol[1] * 0.6  + rect_sol[3] * 0.05 * 2.5 ),  quad_prev[0] + "  "+ quad_prev[1] + "  "+ quad_prev[2] + "  "+ quad_prev[3] +" 的所有解法", "#ec6941", "bold " + Math.round(rect_no_sol[3]/4) +"px sans-serif");
 
