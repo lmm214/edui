@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>井字棋游戏</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            background-color: #f0f8ff;
+        }
+
+        #game {
+            text-align: center;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 400px;
+        }
+
+        h1 {
+            color: #ff69b4;
+            margin-bottom: 20px;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 5px;
+            margin: 20px auto;
+        }
+
+        .cell {
+            width: 100%;
+            padding-bottom: 100%;
+            position: relative;
+            background-color: #ffe4e1;
+            border: 2px solid #ff69b4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            cursor: pointer;
+            border-radius: 10px;
+            transition: transform 0.3s ease;
+        }
+
+        .cell:active {
+            transform: scale(0.95);
+        }
+
+        .piece {
+            width: 60%;
+            height: 60%;
+            border-radius: 50%;
+            margin-top: 100%;
+            position: absolute;
+            cursor: grab;
+            transition: transform 0.3s ease;
+        }
+
+        .black {
+            border: 3px solid #ff69b4;
+            background-color: #ffe4e1;
+        }
+
+        .white {
+            background-color: #ff69b4;
+        }
+
+        #controls {
+            margin: 10px 0;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            margin: 5px;
+            background-color: #ff69b4;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #ff1493;
+        }
+
+        .selected {
+            background-color: #ff1493;
+        }
+
+        #notification {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #ff69b4;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <h1>井字棋游戏</h1>
+        <div id="controls">
+            <button id="easy">简单</button>
+            <button id="medium">中等</button>
+            <button id="hard">困难</button>
+        </div>
+        <div id="board">
+            <div class="cell" data-index="0"></div>
+            <div class="cell" data-index="1"></div>
+            <div class="cell" data-index="2"></div>
+            <div class="cell" data-index="3"></div>
+            <div class="cell" data-index="4"></div>
+            <div class="cell" data-index="5"></div>
+            <div class="cell" data-index="6"></div>
+            <div class="cell" data-index="7"></div>
+            <div class="cell" data-index="8"></div>
+        </div>
+        <button id="restart">重新开始</button>
+    </div>
+    <div id="notification"></div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const cells = document.querySelectorAll('.cell');
+            const restartButton = document.getElementById('restart');
+            const easyButton = document.getElementById('easy');
+            const mediumButton = document.getElementById('medium');
+            const hardButton = document.getElementById('hard');
+            const notification = document.getElementById('notification');
+            const player = 'black';
+            const computer = 'white';
+            let board = Array(9).fill(null);
+            let isPlayerTurn = true;
+            let difficulty = 'easy';
+            let playerMoves = 0;
+            let computerMoves = 0;
+            let moveMode = false;
+            let draggedPiece = null;
+            let gameEnded = false;
+
+            const playerWinMessages = [
+                "厉害，你真棒！",
+                "不得了，我认输！",
+                "你太强了！",
+                "胜利属于你！",
+                "你赢了，真厉害！"
+            ];
+
+            const computerWinMessages = [
+                "不好意思，承认承认！😜",
+                "要不，再来一局？😏",
+                "你输啦！😅",
+                "再接再厉哦！😊",
+                "下次一定赢！💪"
+            ];
+
+            cells.forEach(cell => cell.addEventListener('click', handleCellClick));
+            restartButton.addEventListener('click', restartGame);
+            easyButton.addEventListener('click', () => setDifficulty('easy'));
+            mediumButton.addEventListener('click', () => setDifficulty('medium'));
+            hardButton.addEventListener('click', () => setDifficulty('hard'));
+
+            function handleCellClick(e) {
+                const index = e.target.dataset.index;
+                if (moveMode || gameEnded) return;
+
+                if (board[index] || checkWinner(board)) return;
+                if (isPlayerTurn) {
+                    if (playerMoves < 4) {
+                        makeMove(index, player);
+                        playerMoves++;
+                        if (playerMoves === 4 && computerMoves === 4) {
+                            moveMode = true;
+                            enableDragging();
+                        }
+                    }
+                    if (!checkWinner(board) && board.includes(null)) {
+                        isPlayerTurn = false;
+                        setTimeout(computerMove, 500);
+                    }
+                }
+            }
+
+            function makeMove(index, symbol) {
+                board[index] = symbol;
+                const piece = document.createElement('div');
+                piece.classList.add('piece', symbol);
+                cells[index].appendChild(piece);
+                if (checkWinner(board)) {
+                    gameEnded = true;
+                    showNotification(symbol === 'black' ? getRandomMessage(playerWinMessages) : getRandomMessage(computerWinMessages));
+                }
+            }
+
+            function enableDragging() {
+                const pieces = document.querySelectorAll('.piece');
+                pieces.forEach(piece => {
+                    piece.setAttribute('draggable', true);
+                    piece.addEventListener('dragstart', handleDragStart);
+                    piece.addEventListener('dragend', handleDragEnd);
+                });
+                cells.forEach(cell => {
+                    cell.addEventListener('dragover', handleDragOver);
+                    cell.addEventListener('drop', handleDrop);
+                });
+            }
+
+            function handleDragStart(e) {
+                if (!isPlayerTurn || e.target.classList.contains('white')) return;
+                draggedPiece = e.target;
+                setTimeout(() => e.target.style.display = 'none', 0);
+            }
+
+            function handleDragEnd(e) {
+                setTimeout(() => {
+                    draggedPiece.style.display = 'block';
+                    draggedPiece = null;
+                }, 0);
+            }
+
+            function handleDragOver(e) {
+                e.preventDefault();
+            }
+
+            function handleDrop(e) {
+                e.preventDefault();
+                const index = e.target.dataset.index;
+                if (!index || board[index]) return;
+                const oldIndex = draggedPiece.parentElement.dataset.index;
+                board[oldIndex] = null;
+                board[index] = player;
+                e.target.appendChild(draggedPiece);
+                draggedPiece.style.transform = 'scale(1.1)';
+                setTimeout(() => draggedPiece.style.transform = 'scale(1)', 300);
+
+                if (checkWinner(board)) {
+                    gameEnded = true;
+                    showNotification(getRandomMessage(playerWinMessages));
+                } else {
+                    isPlayerTurn = false;
+                    setTimeout(computerMove, 500);
+                }
+            }
+
+            function computerMove() {
+                let index;
+                if (difficulty === 'easy') {
+                    index = randomMove();
+                } else if (difficulty === 'medium') {
+                    index = mediumMove();
+                } else if (difficulty === 'hard') {
+                    index = minimax(board, computer).index;
+                }
+                if (!moveMode) {
+                    makeMove(index, computer);
+                    computerMoves++;
+                    if (playerMoves === 4 && computerMoves === 4) {
+                        moveMode = true;
+                        enableDragging();
+                    }
+                } else {
+                    moveComputerPiece(index);
+                }
+
+                if (checkWinner(board)) {
+                    gameEnded = true;
+                    showNotification(getRandomMessage(computerWinMessages));
+                } else {
+                    isPlayerTurn = true;
+                }
+            }
+
+            function randomMove() {
+                let availableCells = board.map((cell, index) => cell === null ? index : null).filter(val => val !== null);
+                return availableCells[Math.floor(Math.random() * availableCells.length)];
+            }
+
+            function mediumMove() {
+                for (let i = 0; i < board.length; i++) {
+                    if (board[i] === null) {
+                        board[i] = computer;
+                        if (checkWinner(board)) {
+                            board[i] = null;
+                            return i;
+                        }
+                        board[i] = null;
+                    }
+                }
+                return randomMove();
+            }
+
+            function minimax(newBoard, player) {
+                const availSpots = newBoard.map((cell, index) => cell === null ? index : null).filter(val => val !== null);
+
+                if (checkWinner(newBoard)) {
+                    if (player === computer) {
+                        return { score: -10 };
+                    } else {
+                        return { score: 10 };
+                    }
+                } else if (availSpots.length === 0) {
+                    return { score: 0 };
+                }
+
+                const moves = [];
+                for (let i = 0; i < availSpots.length; i++) {
+                    const move = {};
+                    move.index = availSpots[i];
+                    newBoard[availSpots[i]] = player;
+
+                    if (player === computer) {
+                        const result = minimax(newBoard, 'black');
+                        move.score = result.score;
+                    } else {
+                        const result = minimax(newBoard, 'white');
+                        move.score = result.score;
+                    }
+
+                    newBoard[availSpots[i]] = null;
+                    moves.push(move);
+                }
+
+                let bestMove;
+                if (player === computer) {
+                    let bestScore = -10000;
+                    for (let i = 0; i < moves.length; i++) {
+                        if (moves[i].score > bestScore) {
+                            bestScore = moves[i].score;
+                            bestMove = i;
+                        }
+                    }
+                } else {
+                    let bestScore = 10000;
+                    for (let i = 0; i < moves.length; i++) {
+                        if (moves[i].score < bestScore) {
+                            bestScore = moves[i].score;
+                            bestMove = i;
+                        }
+                    }
+                }
+
+                return moves[bestMove];
+            }
+
+            function moveComputerPiece(index) {
+                const computerPieces = board.map((cell, idx) => cell === computer ? idx : null).filter(val => val !== null);
+                const oldIndex = computerPieces[Math.floor(Math.random() * computerPieces.length)];
+                board[oldIndex] = null;
+                board[index] = computer;
+                const piece = cells[oldIndex].querySelector('.piece');
+                cells[index].appendChild(piece);
+                piece.style.transform = 'scale(1.2)';
+                setTimeout(() => piece.style.transform = 'scale(1)', 300);
+            }
+
+            function checkWinner(board) {
+                const winPatterns = [
+                    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+                    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+                    [0, 4, 8], [2, 4, 6]
+                ];
+                return winPatterns.some(pattern => {
+                    const [a, b, c] = pattern;
+                    return board[a] && board[a] === board[b] && board[a] === board[c];
+                });
+            }
+
+            function restartGame() {
+                board.fill(null);
+                cells.forEach(cell => {
+                    cell.textContent = '';
+                    while (cell.firstChild) {
+                        cell.removeChild(cell.firstChild);
+                    }
+                });
+                isPlayerTurn = true;
+                playerMoves = 0;
+                computerMoves = 0;
+                moveMode = false;
+                gameEnded = false;
+                hideNotification();
+            }
+
+            function setDifficulty(level) {
+                difficulty = level;
+                restartGame();
+                updateDifficultyButtons();
+            }
+
+            function updateDifficultyButtons() {
+                easyButton.classList.remove('selected');
+                mediumButton.classList.remove('selected');
+                hardButton.classList.remove('selected');
+                if (difficulty === 'easy') {
+                    easyButton.classList.add('selected');
+                } else if (difficulty === 'medium') {
+                    mediumButton.classList.add('selected');
+                } else if (difficulty === 'hard') {
+                    hardButton.classList.add('selected');
+                }
+            }
+
+            function showNotification(message) {
+                notification.textContent = message;
+                notification.style.display = 'block';
+                setTimeout(() => notification.style.display = 'none', 3000);
+            }
+
+            function hideNotification() {
+                notification.style.display = 'none';
+            }
+
+            function getRandomMessage(messages) {
+                return messages[Math.floor(Math.random() * messages.length)];
+            }
+
+            updateDifficultyButtons();
+        });
+    </script>
+</body>
+</html>
