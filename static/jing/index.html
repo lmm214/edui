@@ -13,8 +13,9 @@
             margin: 0;
             font-family: 'Comic Sans MS', cursive, sans-serif;
             background-color: #f0f8ff;
+            overflow: hidden;
         }
-
+    
         #game {
             text-align: center;
             background-color: #fff;
@@ -24,12 +25,12 @@
             width: 90%;
             max-width: 400px;
         }
-
+    
         h1 {
             color: #ff69b4;
             margin-bottom: 20px;
         }
-
+    
         #board {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -37,7 +38,7 @@
             gap: 5px;
             margin: 20px auto;
         }
-
+    
         .cell {
             width: 100%;
             padding-bottom: 100%;
@@ -52,34 +53,34 @@
             border-radius: 10px;
             transition: transform 0.3s ease;
         }
-
+    
         .cell:active {
             transform: scale(0.95);
         }
-
+    
         .piece {
             width: 60%;
             height: 60%;
             border-radius: 50%;
-            margin-top: 100%;
             position: absolute;
+            margin-top: 100%;
             cursor: grab;
             transition: transform 0.3s ease;
         }
-
+    
         .black {
             border: 3px solid #ff69b4;
             background-color: #ffe4e1;
         }
-
+    
         .white {
             background-color: #ff69b4;
         }
-
+    
         #controls {
             margin: 10px 0;
         }
-
+    
         button {
             padding: 10px 20px;
             font-size: 1em;
@@ -91,15 +92,15 @@
             border-radius: 10px;
             transition: background-color 0.3s;
         }
-
+    
         button:hover {
             background-color: #ff1493;
         }
-
+    
         .selected {
             background-color: #ff1493;
         }
-
+    
         #notification {
             display: none;
             position: fixed;
@@ -114,7 +115,14 @@
             z-index: 1000;
             font-size: 1.2em;
         }
+    
+        /* 新增样式以支持拖动时棋子的位置调整 */
+        .dragging {
+            pointer-events: none; /* 禁止拖动时的鼠标事件 */
+            z-index: 1000; /* 确保拖动时棋子在最上层 */
+        }
     </style>
+    
 </head>
 <body>
     <div id="game">
@@ -150,13 +158,15 @@
             const computer = 'white';
             let board = Array(9).fill(null);
             let isPlayerTurn = true;
-            let difficulty = 'easy';
+            let difficulty = 'hard';
             let playerMoves = 0;
             let computerMoves = 0;
             let moveMode = false;
             let draggedPiece = null;
             let gameEnded = false;
-
+            let touchOffsetX = 0;
+            let touchOffsetY = 0;
+        
             const playerWinMessages = [
                 "厉害，你真棒！",
                 "不得了，我认输！",
@@ -164,7 +174,7 @@
                 "胜利属于你！",
                 "你赢了，真厉害！"
             ];
-
+        
             const computerWinMessages = [
                 "不好意思，承认承认！😜",
                 "要不，再来一局？😏",
@@ -172,17 +182,17 @@
                 "再接再厉哦！😊",
                 "下次一定赢！💪"
             ];
-
+        
             cells.forEach(cell => cell.addEventListener('click', handleCellClick));
             restartButton.addEventListener('click', restartGame);
             easyButton.addEventListener('click', () => setDifficulty('easy'));
             mediumButton.addEventListener('click', () => setDifficulty('medium'));
             hardButton.addEventListener('click', () => setDifficulty('hard'));
-
+        
             function handleCellClick(e) {
                 const index = e.target.dataset.index;
                 if (moveMode || gameEnded) return;
-
+        
                 if (board[index] || checkWinner(board)) return;
                 if (isPlayerTurn) {
                     if (playerMoves < 4) {
@@ -199,7 +209,7 @@
                     }
                 }
             }
-
+        
             function makeMove(index, symbol) {
                 board[index] = symbol;
                 const piece = document.createElement('div');
@@ -207,40 +217,90 @@
                 cells[index].appendChild(piece);
                 if (checkWinner(board)) {
                     gameEnded = true;
+                    disableDragging();  // 禁用拖动
                     showNotification(symbol === 'black' ? getRandomMessage(playerWinMessages) : getRandomMessage(computerWinMessages));
                 }
             }
-
+        
             function enableDragging() {
+                if (gameEnded) return;  // 如果游戏已结束，则不允许拖动
+
                 const pieces = document.querySelectorAll('.piece');
                 pieces.forEach(piece => {
                     piece.setAttribute('draggable', true);
                     piece.addEventListener('dragstart', handleDragStart);
+                    piece.addEventListener('drag', handleDrag);
                     piece.addEventListener('dragend', handleDragEnd);
+                    piece.addEventListener('touchstart', handleTouchStart);
+                    piece.addEventListener('touchend', handleTouchEnd);
                 });
                 cells.forEach(cell => {
                     cell.addEventListener('dragover', handleDragOver);
                     cell.addEventListener('drop', handleDrop);
+                    cell.addEventListener('touchend', handleTouchEnd);
                 });
             }
 
+            function disableDragging() {
+                const pieces = document.querySelectorAll('.piece');
+                pieces.forEach(piece => {
+                    piece.setAttribute('draggable', false);
+                    piece.removeEventListener('dragstart', handleDragStart);
+                    piece.removeEventListener('drag', handleDrag);
+                    piece.removeEventListener('dragend', handleDragEnd);
+                    piece.removeEventListener('touchstart', handleTouchStart);
+                    piece.removeEventListener('touchend', handleTouchEnd);
+                });
+                cells.forEach(cell => {
+                    cell.removeEventListener('dragover', handleDragOver);
+                    cell.removeEventListener('drop', handleDrop);
+                    cell.removeEventListener('touchend', handleTouchEnd);
+                });
+            }
+        
             function handleDragStart(e) {
                 if (!isPlayerTurn || e.target.classList.contains('white')) return;
                 draggedPiece = e.target;
                 setTimeout(() => e.target.style.display = 'none', 0);
             }
-
+        
+            function handleDrag(e) {
+                if (draggedPiece) {
+                    let x, y;
+                    if (e.touches && e.touches.length > 0) {
+                        const touch = e.touches[0];
+                        x = touch.pageX;
+                        y = touch.pageY;
+                    } else if (e.clientX && e.clientY) {
+                        x = e.clientX;
+                        y = e.clientY;
+                    }
+                    
+                    if (x !== undefined && y !== undefined) {
+                        draggedPiece.style.position = 'absolute';
+                        draggedPiece.style.left = `${x - draggedPiece.offsetWidth / 2}px`;
+                        draggedPiece.style.top = `${y - draggedPiece.offsetHeight / 2}px`;
+                    }
+                }
+            }            
+            
+        
             function handleDragEnd(e) {
                 setTimeout(() => {
-                    draggedPiece.style.display = 'block';
-                    draggedPiece = null;
+                    if (draggedPiece) {
+                        draggedPiece.style.display = 'block';
+                        draggedPiece.style.position = '';
+                        draggedPiece.style.left = '';
+                        draggedPiece.style.top = '';
+                        draggedPiece = null;
+                    }
                 }, 0);
             }
-
+        
             function handleDragOver(e) {
                 e.preventDefault();
             }
-
+        
             function handleDrop(e) {
                 e.preventDefault();
                 const index = e.target.dataset.index;
@@ -250,17 +310,50 @@
                 board[index] = player;
                 e.target.appendChild(draggedPiece);
                 draggedPiece.style.transform = 'scale(1.1)';
-                setTimeout(() => draggedPiece.style.transform = 'scale(1)', 300);
-
+        
                 if (checkWinner(board)) {
                     gameEnded = true;
+                    disableDragging();  // 禁用拖动
                     showNotification(getRandomMessage(playerWinMessages));
                 } else {
                     isPlayerTurn = false;
                     setTimeout(computerMove, 500);
                 }
             }
-
+            
+        
+            function handleTouchStart(e) {
+                if (!isPlayerTurn || e.target.classList.contains('white')) return;
+                draggedPiece = e.target;
+                touchOffsetX = e.touches[0].pageX - e.target.getBoundingClientRect().left;
+                touchOffsetY = e.touches[0].pageY - e.target.getBoundingClientRect().top;
+            }
+            
+            function handleTouchMove(e) {
+                e.preventDefault();
+                if (draggedPiece) {
+                    const touch = e.touches[0];
+                    draggedPiece.style.position = 'absolute';
+                    draggedPiece.style.left = `${touch.pageX - touchOffsetX}px`;
+                    draggedPiece.style.top = `${touch.pageY - touchOffsetY}px`;
+                }
+            }            
+        
+            function handleTouchEnd(e) {
+                if (draggedPiece) {
+                    const touch = e.changedTouches[0];
+                    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                    if (element && element.classList.contains('cell') && !element.hasChildNodes()) {
+                        handleDrop({ target: element, preventDefault: () => {} });
+                    }
+                    draggedPiece.style.position = '';
+                    draggedPiece.style.left = '';
+                    draggedPiece.style.top = '';
+                    draggedPiece.style.transform = 'scale(1)';
+                    draggedPiece = null;
+                }
+            }
+        
             function computerMove() {
                 let index;
                 if (difficulty === 'easy') {
@@ -280,20 +373,21 @@
                 } else {
                     moveComputerPiece(index);
                 }
-
+        
                 if (checkWinner(board)) {
                     gameEnded = true;
+                    disableDragging();  // 禁用拖动
                     showNotification(getRandomMessage(computerWinMessages));
                 } else {
                     isPlayerTurn = true;
                 }
             }
-
+        
             function randomMove() {
                 let availableCells = board.map((cell, index) => cell === null ? index : null).filter(val => val !== null);
                 return availableCells[Math.floor(Math.random() * availableCells.length)];
             }
-
+        
             function mediumMove() {
                 for (let i = 0; i < board.length; i++) {
                     if (board[i] === null) {
@@ -307,10 +401,10 @@
                 }
                 return randomMove();
             }
-
+        
             function minimax(newBoard, player) {
                 const availSpots = newBoard.map((cell, index) => cell === null ? index : null).filter(val => val !== null);
-
+        
                 if (checkWinner(newBoard)) {
                     if (player === computer) {
                         return { score: -10 };
@@ -320,13 +414,13 @@
                 } else if (availSpots.length === 0) {
                     return { score: 0 };
                 }
-
+        
                 const moves = [];
                 for (let i = 0; i < availSpots.length; i++) {
                     const move = {};
                     move.index = availSpots[i];
                     newBoard[availSpots[i]] = player;
-
+        
                     if (player === computer) {
                         const result = minimax(newBoard, 'black');
                         move.score = result.score;
@@ -334,11 +428,11 @@
                         const result = minimax(newBoard, 'white');
                         move.score = result.score;
                     }
-
+        
                     newBoard[availSpots[i]] = null;
                     moves.push(move);
                 }
-
+        
                 let bestMove;
                 if (player === computer) {
                     let bestScore = -10000;
@@ -357,21 +451,72 @@
                         }
                     }
                 }
-
+        
                 return moves[bestMove];
             }
+            function moveComputerPiece() {
+                if (difficulty === 'easy') {
+                    performRandomMove();
+                } else {
+                    performDefensiveMove();
+                }
+            }
+            
+            function performDefensiveMove() {
+                let allIndices = [...Array(board.length).keys()];
+                let computerIndices = allIndices.filter(index => board[index] === computer);
+                let emptyIndices = allIndices.filter(index => board[index] === null);
+                let bestMove = null;
+                let bestFromIndex = null;
+                let needToBlock = false;
+            
+                // 遍历所有电脑的棋子和所有空位，看玩家是否有可能在下一步获胜
+                computerIndices.forEach(fromIndex => {
+                    emptyIndices.forEach(toIndex => {
+                        let originalPiece = board[fromIndex];
+                        board[fromIndex] = null;    // 移动前位置清空
+                        board[toIndex] = computer; // 模拟电脑在这个位置下棋
+            
+                        if (checkWinner(board) === computer) {
+                            bestMove = toIndex;
+                            bestFromIndex = fromIndex;
+                            needToBlock = true;
+                        }
+            
+                        // 撤销模拟
+                        board[toIndex] = null;
+                        board[fromIndex] = originalPiece;
+                    });
+                });
+            
+                if (needToBlock && bestMove !== null && bestFromIndex !== null) {
+                    movePiece(bestFromIndex, bestMove);
+                } else {
+                    // 如果没有紧急的防守需要，执行随机移动或更智能的移动策略
+                    performRandomMove();
+                }
+            }
+            
+            function performRandomMove() {
+                let computerIndices = board.map((item, index) => item === computer ? index : null).filter(index => index !== null);
+                let emptyIndices = board.map((item, index) => item === null ? index : null).filter(index => index !== null);
+                
+                if (emptyIndices.length > 0) {
+                    let fromIndex = computerIndices[Math.floor(Math.random() * computerIndices.length)];
+                    let toIndex = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+                    movePiece(fromIndex, toIndex);
+                }
+            }            
 
-            function moveComputerPiece(index) {
-                const computerPieces = board.map((cell, idx) => cell === computer ? idx : null).filter(val => val !== null);
-                const oldIndex = computerPieces[Math.floor(Math.random() * computerPieces.length)];
-                board[oldIndex] = null;
-                board[index] = computer;
-                const piece = cells[oldIndex].querySelector('.piece');
-                cells[index].appendChild(piece);
-                piece.style.transform = 'scale(1.2)';
+            function movePiece(fromIndex, toIndex) {
+                const piece = cells[fromIndex].querySelector('.piece');
+                board[fromIndex] = null;
+                board[toIndex] = computer;
+                cells[toIndex].appendChild(piece);
+                piece.style.transform = 'scale(1.1)';
                 setTimeout(() => piece.style.transform = 'scale(1)', 300);
             }
-
+        
             function checkWinner(board) {
                 const winPatterns = [
                     [0, 1, 2], [3, 4, 5], [6, 7, 8],
@@ -383,7 +528,7 @@
                     return board[a] && board[a] === board[b] && board[a] === board[c];
                 });
             }
-
+        
             function restartGame() {
                 board.fill(null);
                 cells.forEach(cell => {
@@ -399,13 +544,13 @@
                 gameEnded = false;
                 hideNotification();
             }
-
+        
             function setDifficulty(level) {
                 difficulty = level;
                 restartGame();
                 updateDifficultyButtons();
             }
-
+        
             function updateDifficultyButtons() {
                 easyButton.classList.remove('selected');
                 mediumButton.classList.remove('selected');
@@ -418,23 +563,24 @@
                     hardButton.classList.add('selected');
                 }
             }
-
+        
             function showNotification(message) {
                 notification.textContent = message;
                 notification.style.display = 'block';
                 setTimeout(() => notification.style.display = 'none', 3000);
             }
-
+        
             function hideNotification() {
                 notification.style.display = 'none';
             }
-
+        
             function getRandomMessage(messages) {
                 return messages[Math.floor(Math.random() * messages.length)];
             }
-
+        
             updateDifficultyButtons();
         });
+        
     </script>
 </body>
 </html>
