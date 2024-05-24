@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="favicon.png">
     <title>井字棋游戏 PRO</title>
     <style>
         body {
@@ -80,16 +81,35 @@
             cursor: grab;
             transition: transform 0.3s ease;
         }
-    
+        @keyframes breathEffect1 {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+        }
+        @keyframes breathEffect2 {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.2);
+            }
+        }
+        
         .black {
             border: 3px solid #ff69b4;
             background-color: #ffe4e1;
         }
-    
         .white {
             background-color: #ff69b4;
+            cursor: default;
         }
-    
+        .black,.white{animation: breathEffect1 0.3s ease-in-out 1;}
+        .piece.black.breathing {
+            animation: breathEffect2 0.6s ease-in-out 2;
+        }
         #controls {
             margin: 10px 0;
         }
@@ -163,6 +183,14 @@
         <button id="restart">再来一局</button>
     </div>
     <div id="notification"></div>
+
+    <script src="confetti.js"></script>
+    <script type="text/javascript">
+      const confetti = new JSConfetti()
+      function showConfetti() {
+        confetti.addConfetti()
+      }
+    </script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const cells = document.querySelectorAll('.cell');
@@ -174,7 +202,6 @@
             const computer = 'white';
             let board = Array(9).fill(null);
             let isPlayerTurn = true;
-            let difficulty = 'hard';
             let playerMoves = 0;
             let computerMoves = 0;
             let moveMode = false;
@@ -182,9 +209,9 @@
             let gameEnded = false;
             let touchOffsetX = 0;
             let touchOffsetY = 0;
-        
+            let shakeTriggered = false;
             const playerWinMessages = [
-                "厉害，你真棒！",
+                "厉害厉害，你真棒！👍",
                 "不得了，我认输！",
                 "你太强了！",
                 "胜利属于你！",
@@ -194,16 +221,40 @@
             const computerWinMessages = [
                 "不好意思，承认承认！😜",
                 "要不，再来一局？😏",
-                "你输啦！😅",
-                "再接再厉哦！😊",
-                "下次一定赢！💪"
+                "再接再厉哦！😊"
             ];
-        
+
+            // 读取本地存储中的难度设置
+            let difficulty = localStorage.getItem('difficulty');
+            
+            // 如果没有保存的难度设置，设置默认难度为 'easy'
+            if (!difficulty) {
+                difficulty = 'easy';
+                localStorage.setItem('difficulty', difficulty);
+            }
+            // 根据保存的难度设置更新按钮状态
+            if (difficulty === 'easy') {
+                easyButton.classList.add('selected');
+            } else if (difficulty === 'hard') {
+                hardButton.classList.add('selected');
+            }
+
+            // 监听按钮点击事件并保存到本地存储
+            easyButton.addEventListener('click', () => {
+                localStorage.setItem('difficulty', 'easy');
+                easyButton.classList.add('selected');
+                hardButton.classList.remove('selected');
+            });
+
+            hardButton.addEventListener('click', () => {
+                localStorage.setItem('difficulty', 'hard');
+                easyButton.classList.remove('selected');
+                hardButton.classList.add('selected');
+            });
+
             cells.forEach(cell => cell.addEventListener('click', handleCellClick));
             restartButton.addEventListener('click', restartGame);
-            easyButton.addEventListener('click', () => setDifficulty('easy'));
-            hardButton.addEventListener('click', () => setDifficulty('hard'));
-        
+
             function handleCellClick(e) {
                 const index = e.target.dataset.index;
                 if (moveMode || gameEnded) return;
@@ -216,6 +267,7 @@
                         if (playerMoves === 4 && computerMoves === 4) {
                             moveMode = true;
                             enableDragging();
+                            if (!checkWinner(board)) {shakePieces();}
                         }
                     }
                     if (!checkWinner(board) && board.includes(null)) {
@@ -252,6 +304,10 @@
                     cell.addEventListener('dragover', handleDragOver);
                     cell.addEventListener('drop', handleDrop);
                     cell.addEventListener('touchend', handleTouchEnd);
+                });
+                const computerPieces = document.querySelectorAll('.piece.white');
+                computerPieces.forEach(piece => {
+                    piece.setAttribute('draggable', false);
                 });
             }
         
@@ -300,9 +356,10 @@
                 board[oldIndex] = null;
                 board[index] = player;
                 e.target.appendChild(draggedPiece);
-                draggedPiece.style.transform = 'scale(1.1)';
+                //draggedPiece.style.transform = 'scale(1.1)';
         
                 if (checkWinner(board)) {
+                    showConfetti()
                     gameEnded = true;
                     disableDragging();
                     showNotification(getRandomMessage(playerWinMessages));
@@ -357,6 +414,7 @@
                     if (playerMoves === 4 && computerMoves === 4) {
                         moveMode = true;
                         enableDragging();
+                        if (!checkWinner(board)) {shakePieces();}
                     }
                 } else {
                     moveComputerPiece();
@@ -459,16 +517,19 @@
             }
         
             function moveComputerPiece() {
+                let moveRandom = Math.random()
                 if (difficulty === 'easy') {
-                    // 50% 概率执行先 performRandomMove()
-                    let moveRandom = Math.random()
+                    // 60% 概率执行先 performRandomMove()
                     if ( moveRandom <= 0.6) {
                         return performRandomMove();
                     }else{
                         performDefensiveMove();
                     }
                 } else if (difficulty === 'hard') {
-                    if (!performWinningMove()) {
+                    // 20% 概率执行先 performRandomMove()
+                    if ( moveRandom <= 0.2) {
+                        return performRandomMove();
+                    }else if (!performWinningMove()) {
                         performDefensiveMove();
                     }
                 }
@@ -565,10 +626,18 @@
                 board[fromIndex] = null;
                 board[toIndex] = computer;
                 cells[toIndex].appendChild(piece);
-                piece.style.transform = 'scale(1.1)';
-                setTimeout(() => piece.style.transform = 'scale(1)', 300);
             }
-        
+            
+            function shakePieces() {
+                const userPieces = document.querySelectorAll('.cell .piece.black');
+                userPieces.forEach(piece => {
+                    piece.classList.add('breathing');
+                    setTimeout(() => {
+                        piece.classList.remove('breathing');
+                    }, 1200); // 0.6s * 2 (两次动画周期)
+                });
+            }            
+
             function checkWinner(board) {
                 const winningCombinations = [
                     [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
@@ -601,22 +670,6 @@
                 hideNotification();
             }
         
-            function setDifficulty(level) {
-                difficulty = level;
-                restartGame();
-                updateDifficultyButtons();
-            }
-        
-            function updateDifficultyButtons() {
-                easyButton.classList.remove('selected');
-                hardButton.classList.remove('selected');
-                if (difficulty === 'easy') {
-                    easyButton.classList.add('selected');
-                } else if (difficulty === 'hard') {
-                    hardButton.classList.add('selected');
-                }
-            }
-        
             function showNotification(message) {
                 notification.textContent = message;
                 notification.style.display = 'block';
@@ -631,7 +684,6 @@
                 return messages[Math.floor(Math.random() * messages.length)];
             }
         
-            updateDifficultyButtons();
         });
         
     </script>
