@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>汉诺塔演示</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f8ff;
+        }
+
+        h1 {
+            margin: 20px 0;
+            font-size: 24px;
+            color: #333;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .controls p {
+            margin: 10px 0;
+        }
+
+        .controls input[type=range] {
+            width: 200px;
+        }
+
+        .controls input[type=button] {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .controls input[type=button]:hover {
+            background-color: #45a049;
+        }
+
+        .main {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .bar {
+            stroke: gray;
+            stroke-width: 2px;
+        }
+
+        .bar:hover {
+            filter: brightness(60%);
+        }
+
+        .label {
+            text-anchor: middle;
+            font-size: 16px;
+            fill: #333;
+        }
+
+        .disk:hover {
+            filter: brightness(87%);
+        }
+    </style>
+</head>
+
+<body>
+    <h1>汉诺塔游戏</h1>
+    <div class="controls">
+        <p>
+            盘子数量: <span id="n4show">...</span>
+            <input id="n" type="range" min="1" max="9" oninput="updateN(+this.value);" />
+        </p>
+        <p>
+            步骤时间 (毫秒): <span id="tm4show">...</span>
+            <input id="tm" type="range" min="100" max="3000" step="100" oninput="updateTime(+this.value);" />
+        </p>
+        <p>
+            移动次数: <span id="moves">...</span>
+        </p>
+        <p>
+            <input id="startBtn" type="button" value="开始" onclick="start();" />
+            <input id="stopBtn" type="button" value="停止" onclick="stop();" />
+        </p>
+    </div>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        let n = 3;
+        let stepTime = 1200;
+        let curMove = 0;
+
+// 1. add svg
+let m = { t: 40, b: 50, l: 40, r: 40 };
+let maxW = 1200; // 最大宽度
+let w = Math.min(window.innerWidth - m.l - m.r, maxW);
+let h = 380 - m.t - m.b;
+
+let s = d3.select('body').append('svg')
+    .attr('class', 'main')
+    .attr('width', w + m.l + m.r)
+    .attr('height', h + m.t + m.b);
+
+// 2. add bars
+let bw = Math.min(w / (n + 1), 180); // 动态计算柱子的宽度，最大宽度为180
+let bh = h; // 柱子的高度保持不变
+let bars;
+
+addBars();
+
+function addBars() {
+    bars = [{
+        x: (w / 4),
+        y: h,
+        lbl: 'A',
+        id: 0,
+        stacks: [],
+    }, {
+        x: (w / 2),
+        y: h,
+        lbl: 'B',
+        id: 1,
+        stacks: [],
+    }, {
+        x: (3 * w / 4),
+        y: h,
+        lbl: 'C',
+        id: 2,
+        stacks: [],
+    }];
+
+    s.selectAll(".bar")
+        .data(bars)
+        .enter().append('path')
+        .attr('class', 'bar')
+        .attr('transform', b => `translate(${m.l + b.x},${m.t + b.y})`)
+        .attr('d', `m${-bw / 2},0 l${bw},0 m${-bw / 2},0 l0,${-bh}`)
+
+    s.selectAll('.label')
+        .data(bars)
+        .enter().append('text')
+        .attr('class', 'label')
+        .attr('transform', b => `translate(${m.l + b.x},${m.t + b.y})`)
+        .attr('dy', '1.2em')
+        .text(b => b.lbl);
+}
+
+// 3. add disks
+let disks;
+
+addDisks();
+
+function addDisks() {
+    s.selectAll('.disk').remove();
+
+    bars.forEach(b => b.stacks = []);
+    disks = [];
+
+    let dw_min = 50,
+        dw_max = bw - 10,
+        dw_scale = d3.scaleLinear().range([dw_min, dw_max]).domain([0, n - 1]),
+        dws = [...Array(n).keys()].map(d => dw_scale(d)),
+        dh = 25,
+        rx = 15;
+
+    for (let i = 0; i < n; i++) {
+        let dw = n == 1 ? dw_max : dws[i];
+        disks.push({
+            id: i,
+            tagid: "r" + i,
+            w: dw,
+            h: dh,
+            x: bars[0].x - dw / 2,
+            y: bars[0].y - (n - i) * dh,
+        });
+    }
+
+    s.selectAll('.disk')
+        .data(disks)
+        .enter().append('rect')
+        .attr('id', d => d.tagid)
+        .attr('class', 'disk')
+        .attr('width', d => d.w)
+        .attr('height', d => d.h)
+        .attr('rx', rx)
+        .attr('fill', d => d3.schemeCategory10[d.id % 10])
+        .attr('transform', d => `translate(${m.l + d.x},${m.t + d.y})`);
+}
+
+
+        // 4. move disks
+        let allTimeouts = [];
+
+        function moveDisks() {
+            let schedule = [];
+            function moveDisk(from, assist, to, n) {
+                if (n == 1) {
+                    schedule.push([from, to]);
+                } else {
+                    moveDisk(from, to, assist, n - 1);
+                    moveDisk(from, assist, to, 1);
+                    moveDisk(assist, from, to, n - 1);
+                }
+            }
+
+            moveDisk(bars[0].id, bars[1].id, bars[2].id, n);
+
+            bars[0].stacks.push(...disks.map(d => d3.select("#" + d.tagid)))
+
+            function getPath(bf, bt, el) {
+                let r = el.data()[0];
+
+                let x1 = bf.x - r.w / 2;
+                let y1 = -r.h;
+
+                let x2 = bt.x - r.w / 2;
+                let y2 = y1;
+
+                let x3 = x2;
+                let y3 = bt.y - (bt.stacks.length + 1) * r.h;
+
+                return [x1, y1, x2, y2, x3, y3];
+            }
+
+            let transTime = stepTime / 3;
+
+            for (let i = 0; i < schedule.length; i++) {
+                let [from, to] = schedule[i],
+                    bf = bars[from],
+                    bt = bars[to],
+                    el = bf.stacks[0];
+
+                let [x1, y1, x2, y2, x3, y3] = getPath(bf, bt, el);
+
+                bt.stacks.unshift(bf.stacks.shift());
+
+                let delayTime = stepTime * i;
+                allTimeouts.push(
+                    setTimeout(() => {
+                        curMove++;
+                        d3.select('#moves').text(`${curMove}/${2 ** n - 1}`);
+
+                        el.transition().ease(d3.easeCubicOut)
+                            .duration(transTime)
+                            .attr('transform', `translate(${m.l + x1},${m.t + y1})`)
+
+                            .transition()
+                            .duration(transTime)
+                            .attr('transform', `translate(${m.l + x2},${m.t + y2})`)
+
+                            .transition().ease(d3.easeBounce)
+                            .duration(transTime)
+                            .attr('transform', `translate(${m.l + x3},${m.t + y3})`)
+                    }, delayTime)
+                );
+            }
+        }
+
+        // 5. ui
+        updateN(n);
+
+        function updateN(val) {
+            n = val;
+            d3.select('#n').property('value', n);
+            d3.select('#n4show').text(n);
+            d3.select('#moves').text(`${curMove}/${2 ** n - 1}`);
+            stop();
+        }
+
+        updateTime(stepTime)
+
+        function updateTime(val) {
+            stepTime = val;
+            d3.select('#tm').property('value', stepTime);
+            d3.select('#tm4show').text(stepTime);
+            stop();
+        }
+
+        function start() {
+            stop();
+            moveDisks();
+        }
+
+        function stop() {
+            allTimeouts.forEach(d => clearTimeout(d));
+            allTimeouts = [];
+            curMove = 0;
+            d3.select('#moves').text(`${curMove}/${2 ** n - 1}`);
+
+            addDisks();
+        }
+    </script>
+</body>
+
+</html>
