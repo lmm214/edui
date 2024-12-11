@@ -9,6 +9,7 @@
 	<link rel="shortcut icon" id="favicon" type="image/x-icon" href="24.jpg" />
 
     <meta name="mobile-web-app-capable" content="yes"/>
+    <meta name="apple-mobile-web-app-capable" content="yes"/>
     <meta name="apple-touch-fullscreen" content="yes"/>
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
     <title>24点出题器</title>
@@ -200,11 +201,137 @@
                 font-size: 0.9em;
             }
         }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+    
+        .modal.show {
+            opacity: 1;
+        }
+    
+        .modal-content {
+            position: relative;
+            background: linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%);
+            padding: 40px 30px;  /* 增加上下内边距 */
+            border-radius: 15px;
+            max-width: 90%;  /* 增加最大宽度 */
+            width: auto;
+            margin: 20vh auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            transform: translateY(-20px);
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+    
+        .modal.show .modal-content {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            border: none;
+            font-size: 4em;
+            cursor: pointer;
+            color: #fff;
+            padding: 5px;
+            line-height: 1;
+        }
+    
+        .answer-content {
+            font-size: 2em;  /* 增大字体 */
+            color: #2c3e50;
+            text-align: center;
+            margin: 20px 0;  /* 增加上下边距 */
+            font-family: "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.4;  /* 增加行高 */
+            padding: 10px;  /* 增加内边距 */
+        }
+    
+        h1 {
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+    
+        h1:hover {
+            color: #4a90e2;
+        }
+        @keyframes shake {
+            0% { transform: translate(0); }
+            25% { transform: translate(-2px); }
+            50% { transform: translate(2px); }
+            75% { transform: translate(-2px); }
+            100% { transform: translate(0); }
+        }
+    
+        .shaking {
+            animation: shake 0.8s infinite;
+        }
+        .countdown {
+            opacity: 0.3;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+    
+        .progress-ring {
+            transform: rotate(-90deg);
+            width: 40px; /* 调整圆环的宽度 */
+            height: 40px; /* 调整圆环的高度 */
+        }
+    
+        .progress-ring__circle {
+            transition: stroke-dashoffset 1s linear;
+        }
+    
+        .timer {
+            position: absolute;
+            font-size: 0.8em; /* 调整字体大小 */
+            color: black;
+            text-align: center; /* 确保文本居中 */
+            line-height: 40px; /* 使数字垂直居中 */
+            width: 40px; /* 确保宽度与圆环一致 */
+        }
+
+    
+        /* 移动设备适配 */
+        @media (max-width: 800px) {
+            .modal-content {
+                max-width: 92%;
+                padding: 30px 20px;
+                margin: 30vh auto;
+            }
+            
+            .answer-content {
+                font-size: 1.8em;  /* 移动端稍微小一点 */
+                padding: 5px;
+            }
+            .countdown {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>24点出题器</h1>
+        <h1 onclick="showAnswer()">24点出题器</h1>
         <div class="numbers" id="numbers"></div>
         <div class="controls">
             <div class="button-group">
@@ -214,6 +341,19 @@
             </div>
             <div class="jump-control">
                 <input type="number" id="jumpInput" min="1" max="1362" placeholder="" oninput="toggleJumpButton(this)">
+            </div>
+        </div>
+        <div id="countdown" class="countdown">
+            <svg class="progress-ring" width="40" height="40"> <!-- 调整圆环的大小 -->
+                <circle class="progress-ring__circle" stroke="lightgray" stroke-width="4" fill="transparent" r="16" cx="20" cy="20" />
+                <circle class="progress-ring__circle progress-ring__circle--progress" stroke="orange" stroke-width="4" fill="transparent" r="16" cx="20" cy="20" />
+            </svg>
+            <div id="timer" class="timer">30</div>
+        </div>
+        <div class="modal" id="answerModal">
+            <div class="modal-content">
+                <button class="close-btn" onclick="closeModal()">×</button>
+                <div class="answer-content" id="answerContent"></div>
             </div>
         </div>
     </div>
@@ -1377,7 +1517,7 @@
           {rank: 1155, numbers: "2 5 5 9"},
           {rank: 1156, numbers: "2 5 9 11"},
           {rank: 1157, numbers: "1 3 8 10"},
-          {rank: 1158, numbers: "2 2 7 7"},
+          {rank: 1158, numbers: "2 2 2 7"},
           {rank: 1159, numbers: "2 4 10 11"},
           {rank: 1160, numbers: "6 10 10 13"},
           {rank: 1161, numbers: "2 3 6 7"},
@@ -1585,6 +1725,10 @@
         ];
 
         let currentIndex = -1;
+        let timer; // 用于存储计时器
+        let timeElapsed = 0; // 记录已用时间
+        let countdownDuration = 30; // 倒计时总时长
+        let countdownInterval; // 倒计时的定时器
 
         // 添加保存当前题目序号的函数
         function saveProblemIndex(index) {
@@ -1605,6 +1749,51 @@
             const jumpInput = document.getElementById('jumpInput');
             const numbersDiv = document.getElementById('numbers');
             const oldCards = numbersDiv.querySelectorAll('.card');
+            
+            // 重置计时
+            clearInterval(timer);
+            clearInterval(countdownInterval); // 清理倒计时
+            timeElapsed = 0;
+            const titleElement = document.querySelector('h1');
+            // 开始计时
+            timer = setInterval(() => {
+                timeElapsed += 1;
+                if (timeElapsed > 30) {
+                    titleElement.classList.add('shaking'); // 添加抖动效果
+                }
+            }, 1000);
+            
+             // 倒计时逻辑
+            let timeLeft = countdownDuration;
+            const timerElement = document.getElementById('timer');
+            const progressCircle = document.querySelector('.progress-ring__circle--progress');
+            const radius = 16; // 圆的半径
+            const circumference = 2 * Math.PI * radius;
+
+            // 设置进度条的初始状态
+            progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
+            progressCircle.style.strokeDashoffset = `${circumference}`; // 初始为满
+            timerElement.textContent = timeLeft; // 显示初始时间
+
+            // 立即更新进度条和数字
+            const initialOffset = circumference - (timeLeft / countdownDuration) * circumference;
+            progressCircle.style.strokeDashoffset = initialOffset; // 更新进度条
+
+            // 显示倒计时
+            document.getElementById('countdown').style.display = 'flex'; // 确保倒计时可见
+            countdownInterval = setInterval(() => {
+                if (timeLeft <= 0) {
+                    clearInterval(countdownInterval);
+                    document.getElementById('countdown').style.display = 'none'; // 隐藏倒计时
+                    return;
+                }
+
+                timeLeft -= 1; // 先减少时间
+                timerElement.textContent = timeLeft; // 更新显示的时间
+                const offset = circumference - (timeLeft / countdownDuration) * circumference;
+                progressCircle.style.strokeDashoffset = offset; // 更新进度条
+
+            }, 1000);
             
             // 更新输入框的placeholder
             try {
@@ -1662,6 +1851,9 @@
 
                 document.getElementById('jumpInput').placeholder = `${problem.rank}`;
                 saveProblemIndex(index);
+                
+                // 切换题目时重新求解
+                //showAnswer(); // 重新计算并显示解法
             }, 400);
             
             return true;
@@ -1687,6 +1879,11 @@
         }
 
         function nextProblem() {
+            clearInterval(timer); // 清理计时器
+            clearInterval(countdownInterval); // 清理倒计时
+            const titleElement = document.querySelector('h1');
+            titleElement.classList.remove('shaking');
+            
             currentIndex = (currentIndex + 1) % problems.length;
             showProblem(currentIndex);
         }
@@ -1716,6 +1913,12 @@
 
         // 修改跳转函数
         function jumpToProblem() {
+            clearInterval(timer); // 清理计时器
+            clearInterval(countdownInterval); // 清理倒计时
+
+            const titleElement = document.querySelector('h1');
+            titleElement.classList.remove('shaking');
+
             const input = document.getElementById('jumpInput');
             const targetIndex = parseInt(input.value) - 1;
             if (showProblem(targetIndex)) {
@@ -1731,6 +1934,150 @@
 
         // 页面加载时读取上次的题目
         window.onload = loadLastProblem;
+
+        function showAnswer() {
+            const titleElement = document.querySelector('h1');
+            titleElement.classList.remove('shaking');
+            clearInterval(timer);
+
+            const currentNumbers = getCurrentNumbers();
+            if (!currentNumbers) return;
+            
+            const answer = calculate24(currentNumbers);
+            const modal = document.getElementById('answerModal');
+            const content = document.getElementById('answerContent');
+            
+            content.innerHTML = answer ? 
+                `${answer}` : 
+                '这道题暂时没有找到解法';
+                
+            modal.style.display = 'block';
+            setTimeout(() => modal.classList.add('show'), 10);
+        }
+    
+        function closeModal() {
+            const modal = document.getElementById('answerModal');
+            modal.classList.remove('show');
+            setTimeout(() => modal.style.display = 'none', 300);
+        }
+    
+        function getCurrentNumbers() {
+            const currentProblem = problems[currentIndex]; // 使用 currentIndex 而不是 currentIndex - 1
+            if (!currentProblem) return null;
+            return currentProblem.numbers.split(' ').map(Number);
+        }
+    
+        function calculate24(numbers) {
+            const operators = ['+', '-', '*', '/'];
+            const eps = 1e-10; // 处理浮点数误差
+            const solutions = new Set(); // 使用 Set 存储唯一解
+            
+            // 检查数值是否接近24
+            function isTarget(num) {
+                return Math.abs(num - 24) < eps;
+            }
+            
+            // 计算两个数的所有可能结果
+            function compute(a, b, op) {
+                switch(op) {
+                    case '+': return a + b;
+                    case '-': return a - b;
+                    case '*': return a * b;
+                    case '/': return b !== 0 ? a / b : NaN;
+                }
+            }
+            
+            // 生成所有可能的数字排列
+            function permute(arr) {
+                if (arr.length <= 1) return [arr];
+                const perms = [];
+                for (let i = 0; i < arr.length; i++) {
+                    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+                    const subPerms = permute(rest);
+                    for (const subPerm of subPerms) {
+                        perms.push([arr[i], ...subPerm]);
+                    }
+                }
+                return perms;
+            }
+            
+            // 递归求解
+            function solve(nums, expressions) {
+                if (nums.length === 1) {
+                    if (isTarget(nums[0])) {
+                        solutions.add(expressions[0]); // 使用 Set 添加解法
+                    }
+                    return;
+                }
+                
+                for (let i = 0; i < nums.length - 1; i++) {
+                    for (let j = i + 1; j < nums.length; j++) {
+                        const newNums = [...nums];
+                        const newExps = [...expressions];
+                        const num1 = newNums[i];
+                        const num2 = newNums[j];
+                        const exp1 = newExps[i];
+                        const exp2 = newExps[j];
+                        
+                        // 移除使用过的数字和表达式
+                        newNums.splice(j, 1);
+                        newNums.splice(i, 1);
+                        newExps.splice(j, 1);
+                        newExps.splice(i, 1);
+                        
+                        for (const op of operators) {
+                            let newExp, result;
+                            
+                            // 尝试 num1 op num2
+                            result = compute(num1, num2, op);
+                            if (!isNaN(result)) {
+                                newExp = `(${exp1} ${op} ${exp2})`; // 确保运算顺序
+                                solve([...newNums, result], [...newExps, newExp]);
+                            }
+                            
+                            // 尝试 num2 op num1 (对于减法和除法)
+                            if (op === '-' || op === '/') {
+                                result = compute(num2, num1, op);
+                                if (!isNaN(result)) {
+                                    newExp = `(${exp2} ${op} ${exp1})`; // 确保运算顺序
+                                    solve([...newNums, result], [...newExps, newExp]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 尝试所有可能的数字排列
+            const perms = permute(numbers);
+            for (const perm of perms) {
+                solve(perm, perm.map(String));
+            }
+            // 随机选择最多5个解法
+            const allSolutions = Array.from(solutions);
+            let displayedSolutions = allSolutions.length > 5 ? 
+                getRandomElements(allSolutions, 5) : 
+                allSolutions;
+            const message = allSolutions.length > 5 ? 
+                "以下是随机选择的5种解法：" : 
+                "以下是所有解法：";
+            return displayedSolutions.length > 0 ? 
+                message + '<br/>' + displayedSolutions.map(sol => sol.replace(/^\((.*)\)$/, '$1') + ' = 24').join('<br/>') : 
+                null;
+
+        }
+
+        // 随机选择数组中的n个元素
+        function getRandomElements(arr, n) {
+            const shuffled = arr.sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, n);
+        }
+        // 点击模态层背景关闭
+        document.getElementById('answerModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
     </script>
 </body>
 </html>
