@@ -477,13 +477,17 @@
     </div>
 
     <script>
-        let speechSynth = window.speechSynthesis;
         let isReading = false;
         let currentIndex = 0;
         let words = [];
         let repeatCount = 0;
         let isMorningReading = false;
         let currentAudio = null;
+        // 添加音频缓存
+        const audioCache = new Map(); // 缓存已加载的音频对象
+        // 添加预加载控制
+        let preloadController = null;
+        let isLoading = false; // 添加加载状态标志
         // 添加随机分组相关变量
         let randomGroups = [];
         let currentGroupIndex = 0;
@@ -567,7 +571,6 @@
         // 选择年级
         function selectGrade(grade) {
             currentGrade = grade;
-            // 更新按钮状
             document.querySelectorAll('.nav button').forEach(btn => {
                 btn.classList.remove('active');
             });
@@ -634,7 +637,7 @@
             lessonList.appendChild(morningBtn);
         }
 
-        // 添加分组函数
+        // 添加分��函数
         function createRandomGroups() {
             // 获取当前年级的所有词语
             const allWords = wordsData[currentGrade].reduce((acc, lesson) => {
@@ -655,7 +658,7 @@
             currentGroupIndex = 0;
         }
 
-        // 修改显示随机词语函数
+        // 修改显示随机词函数
         function showRandomWords() {
             // 如果没有分组或所有组都显示完了，重新分组
             if (randomGroups.length === 0 || currentGroupIndex >= randomGroups.length) {
@@ -669,7 +672,7 @@
             const content = document.getElementById('lessonContent');
             content.classList.add('active');
             
-            // 更新标题显示当前组和总组数
+            // ��新标题显示当前组和总组数
             const totalGroups = randomGroups.length;
             document.getElementById('titleText').textContent = 
                 `随机词语 (${currentGroupIndex}/${totalGroups}组)`;
@@ -691,52 +694,6 @@
             content.querySelector('.lesson-words').textContent = lesson.words.join('、');
         }
 
-        // 添加音色选择和初始化功能
-        let preferredVoice = null;
-
-        function initVoices() {
-            const voices = speechSynth.getVoices();
-            // 按优先级尝试不同的音色
-            const voicePreferences = [
-                'Microsoft Yunxi Online (Natural) - Chinese (Mainland)',
-                'Microsoft Yunxi - Chinese (Mainland)',
-                'zh-CN-YunxiNeural',
-                '云希 (zh-CN)',
-            ];
-            
-            // 遍历优先级列表，选择第一可用的音色
-            for (const voiceName of voicePreferences) {
-                const voice = voices.find(v => v.name === voiceName);
-                if (voice) {
-                    preferredVoice = voice;
-                    console.log('使用音色:', voiceName);
-                    break;
-                }
-            }
-            
-            // 如果没有找到指定音色，使用任意中文音色
-            if (!preferredVoice) {
-                const chineseVoice = voices.find(v => 
-                    (v.lang.includes('zh') || v.lang.includes('cmn') || v.name.includes('Chinese')) &&
-                    (!v.name.includes('Female') && !v.name.includes('女'))
-                );
-                if (chineseVoice) {
-                    preferredVoice = chineseVoice;
-                    console.log('使用备选中文音色:', chineseVoice.name);
-                }
-            }
-        }
-
-        // 立即初始化一次
-        initVoices();
-
-        // 监听语音引擎加载
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = () => {
-                initVoices();
-            };
-        }
-
         // 修改 readCurrentWord 函数中的语音设置
         async function readCurrentWord() {
             if (!isReading || currentIndex >= words.length) {
@@ -745,41 +702,80 @@
             }
 
             const currentWord = words[currentIndex];
+            const nextWord = words[currentIndex + 1];
             const basePauseTime = parseFloat(document.getElementById('pauseTime').value);
             const extraPauseTime = Math.max(0, currentWord.length - 2);
             const totalPauseTime = (basePauseTime + extraPauseTime) * 1000;
 
             try {
-                const params = new URLSearchParams({
-                    input: currentWord,
-                    voice: 'zh-CN-YunxiaNeural',
-                    rate: '-20'
-                });
-                
-                const audioUrl = `https://tts.mzzsfy.eu.org/v1/audio/speech?${params.toString()}`;
-                
+                let audio;
+                // 如果是第一个词语或者还没有缓存，需要加载并缓存
+                if (!audioCache.has(currentWord)) {
+                    const audioUrl = getAudioUrl(currentWord);
+                    audio = new Audio(audioUrl);
+                    await new Promise((resolve, reject) => {
+                        audio.addEventListener('canplaythrough', resolve, { once: true });
+                        audio.addEventListener('error', reject, { once: true });
+                    });
+                    // 缓存原始音频对象
+                    audioCache.set(currentWord, audio);
+                } else {
+                    // 使用已缓存的音频
+                    audio = audioCache.get(currentWord);
+                }
+
+                audio.currentTime = 0;
+
                 if (currentAudio) {
                     currentAudio.pause();
-                    URL.revokeObjectURL(currentAudio.src);
                 }
-                currentAudio = new Audio(audioUrl);
+                currentAudio = audio;
                 
-                currentAudio.onended = () => {
+                currentAudio.onended = async () => {
                     repeatCount++;
                     if (repeatCount < 2) {
-                        setTimeout(() => readCurrentWord(), 100);
+                        // 第一遍播放结束，准备第二遍（使用缓存）
+                        setTimeout(() => {
+                            currentAudio.currentTime = 0;
+                            currentAudio.play();
+                        }, 100);
                     } else {
+                        // 第二遍播放结束
                         repeatCount = 0;
                         if (isMorningReading) {
                             showWordOverlay(currentWord);
                         }
                         currentIndex++;
-                        setTimeout(() => {
-                            if (isMorningReading) {
-                                hideWordOverlay();
-                            }
-                            readCurrentWord();
-                        }, totalPauseTime);
+
+                        if (nextWord) {
+                            // 同时开始预加载和等待间隔时间
+                            Promise.all([
+                                // 预加载任务
+                                (async () => {
+                                    if (!audioCache.has(nextWord)) {
+                                        const nextAudioUrl = getAudioUrl(nextWord);
+                                        const nextAudio = new Audio(nextAudioUrl);
+                                        await new Promise((resolve) => {
+                                            nextAudio.addEventListener('canplaythrough', () => {
+                                                audioCache.set(nextWord, nextAudio);
+                                                resolve();
+                                            }, { once: true });
+                                            nextAudio.addEventListener('error', resolve, { once: true });
+                                            nextAudio.load();
+                                        });
+                                    }
+                                })(),
+                                // 等待间隔时间任务
+                                new Promise(resolve => setTimeout(resolve, totalPauseTime))
+                            ]).then(() => {
+                                if (isMorningReading) {
+                                    hideWordOverlay();
+                                }
+                                readCurrentWord();
+                            });
+                        } else {
+                            stopReading();
+                        }
                     }
                 };
                 
@@ -790,14 +786,30 @@
             }
         }
 
+        function getAudioUrl(word) {
+            const params = new URLSearchParams({
+                input: word,
+                voice: 'zh-CN-YunxiaNeural',
+                rate: '-30'
+            });
+            
+            return `https://tts.mzzsfy.eu.org/v1/audio/speech?${params.toString()}`;
+        }
+
         function stopReading() {
             isReading = false;
             isMorningReading = false;
+            // 取消正在进行的预加载
+            if (preloadController) {
+                preloadController.abort();
+                preloadController = null;
+            }
             if (currentAudio) {
                 currentAudio.pause();
-                URL.revokeObjectURL(currentAudio.src);
                 currentAudio = null;
             }
+            // 清理缓存
+            audioCache.clear();
             hideWordOverlay();
             
             // 更新按钮状态
@@ -828,7 +840,10 @@
         }
 
         function startReading() {
-            if (!checkSpeechSupport()) return;
+            if (!navigator.onLine) {
+                alert('请���查网络连接');
+                return;
+            }
             if (isReading) return;
             
             if (words.length === 0) {
@@ -858,16 +873,7 @@
             readCurrentWord();
         }
 
-        // 添加语音支持检测函数
-        function checkSpeechSupport() {
-            if (!window.speechSynthesis) {
-                alert('您的浏览器不支持语音功能，请使用 Edge/Chrome/Safari 等现代浏览器');
-                return false;
-            }
-            return true;
-        }
-
-        // 添加停顿时间滑块控制
+        // 添加停顿时间滑块控��
         document.addEventListener('DOMContentLoaded', function() {
             const pauseSlider = document.getElementById('pauseTime');
             const pauseValue = document.getElementById('pauseValue');
@@ -893,7 +899,7 @@
                 [allWords[i], allWords[j]] = [allWords[j], allWords[i]];
             }
             
-            // 显示词语列表（但会被遮罩）
+            // 显示词语列表（但会被��罩）
             const content = document.getElementById('lessonContent');
             content.classList.add('active');
             
