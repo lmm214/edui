@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>词语听写</title>
+    <meta name="referrer" content="no-referrer">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         :root {
@@ -482,6 +483,7 @@
         let words = [];
         let repeatCount = 0;
         let isMorningReading = false;
+        let currentAudio = null;
         // 添加随机分组相关变量
         let randomGroups = [];
         let currentGroupIndex = 0;
@@ -696,10 +698,10 @@
             const voices = speechSynth.getVoices();
             // 按优先级尝试不同的音色
             const voicePreferences = [
-                'Microsoft Yunxia Online (Natural) - Chinese (Mainland)',
-                "Microsoft Server Speech Text to Speech Voice (zh-CN, YunxiaNeural)",
-                'Microsoft Yunxia - Chinese (Mainland)',
-                '语舒 (zh-CN)',
+                'Microsoft Yunxi Online (Natural) - Chinese (Mainland)',
+                'Microsoft Yunxi - Chinese (Mainland)',
+                'zh-CN-YunxiNeural',
+                '云希 (zh-CN)',
             ];
             
             // 遍历优先级列表，选择第一可用的音色
@@ -715,9 +717,8 @@
             // 如果没有找到指定音色，使用任意中文音色
             if (!preferredVoice) {
                 const chineseVoice = voices.find(v => 
-                    v.lang.includes('zh') || 
-                    v.lang.includes('cmn') || 
-                    v.name.includes('Chinese')
+                    (v.lang.includes('zh') || v.lang.includes('cmn') || v.name.includes('Chinese')) &&
+                    (!v.name.includes('Female') && !v.name.includes('女'))
                 );
                 if (chineseVoice) {
                     preferredVoice = chineseVoice;
@@ -737,7 +738,7 @@
         }
 
         // 修改 readCurrentWord 函数中的语音设置
-        function readCurrentWord() {
+        async function readCurrentWord() {
             if (!isReading || currentIndex >= words.length) {
                 stopReading();
                 return;
@@ -745,46 +746,58 @@
 
             const currentWord = words[currentIndex];
             const basePauseTime = parseFloat(document.getElementById('pauseTime').value);
-            // 计算额外停顿时间：每多一个字多停顿1秒
             const extraPauseTime = Math.max(0, currentWord.length - 2);
             const totalPauseTime = (basePauseTime + extraPauseTime) * 1000;
 
-            let utterance = new SpeechSynthesisUtterance(currentWord);
-            utterance.lang = 'zh-CN';
-            utterance.rate = 0.8;
-            utterance.pitch = 1.0;
-            
-            if (preferredVoice) {
-                utterance.voice = preferredVoice;
-            }
-
-            utterance.onend = () => {
-                repeatCount++;
-                if (repeatCount < 2) {
-                    setTimeout(() => readCurrentWord(), 100);
-                } else {
-                    repeatCount = 0;
-                    // 如果是早读模式，显示遮罩层
-                    if (isMorningReading) {
-                        showWordOverlay(currentWord);
-                    }
-                    currentIndex++;
-                    setTimeout(() => {
-                        if (isMorningReading) {
-                            hideWordOverlay();
-                        }
-                        readCurrentWord();
-                    }, totalPauseTime);
+            try {
+                const params = new URLSearchParams({
+                    input: currentWord,
+                    voice: 'zh-CN-YunxiaNeural',
+                    rate: '-20'
+                });
+                
+                const audioUrl = `https://tts.mzzsfy.eu.org/v1/audio/speech?${params.toString()}`;
+                
+                if (currentAudio) {
+                    currentAudio.pause();
+                    URL.revokeObjectURL(currentAudio.src);
                 }
-            };
-
-            speechSynth.speak(utterance);
+                currentAudio = new Audio(audioUrl);
+                
+                currentAudio.onended = () => {
+                    repeatCount++;
+                    if (repeatCount < 2) {
+                        setTimeout(() => readCurrentWord(), 100);
+                    } else {
+                        repeatCount = 0;
+                        if (isMorningReading) {
+                            showWordOverlay(currentWord);
+                        }
+                        currentIndex++;
+                        setTimeout(() => {
+                            if (isMorningReading) {
+                                hideWordOverlay();
+                            }
+                            readCurrentWord();
+                        }, totalPauseTime);
+                    }
+                };
+                
+                await currentAudio.play();
+            } catch (error) {
+                console.error('语音播放错误:', error);
+                stopReading();
+            }
         }
 
         function stopReading() {
             isReading = false;
             isMorningReading = false;
-            speechSynth.cancel();
+            if (currentAudio) {
+                currentAudio.pause();
+                URL.revokeObjectURL(currentAudio.src);
+                currentAudio = null;
+            }
             hideWordOverlay();
             
             // 更新按钮状态
