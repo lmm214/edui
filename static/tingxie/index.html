@@ -523,10 +523,11 @@
         let repeatCount = 0;
         let isMorningReading = false;
         let currentAudio = null;
-        let audioCache = new Map(); // 用于缓存音频对象
+        // 添加音频缓存
+        const audioCache = new Map(); // 缓存已加载的音频对象
+        // 添加预加载控制
         let preloadController = null;
-        let isLoading = false;
-        let currentGrade = null;
+        let isLoading = false; // 添加加载状态标志
         // 添加随机分组相关变量
         let randomGroups = [];
         let currentGroupIndex = 0;
@@ -626,7 +627,7 @@
             // 显示课程列表
             showLessons();
             
-            // 淡入���示课程表
+            // 淡入显示课程列表
             setTimeout(() => {
                 document.querySelector('.lessons').classList.add('show');
             }, 100);
@@ -766,35 +767,38 @@
 
             try {
                 let audio;
+                // 如果是第一个词语或者还没有缓存，需要加载并缓存
                 if (!audioCache.has(currentWord)) {
-                    audio = new Audio(getAudioUrl(currentWord));
+                    const audioUrl = getAudioUrl(currentWord);
+                    audio = new Audio(audioUrl);
                     await new Promise((resolve, reject) => {
                         audio.addEventListener('canplaythrough', resolve, { once: true });
                         audio.addEventListener('error', reject, { once: true });
-                        audio.load();
                     });
+                    // 缓存原始音频对象
                     audioCache.set(currentWord, audio);
                 } else {
+                    // 使用已缓存的音频
                     audio = audioCache.get(currentWord);
-                    audio.currentTime = 0;
                 }
+
+                audio.currentTime = 0;
 
                 if (currentAudio) {
                     currentAudio.pause();
                 }
                 currentAudio = audio;
-
-                // 播放完成的处理
+                
                 currentAudio.onended = async () => {
                     repeatCount++;
                     if (repeatCount < 2) {
-                        // 第一遍播放结束，准备第二遍
+                        // 第一遍播放结束，准备第二遍（使用缓存）
                         setTimeout(() => {
                             currentAudio.currentTime = 0;
                             currentAudio.play();
                         }, 100);
                     } else {
-                        // 第二��播放结束
+                        // 第二遍播放结束
                         repeatCount = 0;
                         if (isMorningReading) {
                             showWordOverlay(currentWord);
@@ -802,30 +806,40 @@
                         currentIndex++;
 
                         if (nextWord) {
-                            // 预加载下一个词
-                            if (!audioCache.has(nextWord)) {
-                                const nextAudio = new Audio(getAudioUrl(nextWord));
-                                nextAudio.load();
-                                audioCache.set(nextWord, nextAudio);
-                            }
-                            
-                            // 等待指定时间后继续
-                            setTimeout(() => {
+                            // 同时开始预加载和等待间隔时间
+                            Promise.all([
+                                // 预加载任务
+                                (async () => {
+                                    if (!audioCache.has(nextWord)) {
+                                        const nextAudioUrl = getAudioUrl(nextWord);
+                                        const nextAudio = new Audio(nextAudioUrl);
+                                        await new Promise((resolve) => {
+                                            nextAudio.addEventListener('canplaythrough', () => {
+                                                audioCache.set(nextWord, nextAudio);
+                                                resolve();
+                                            }, { once: true });
+                                            nextAudio.addEventListener('error', resolve, { once: true });
+                                            nextAudio.load();
+                                        });
+                                    }
+                                })(),
+                                // 等待间隔时间任务
+                                new Promise(resolve => setTimeout(resolve, totalPauseTime))
+                            ]).then(() => {
                                 if (isMorningReading) {
                                     hideWordOverlay();
                                 }
                                 readCurrentWord();
-                            }, totalPauseTime);
+                            });
                         } else {
                             stopReading();
                         }
                     }
                 };
-
+                
                 await currentAudio.play();
             } catch (error) {
                 console.error('语音播放错误:', error);
-                alert('播放出错，请稍后重试');
                 stopReading();
             }
         }
@@ -843,6 +857,11 @@
         function stopReading() {
             isReading = false;
             isMorningReading = false;
+            // 取消正在进行的预加载
+            if (preloadController) {
+                preloadController.abort();
+                preloadController = null;
+            }
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio = null;
@@ -906,7 +925,7 @@
             `;
             text.textContent = '停止';
 
-            // 隐���词语列表
+            // 隐藏词语列表
             document.querySelector('.lesson-words').classList.add('reading');
             
             readCurrentWord();
