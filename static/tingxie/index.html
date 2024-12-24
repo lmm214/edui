@@ -734,7 +734,7 @@
             
             content.querySelector('.lesson-words').textContent = currentGroup.join('、');
             
-            // 如果是���后一组，在标题中提示
+            // 如果是最后一组，在标题中提示
             if (currentGroupIndex === randomGroups.length) {
                 document.getElementById('titleText').textContent += ' - 最后一组';
             }
@@ -778,10 +778,11 @@
                     // 缓存原始音频对象
                     audioCache.set(currentWord, audio);
                 } else {
-                    // 使用已缓存的音频的克隆
-                    const cachedAudio = audioCache.get(currentWord);
-                    audio = cachedAudio.cloneNode(true);
+                    // 使用已缓存的音频
+                    audio = audioCache.get(currentWord);
                 }
+
+                audio.currentTime = 0;
 
                 if (currentAudio) {
                     currentAudio.pause();
@@ -791,25 +792,10 @@
                 currentAudio.onended = async () => {
                     repeatCount++;
                     if (repeatCount < 2) {
-                        // 第一遍播放结束，准备第二遍（使用新的克隆）
+                        // 第一遍播放结束，准备第二遍（使用缓存）
                         setTimeout(() => {
-                            const newAudio = audioCache.get(currentWord).cloneNode(true);
-                            currentAudio = newAudio;
-                            // 为新的音频对象重新绑定相同的事件处理器
-                            currentAudio.onended = currentAudio.parentElement.onended;
-                            try {
-                                currentAudio.play().catch(error => {
-                                    console.error('重复播放错误:', error);
-                                    // 如果重复播放失败，直接进入下一个词
-                                    repeatCount = 2;
-                                    currentIndex++;
-                                    readCurrentWord();
-                                });
-                            } catch (error) {
-                                console.error('播放错误:', error);
-                                currentIndex++;
-                                readCurrentWord();
-                            }
+                            currentAudio.currentTime = 0;
+                            currentAudio.play();
                         }, 100);
                     } else {
                         // 第二遍播放结束
@@ -825,20 +811,16 @@
                                 // 预加载任务
                                 (async () => {
                                     if (!audioCache.has(nextWord)) {
-                                        try {
-                                            const nextAudioUrl = getAudioUrl(nextWord);
-                                            const nextAudio = new Audio(nextAudioUrl);
-                                            await new Promise((resolve) => {
-                                                nextAudio.addEventListener('canplaythrough', () => {
-                                                    audioCache.set(nextWord, nextAudio);
-                                                    resolve();
-                                                }, { once: true });
-                                                nextAudio.addEventListener('error', resolve, { once: true });
-                                                nextAudio.load();
-                                            });
-                                        } catch (error) {
-                                            console.error('预加载错误:', error);
-                                        }
+                                        const nextAudioUrl = getAudioUrl(nextWord);
+                                        const nextAudio = new Audio(nextAudioUrl);
+                                        await new Promise((resolve) => {
+                                            nextAudio.addEventListener('canplaythrough', () => {
+                                                audioCache.set(nextWord, nextAudio);
+                                                resolve();
+                                            }, { once: true });
+                                            nextAudio.addEventListener('error', resolve, { once: true });
+                                            nextAudio.load();
+                                        });
                                     }
                                 })(),
                                 // 等待间隔时间任务
@@ -848,9 +830,6 @@
                                     hideWordOverlay();
                                 }
                                 readCurrentWord();
-                            }).catch(error => {
-                                console.error('Promise错误:', error);
-                                readCurrentWord();
                             });
                         } else {
                             stopReading();
@@ -858,16 +837,7 @@
                     }
                 };
                 
-                try {
-                    await currentAudio.play().catch(error => {
-                        console.error('播放错误:', error);
-                        currentIndex++;
-                        readCurrentWord();
-                    });
-                } catch (error) {
-                    console.error('播放错误:', error);
-                    stopReading();
-                }
+                await currentAudio.play();
             } catch (error) {
                 console.error('语音播放错误:', error);
                 stopReading();
