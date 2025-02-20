@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+    <title>观察组合正方体</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            height: 100vh;
+            font-family: Arial;
+            overflow: hidden; /* 禁止页面滚动 */
+        }
+
+
+        /* 控制面板 */
+        #control-panel {
+            width: 14%;
+            height: 100vh;
+            overflow-y: auto; /* 允许垂直滚动 */
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* 场景容器 */
+        #scene-container {
+            width: 85%;
+            overflow: hidden; /* 禁止页面滚动 */
+            display: grid;
+            grid-template-columns: 4fr 1fr;
+            gap: 15px;
+        }
+
+        /* 主视图容器 */
+        #main-view {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 辅助视图容器 */
+        #side-views {
+            display: grid;
+            grid-template-rows: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .side-view {
+            width: 100%;
+            aspect-ratio: 1;
+            position: relative;  /* 添加相对定位 */
+        }
+
+        .side-view-title {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            font-size: 12px;
+            color: #666;
+            background: rgba(255,255,255,0.8);
+            padding: 2px 5px;
+            border-radius: 3px;
+            z-index: 1;  /* 确保标题在渲染器上方 */
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+
+        /* 控制按钮组 */
+        .control-group {
+            margin: 20px 0;
+            border-radius: 8px;
+            width: 100%;
+        }
+
+        /* 控制网格 */
+        .grid-control {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1px;
+            margin: 0;
+            width: 100%;
+        }
+
+        /*控制按钮*/
+        .grid-btn {
+            aspect-ratio: 1;
+            background: white;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius:3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .grid-btn:hover {
+            background: #f0f0f0;
+            transform: scale(1.05);
+        }
+
+        /* 添加中心点标记样式 */
+        .grid-btn.center {
+            border-color: #4CAF50;
+            background-color: #f0fff0;
+        }
+
+        /*视图控制*/
+        .viewpoint-control-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 5px;
+            margin: 0;
+            width: 100%;
+        }
+        .viewpoint-control-group button{
+            font-size: 24px;
+            color: #fff;
+            font-weight: 800;
+        }
+        #front {
+            background: #28a3dd;
+        }
+
+        #sideLeft {
+            background: #f3db52
+        }
+
+        #top {
+            background: #ed84b5
+        }
+
+        #d3 {
+            background: #4ab74e
+        }
+
+        /* 重置撤回*/
+        .global-control-group {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+
+        #reset {
+            color: #4ab74e
+        }
+
+        #withdraw {
+            color: #9179c0
+        }
+        .instruction {
+            margin: 0;
+            padding: 15px;
+            background: #f8f8f8;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* 替换 wired-button 样式 */
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #f5f5f5;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #e0e0e0;
+        }
+
+        /* 眼睛图标样式 */
+        .eye-icon {
+            width: 16px;
+            height: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .eye-icon.closed::before {
+            content: "👁️";
+            opacity: 0.5;
+        }
+        
+        .eye-icon.open::before {
+            content: "👁️";
+            opacity: 1;
+        }
+        
+        /* 隐藏 canvas */
+        .side-view canvas.hidden {
+            display: none !important;
+        }
+
+    </style>
+</head>
+
+<body>
+<!--控制区-->
+<div id="control-panel" class="card">
+    <div class="control-group">
+        <div class="instruction card">
+            <h3>观察组合正方体</h3>
+            <p>1. 点击数字添加小正方体</p>
+            <p>2. 点击按钮切换不同视角</p>
+            <p>3. 按住鼠标左键进行旋转</p>
+        </div>
+    </div>
+    
+    <div class="control-group grid-control" id="control-grid"></div>
+
+    <div class="control-group">
+        <div class="viewpoint-control-group" id="viewpoint-control-group">
+            <button id="front" data-view="front">正</button>
+            <button id="sideLeft" data-view="sideLeft">左</button>
+            <button id="top" data-view="top">上</button>
+            <button id="d3" data-view="3d">3D</button>
+        </div>
+    </div>
+    
+    <div class="control-group">
+        <div class="global-control-group">
+            <button id="reset">重置</button>
+            <button id="withdraw">撤回</button>
+        </div>
+    </div>
+    
+
+</div>
+
+<!--场景-->
+<div id="scene-container" class="card">
+    <div id="main-view"></div>
+    <div id="side-views">
+        <div class="side-view hidden" id="top-view">
+            <div class="side-view-title">
+                <span class="eye-icon closed"></span>
+                俯视图
+            </div>
+        </div>
+        <div class="side-view hidden" id="front-view">
+            <div class="side-view-title">
+                <span class="eye-icon closed"></span>
+                正视图
+            </div>
+        </div>
+        <div class="side-view hidden" id="left-view">
+            <div class="side-view-title">
+                <span class="eye-icon closed"></span>
+                左视图
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+<!--导入Threejs-->
+<script type="importmap">
+    {
+      "imports": {
+        "three": "./three.module.js",
+        "controls": "./OrbitControls.js",
+        "tween": "./tween.esm.js"
+      }
+    }
+</script>
+
+
+<script type="module">
+    import * as THREE from 'three';
+    import {OrbitControls} from 'controls';
+    import * as TWEEN from 'tween';
+
+    //方块生成控制按钮
+    const gridData = {}
+    let scene, camera, renderer, controls;
+    let topRenderer, frontRenderer, leftRenderer;
+    let topCamera, frontCamera, leftCamera;
+    const viewSize = 10; // 可视范围半径
+    //方块
+    const cubes = [];
+
+
+    // 创建不同面材质（颜色可自定义）
+    const materials = [
+        // X轴方向的两个面（左/右）
+        new THREE.MeshBasicMaterial({
+            color: "#f3db52"
+        }), // 左
+        new THREE.MeshBasicMaterial({color: "#f3db52"}), // 右
+
+        // Y轴方向的两个面（上/下）
+        new THREE.MeshBasicMaterial({color: "#ed84b5"}), // 上: 绿色
+        new THREE.MeshBasicMaterial({color: "#ed84b5"}), // 下: 浅绿色
+
+        // Z轴方向的两个面（前/后）
+        new THREE.MeshBasicMaterial({color: "#28a3dd"}), // 前
+        new THREE.MeshBasicMaterial({color: "#28a3dd"})  // 后
+    ];
+
+    /**
+     * 初始化场景
+     */
+    function initScene() {
+        const container = document.getElementById('main-view');
+        let clientWidth = container.clientWidth - 30;
+        let clientHeight = container.clientHeight - 30;
+
+        // 创建场景
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x444488);
+
+        // 设置主视图相机和渲染器
+        const aspect = clientWidth / clientHeight;
+        camera = new THREE.OrthographicCamera(
+            -viewSize * aspect / 2,
+            viewSize * aspect / 2,
+            viewSize / 2,
+            -viewSize / 2,
+            1,
+            1000
+        );
+
+        renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setSize(clientWidth, clientHeight);
+        renderer.setAnimationLoop(animate);
+        container.appendChild(renderer.domElement);
+        
+        // 初始化辅助视图
+        initSideViews();
+        
+        //轨道控制器
+        controls = new OrbitControls(camera, renderer.domElement);
+        // 启用阻尼效果使动画更平滑
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        
+        // 自定义缩放行为
+        controls.enableZoom = true;
+        controls.zoomSpeed = 0.5;
+        
+        // 监听缩放事件
+        controls.addEventListener('zoom', (event) => {
+            // 获取缩放比例
+            const zoomScale = controls.target.distanceTo(camera.position) / 
+                             controls._lastDistance || 1;
+            
+            // 创建缩放动画
+            new TWEEN.Tween({
+                left: camera.left,
+                right: camera.right,
+                top: camera.top,
+                bottom: camera.bottom
+            })
+            .to({
+                left: camera.left * zoomScale,
+                right: camera.right * zoomScale,
+                top: camera.top * zoomScale,
+                bottom: camera.bottom * zoomScale
+            }, 300)
+            .easing(TWEEN.Easing.Quadratic.InOut)
+            .onUpdate((props) => {
+                camera.left = props.left;
+                camera.right = props.right;
+                camera.top = props.top;
+                camera.bottom = props.bottom;
+                camera.updateProjectionMatrix();
+            })
+            .start();
+            
+            // 保存当前距离用于下次计算
+            controls._lastDistance = controls.target.distanceTo(camera.position);
+        });
+
+        // 添加控制器事件监听
+        controls.addEventListener('start', () => {
+            animate.isDragging = true;
+        });
+        controls.addEventListener('end', () => {
+            animate.isDragging = false;
+            // 拖动结束时更新所有视图
+            updateSideViews();
+        });
+
+        // 添加光源
+        const ambientLight = new THREE.AmbientLight(0xcccccc);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
+        directionalLight.position.set(10, 10, 10);
+        scene.add(directionalLight);
+
+        //坐标轴
+        addHelpers()
+
+        // 默认视图
+        setView('3d');
+        // 窗口大小改变处理
+        window.addEventListener('resize', onWindowResize);
+
+
+        // 事件监听
+        document.querySelectorAll('#viewpoint-control-group > *').forEach(btn => {
+            btn.addEventListener('click', () => {
+                setView(btn.dataset.view);
+            });
+        });
+
+        // 添加视图切换事件
+        document.querySelectorAll('.side-view-title').forEach(title => {
+            title.addEventListener('click', () => {
+                const view = title.closest('.side-view').querySelector('canvas');
+                const eyeIcon = title.querySelector('.eye-icon');
+                
+                view.classList.toggle('hidden');
+                eyeIcon.classList.toggle('closed');
+                eyeIcon.classList.toggle('open');
+                
+                // 立即更新视图状态
+                updateSideViews();
+            });
+        });
+
+    }
+
+    // 初始化辅助视图
+    function initSideViews() {
+        const sideSize = document.querySelector('.side-view').clientWidth - 10;
+        
+        // 俯视图
+        topCamera = new THREE.OrthographicCamera(-5, 5, 5, -5, 1, 1000);
+        topCamera.position.set(0, 15, 0);
+        topCamera.up.set(0, 0, -1);
+        topCamera.lookAt(0, 0, 0);
+        
+        topRenderer = new THREE.WebGLRenderer({antialias: true});
+        topRenderer.setSize(sideSize, sideSize);
+        topRenderer.setClearColor(0x444488);
+        document.getElementById('top-view').appendChild(topRenderer.domElement);
+        
+        // 正视图
+        frontCamera = new THREE.OrthographicCamera(-5, 5, 5, -5, 1, 1000);
+        frontCamera.position.set(0, 0, 15);
+        frontCamera.position.y = 2.5; // 向上偏移以居中显示
+        frontCamera.lookAt(0, 2.5, 0); // 看向偏移后的中心点
+        
+        frontRenderer = new THREE.WebGLRenderer({antialias: true});
+        frontRenderer.setSize(sideSize, sideSize);
+        frontRenderer.setClearColor(0x444488);
+        document.getElementById('front-view').appendChild(frontRenderer.domElement);
+        
+        // 左视图
+        leftCamera = new THREE.OrthographicCamera(-5, 5, 5, -5, 1, 1000);
+        leftCamera.position.set(-15, 0, 0);
+        leftCamera.position.y = 2.5; // 向上偏移以居中显示
+        leftCamera.lookAt(0, 2.5, 0); // 看向偏移后的中心点
+        
+        leftRenderer = new THREE.WebGLRenderer({antialias: true});
+        leftRenderer.setSize(sideSize, sideSize);
+        leftRenderer.setClearColor(0x444488);
+        document.getElementById('left-view').appendChild(leftRenderer.domElement);
+    }
+
+    // 添加辅助工具
+    function addHelpers() {
+        // 坐标轴
+        const axesHelper = new THREE.AxesHelper(5);
+        scene.add(axesHelper);
+        // 网格
+        const gridHelper = new THREE.GridHelper(10, 10);
+        gridHelper.material.opacity = 0.2;
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
+    }
+
+    // 设置视图
+    function setView(viewType) {
+        const currentPosition = camera.position.clone();
+        const currentUp = camera.up.clone();
+        
+        let targetPosition = new THREE.Vector3();
+        let targetUp = new THREE.Vector3(0, 1, 0);
+        
+        // 检查是否是左右视图之间的切换
+        if ((viewType === 'sideLeft' && camera.position.x > 10) || 
+            (viewType === 'sideRight' && camera.position.x < -10)) {
+            // 先切换到3D视图
+            new TWEEN.Tween({
+                x: currentPosition.x,
+                y: currentPosition.y,
+                z: currentPosition.z
+            })
+            .to({
+                x: 5,
+                y: 5,
+                z: 10
+            }, 500)
+            .easing(TWEEN.Easing.Quadratic.InOut)
+            .onUpdate((coords) => {
+                camera.position.set(coords.x, coords.y, coords.z);
+                camera.lookAt(0, 0, 0);
+            })
+            .onComplete(() => {
+                // 然后切换到目标视图
+                const finalPosition = viewType === 'sideLeft' ? 
+                    {x: -15, y: 0, z: 0} : 
+                    {x: 15, y: 0, z: 0};
+                
+                new TWEEN.Tween({
+                    x: camera.position.x,
+                    y: camera.position.y,
+                    z: camera.position.z
+                })
+                .to(finalPosition, 500)
+                .easing(TWEEN.Easing.Quadratic.InOut)
+                .onUpdate((coords) => {
+                    camera.position.set(coords.x, coords.y, coords.z);
+                    camera.lookAt(0, 0, 0);
+                })
+                .start();
+            })
+            .start();
+            return;
+        }
+        
+        // 其他视图切换保持原来的逻辑
+        switch (viewType) {
+            case 'front':
+                targetPosition.set(0, 0, 15);
+                break;
+            case 'top':
+                targetPosition.set(0, 15, 0);
+                targetUp.set(0, 0, -1);
+                break;
+            case 'sideLeft':
+                targetPosition.set(-15, 0, 0);
+                break;
+            case 'sideRight':
+                targetPosition.set(15, 0, 0);
+                break;
+            case '3d':
+                targetPosition.set(5, 5, 10);
+                break;
+        }
+
+        // 创建相机位置动画
+        new TWEEN.Tween({
+            x: currentPosition.x,
+            y: currentPosition.y,
+            z: currentPosition.z
+        })
+        .to({
+            x: targetPosition.x,
+            y: targetPosition.y,
+            z: targetPosition.z
+        }, 1000)
+        .easing(TWEEN.Easing.Quadratic.InOut)
+        .onUpdate((coords) => {
+            camera.position.set(coords.x, coords.y, coords.z);
+            camera.lookAt(0, 0, 0);
+        })
+        .start();
+
+        // 创建相机朝向动画
+        new TWEEN.Tween({
+            x: currentUp.x,
+            y: currentUp.y,
+            z: currentUp.z
+        })
+        .to({
+            x: targetUp.x,
+            y: targetUp.y,
+            z: targetUp.z
+        }, 1000)
+        .easing(TWEEN.Easing.Quadratic.InOut)
+        .onUpdate((coords) => {
+            camera.up.set(coords.x, coords.y, coords.z);
+        })
+        .start();
+    }
+
+    // 动画循环
+    function animate() {
+        TWEEN.update();
+        controls.update();
+        
+        // 始终渲染主视图
+        renderer.render(scene, camera);
+        
+        // 如果有动画或者视图变化，更新辅助视图
+        const tweens = TWEEN.getAll();
+        if (tweens.length > 0 || animate.isDragging) {
+            updateSideViews();
+        }
+    }
+
+    // 更新辅助视图
+    function updateSideViews() {
+        // 只更新未隐藏的视图
+        if (!document.getElementById('top-view').querySelector('canvas').classList.contains('hidden')) {
+            topRenderer.render(scene, topCamera);
+        }
+        if (!document.getElementById('front-view').querySelector('canvas').classList.contains('hidden')) {
+            frontRenderer.render(scene, frontCamera);
+        }
+        if (!document.getElementById('left-view').querySelector('canvas').classList.contains('hidden')) {
+            leftRenderer.render(scene, leftCamera);
+        }
+    }
+
+    // 窗口尺寸变化处理
+    function onWindowResize() {
+        let container = document.getElementById('main-view');
+        let clientWidth = container.clientWidth - 30;
+        let clientHeight = container.clientHeight - 30;
+        
+        const aspect = clientWidth / clientHeight;
+        
+        renderer.setSize(clientWidth, clientHeight);
+        camera.aspect = clientWidth / clientHeight;
+        camera.left = -viewSize * aspect / 2;
+        camera.right = viewSize * aspect / 2;
+        camera.top = viewSize / 2;
+        camera.bottom = -viewSize / 2;
+        camera.updateProjectionMatrix();
+        
+        // 更新辅助视图尺寸
+        const sideSize = document.querySelector('.side-view').clientWidth - 10;
+        [topRenderer, frontRenderer, leftRenderer].forEach(renderer => {
+            renderer.setSize(sideSize, sideSize);
+        });
+    }
+
+
+    // 创建控制网格
+    function createControlGrid() {
+        const container = document.getElementById('control-grid');
+        for (let z = -3; z < 3; z++) {
+            for (let x = -3; x < 3; x++) {
+                const btn = document.createElement('div');
+                
+                let key = `${x}-${z}`
+                gridData[key] = {
+                    x: x + 0.5,
+                    y: 0,
+                    z: z + 0.5,
+                    key
+                }
+                btn.className = 'grid-btn';
+                // 添加中心点标记
+                if (x === -1 && z === -1) {
+                    btn.className += ' center';
+                }
+                if (x === 0 && z === 0) {
+                    btn.className += ' center';
+                }
+                if (x === 0 && z === -1) {
+                    btn.className += ' center';
+                }
+                if (x === -1 && z === 0) {
+                    btn.className += ' center';
+                }
+                btn.textContent = gridData[key].z;
+                btn.id = key
+                btn.addEventListener('click', () => {
+                    gridData[btn.id].y++
+                    btn.textContent = gridData[key].y
+                    addCube(gridData[btn.id])
+                });
+                container.appendChild(btn);
+            }
+        }
+    }
+
+    /**
+     * 添加方块
+     * @param point
+     */
+    function addCube(point) {
+        // 使用材质数组创建立方体
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const cube = new THREE.Mesh(geometry, materials);
+        cube.position.set(point.x, point.y - 0.5, point.z)
+
+        const edges = new THREE.EdgesGeometry(geometry);
+        const lineSegments = new THREE.LineSegments(
+            edges,
+            new THREE.LineDashedMaterial(
+                {
+                    color: "#0c0c0c",
+                    linewidth: 1.5
+                }
+            )
+        );
+        lineSegments.computeLineDistances();
+        cube.add(lineSegments);
+        scene.add(cube);
+        cubes.push({
+            key: point.key,
+            cube: cube
+        })
+        // 添加方块后更新所有视图
+        renderer.render(scene, camera);
+        updateSideViews();
+    }
+
+    // 重置所有
+    function resetAll() {
+        setView("3d")
+        document.querySelectorAll('.grid-btn').forEach(btn => {
+            btn.textContent = '0'
+            gridData[btn.id].y = 0
+        });
+        cubes.forEach(item => scene.remove(item.cube));
+        cubes.length = 0;
+        // 重置后更新所有视图
+        renderer.render(scene, camera);
+        updateSideViews();
+    }
+
+    /**
+     * 撤回
+     */
+    function withdraw() {
+        if (cubes.length > 0) {
+            const lastElement = cubes.pop();
+            let key = lastElement.key;
+            gridData[key].y -= 1
+            document.getElementById(lastElement.key).textContent = gridData[key].y
+            scene.remove(lastElement.cube);
+            // 撤回后更新所有视图
+            renderer.render(scene, camera);
+            updateSideViews();
+        }
+    }
+
+
+    // 初始化
+    window.addEventListener('load', () => {
+        initScene();
+        createControlGrid();
+        resetAll()
+        document.getElementById('reset').addEventListener('click', resetAll)
+        document.getElementById('withdraw').addEventListener('click', withdraw)
+
+    });
+
+
+</script>
+
+</html>
