@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>百数表，猜一猜</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            margin: 0;
+            font-family: 'Comic Sans MS', '楷体', '微软雅黑',"Microsoft YaHei", Arial, sans-serif;
+            background-image: linear-gradient(to top, #fff1eb 0%, #ace0f9 100%);
+        }
+
+        .container {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: min(5vw, 140px);
+            max-width: 95vw;
+            margin: 0 auto;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(10, calc((90vh - min(3vh, 20px)) / 10));
+            gap: 0;
+            background-image: linear-gradient(to top, #feada6 0%, #f5efef 100%);
+            padding: min(1.5vh, 10px);
+            border-radius: min(1.5vh, 10px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            height: 90vh;
+            overflow: auto;
+        }
+
+        .cell {
+            width: 100%;
+            aspect-ratio: 1;
+            border: 1px solid #bfc4ca;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background-image: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%);
+            transition: all 0.3s ease;
+            font-size: calc((90vh - min(3vh, 20px)) / 20);
+            color: #2d4059;
+        }
+
+        .clear-btn {
+            width: min(15vw, 120px);
+            height: min(15vw, 120px);
+            font-size: min(5vw, 45px);
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .clear-btn {
+            width: min(15vw, 120px);
+            height: min(15vw, 120px);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            background-color: #ff6b6b;
+            color: white;
+            font-size: 45px;
+            font-weight: bold;
+            text-transform: none;
+        }
+
+        .selected {
+            border-color: #ffd93d;
+            transform: scale(1.1);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+
+        .clear-btn:hover {
+            background-color: #ff5252;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+
+        .cell.masked {
+            color: transparent;
+            background-color: #e8f4ff;
+            border-color: #bfc4ca;
+        }
+
+        .cell.revealed {
+            color: #ff5252;
+            background-color: #ffd93d;
+            border-color: #ffbe0b;
+            animation: reveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes reveal {
+            from { transform: scale(0.8) rotate(-6deg); opacity: 0; }
+            to { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="grid" id="grid"></div>
+        <div class="controls">
+            <button class="clear-btn" onclick="startGuessing()">猜</button>
+        </div>
+    </div>
+
+    <script>
+        function createGrid() {
+            const grid = document.getElementById('grid');
+            for (let i = 1; i <= 100; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.textContent = i;
+                cell.addEventListener('click', () => {
+                    if (cell.classList.contains('masked')) {
+                        cell.classList.remove('masked');
+                        cell.classList.add('revealed');
+                    } else {
+                        cell.style.backgroundColor = currentColor;
+                        cell.style.borderColor = currentColor === '#ffffff' ? '#e0e7ef' : currentColor;
+                    }
+                });
+                grid.appendChild(cell);
+            }
+        }
+
+        // 猜数字功能
+        function startGuessing() {
+            const cells = document.querySelectorAll('.cell');
+            const gridSize = 10;
+            let speed = 500; // 移动速度
+
+            // 获取当前位置的行列坐标
+            function getPosition(index) {
+                return {
+                    row: Math.floor(index / gridSize),
+                    col: index % gridSize
+                };
+            }
+
+            // 获取指定行列坐标的索引
+            function getIndex(row, col) {
+                return row * gridSize + col;
+            }
+
+            // 获取相邻的格子
+            function getAdjacentCells(pos) {
+                const adjacent = [];
+                const directions = [
+                    {row: 0, col: 1},  // 右
+                    {row: 0, col: -1}, // 左
+                    {row: 1, col: 0},  // 下
+                    {row: -1, col: 0}  // 上
+                ];
+
+                for (const dir of directions) {
+                    const newRow = pos.row + dir.row;
+                    const newCol = pos.col + dir.col;
+                    if (newRow >= 0 && newRow < gridSize && newCol >= 0 && newCol < gridSize) {
+                        adjacent.push({row: newRow, col: newCol});
+                    }
+                }
+                return adjacent;
+            }
+
+            // 生成移动路径
+            function generatePath() {
+                const path = [];
+                // 获取所有遮罩的格子
+                const maskedCells = Array.from(cells).map((cell, index) => {
+                    return {
+                        index: index,
+                        isMasked: !cell.classList.contains('revealed') && cell.style.backgroundColor === 'white'
+                    };
+                }).filter(cell => cell.isMasked);
+
+                if (maskedCells.length === 0) return path;
+
+                // 从遮罩的格子中随机选择起始格子
+                const startCell = maskedCells[Math.floor(Math.random() * maskedCells.length)];
+                const startPos = getPosition(startCell.index);
+                path.push(startCell.index);
+
+                let currentPos = startPos;
+                const visited = new Set([startCell.index]);
+
+                while (path.length < 3) { // 包括起始格子在内共11个格子
+                    const adjacent = getAdjacentCells(currentPos);
+                    const availableAdjacent = adjacent.filter(pos => {
+                        const index = getIndex(pos.row, pos.col);
+                        return !visited.has(index) && maskedCells.some(cell => cell.index === index);
+                    });
+
+                    if (availableAdjacent.length === 0) break;
+
+                    const nextPos = availableAdjacent[Math.floor(Math.random() * availableAdjacent.length)];
+                    const nextIndex = getIndex(nextPos.row, nextPos.col);
+                    path.push(nextIndex);
+                    visited.add(nextIndex);
+                    currentPos = nextPos;
+                }
+
+                return path;
+            }
+
+            // 先将所有格子遮罩
+            cells.forEach(cell => {
+                cell.classList.add('masked');
+                cell.style.backgroundColor = 'white';
+                cell.style.borderColor = '#bfc4ca';
+            });
+
+            const path = generatePath();
+            let currentStep = 0;
+
+            function animate() {
+                // 移除上一个高亮的格子
+                if (currentStep > 0) {
+                    cells[path[currentStep - 1]].classList.add('masked');
+                    cells[path[currentStep - 1]].classList.remove('revealed');
+                }
+
+                // 高亮当前格子
+                cells[path[currentStep]].classList.remove('masked');
+                cells[path[currentStep]].classList.add('revealed');
+
+                // 继续动画或结束
+                if (currentStep < path.length - 1) {
+                    currentStep++;
+                    setTimeout(animate, speed);
+                }
+            }
+
+            // 开始动画
+            setTimeout(animate, 500);
+        }
+
+        // 添加键盘事件监听
+        document.addEventListener('keydown', function(event) {
+            if (event.code === 'Space' || event.code === 'Enter') {
+                event.preventDefault();
+                startGuessing();
+            }
+        });
+
+        // 初始化
+        createGrid();
+    </script>
+</body>
+</html>
