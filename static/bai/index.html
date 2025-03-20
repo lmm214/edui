@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>百数表，猜一猜</title>
+    <title>百数表，猜一猜，拼一拼</title>
     <style>
         body {
             display: flex;
@@ -64,6 +64,17 @@
             justify-content: center;
             align-items: center;
         }
+        
+        .pieces-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            overflow: hidden;
+        }
 
         .cell:hover {
             transform: scale(1.05);
@@ -78,7 +89,7 @@
             align-items: center;
         }
 
-        .clear-btn {
+        .clear-btn, .split-btn {
             width: min(15vw, 120px);
             height: min(15vw, 120px);
             border: none;
@@ -86,11 +97,18 @@
             cursor: pointer;
             transition: all 0.3s ease;
             box-shadow: 0 6px 15px rgba(0,0,0,0.15);
-            background-color: #ff6b6b;
             color: white;
             font-size: 45px;
             font-weight: bold;
             text-transform: none;
+        }
+        
+        .clear-btn {
+            background-color: #ff6b6b;
+        }
+        
+        .split-btn {
+            background-color: #4CAF50;
         }
 
         .selected {
@@ -99,10 +117,38 @@
             box-shadow: 0 8px 20px rgba(0,0,0,0.2);
         }
 
-        .clear-btn:hover {
-            background-color: #ff5252;
+        .clear-btn:hover, .split-btn:hover {
             transform: translateY(-3px);
             box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+        
+        .clear-btn:hover {
+            background-color: #ff5252;
+        }
+        
+        .split-btn:hover {
+            background-color: #3e8e41;
+        }
+        
+        .piece {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            pointer-events: auto;
+            transition: transform 0.1s ease;
+            z-index: 20;
+        }
+        .piece .cell{
+            color:#fff;
+            border: none;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            background-image: linear-gradient(to top, #0ba360 0%, #4CAF50 100%);
+        }
+        .piece.dragging {
+            cursor: grabbing;
+            z-index: 30;
         }
 
         .cell.masked {
@@ -129,16 +175,32 @@
         <div class="grid" id="grid"></div>
         <div class="controls">
             <button class="clear-btn" onclick="startGuessing()">猜</button>
+            <button class="split-btn" onclick="startSplitting()">拆</button>
         </div>
     </div>
+    <div class="pieces-container" id="piecesContainer"></div>
 
     <script>
+        // 全局变量
+        let currentColor = '#ffffff'; // 添加缺失的变量定义
+        let pieces = [];
+        let isDragging = false;
+        let currentPiece = null;
+        let offsetX, offsetY;
+        let cellSize;
+        
+        // 页面加载完成后创建网格
+        document.addEventListener('DOMContentLoaded', function() {
+            createGrid();
+        });
+        
         function createGrid() {
             const grid = document.getElementById('grid');
             for (let i = 1; i <= 100; i++) {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
                 cell.textContent = i;
+                cell.dataset.index = i - 1; // 添加索引属性
                 cell.addEventListener('click', () => {
                     if (cell.classList.contains('masked')) {
                         cell.classList.remove('masked');
@@ -271,8 +333,223 @@
             }
         });
 
-        // 初始化
-        createGrid();
+        // 分割百数表功能
+        function startSplitting() {
+            const cells = document.querySelectorAll('.cell');
+            const gridSize = 10;
+            const piecesContainer = document.getElementById('piecesContainer');
+            
+            // 清空之前的碎片
+            piecesContainer.innerHTML = '';
+            pieces = [];
+            
+            // 获取单元格大小（添加错误检查）
+            if (cells.length === 0) {
+                console.error('没有找到单元格元素，请确保网格已创建');
+                return; // 如果没有单元格，则退出函数
+            }
+            
+            const firstCell = cells[0];
+            cellSize = firstCell.offsetWidth;
+            
+            // 隐藏原始百数表中的数字
+            cells.forEach(cell => {
+                cell.classList.add('masked');
+            });
+            
+            // 创建碎片（俄罗斯方块形状）
+            const tetrisPieces = [
+                [[0,0], [0,1], [1,0], [1,1]], // 方块
+                [[0,0], [1,0], [2,0], [3,0]], // 长条
+                [[0,0], [0,1], [0,2], [1,1]], // T形
+                [[0,0], [1,0], [1,1], [2,1]], // Z形
+                [[0,1], [1,1], [1,0], [2,0]], // S形
+                [[0,0], [1,0], [2,0], [2,1]], // L形
+                [[0,1], [1,1], [2,1], [2,0]]  // J形
+            ];
+            
+            // 随机选择起始位置并创建碎片
+            for (let i = 0; i < 15; i++) { // 创建10个碎片
+                const pieceType = tetrisPieces[Math.floor(Math.random() * tetrisPieces.length)];
+                const startRow = Math.floor(Math.random() * (gridSize - 3));
+                const startCol = Math.floor(Math.random() * (gridSize - 3));
+                
+                // 创建碎片元素
+                const piece = document.createElement('div');
+                piece.className = 'piece';
+                piece.style.width = `${cellSize * (pieceType.reduce((max, [r, c]) => Math.max(max, c), 0) + 1)}px`;
+                piece.style.height = `${cellSize * (pieceType.reduce((max, [r, c]) => Math.max(max, r), 0) + 1)}px`;
+                
+                // 随机位置（避免堆叠）
+                const randomX = Math.random() * (window.innerWidth - 200);
+                const randomY = Math.random() * (window.innerHeight - 200);
+                piece.style.left = `${randomX}px`;
+                piece.style.top = `${randomY}px`;
+                
+                // 存储碎片信息
+                const pieceInfo = {
+                    element: piece,
+                    cells: [],
+                    pattern: pieceType,
+                    originalIndices: []
+                };
+                
+                // 添加单元格到碎片
+                pieceType.forEach(([relRow, relCol]) => {
+                    const row = startRow + relRow;
+                    const col = startCol + relCol;
+                    const index = row * gridSize + col;
+                    
+                    if (index >= 0 && index < 100) {
+                        const cellClone = document.createElement('div');
+                        cellClone.className = 'cell';
+                        cellClone.textContent = index + 1;
+                        cellClone.style.position = 'absolute';
+                        cellClone.style.left = `${relCol * cellSize}px`;
+                        cellClone.style.top = `${relRow * cellSize}px`;
+                        cellClone.style.width = `${cellSize}px`;
+                        cellClone.style.height = `${cellSize}px`;
+                        cellClone.style.fontSize = cells[0].style.fontSize || cells[0].computedStyleMap().get('font-size').toString();
+                        
+                        piece.appendChild(cellClone);
+                        pieceInfo.cells.push(cellClone);
+                        pieceInfo.originalIndices.push(index);
+                    }
+                });
+                
+                // 添加拖拽事件
+                piece.addEventListener('mousedown', startDrag);
+                
+                piecesContainer.appendChild(piece);
+                pieces.push(pieceInfo);
+            }
+            
+            // 添加全局事件监听
+            document.addEventListener('mousemove', dragPiece);
+            document.addEventListener('mouseup', stopDrag);
+        }
+        
+        // 开始拖拽
+        function startDrag(e) {
+            if (isDragging) return;
+            
+            isDragging = true;
+            currentPiece = pieces.find(p => p.element === e.currentTarget);
+            
+            if (currentPiece) {
+                currentPiece.element.classList.add('dragging');
+                
+                // 计算鼠标在元素内的偏移量
+                const rect = currentPiece.element.getBoundingClientRect();
+                offsetX = e.clientX - rect.left;
+                offsetY = e.clientY - rect.top;
+            }
+        }
+        
+        // 拖拽过程
+        function dragPiece(e) {
+            if (!isDragging || !currentPiece) return;
+            
+            // 更新位置
+            currentPiece.element.style.left = `${e.clientX - offsetX}px`;
+            currentPiece.element.style.top = `${e.clientY - offsetY}px`;
+        }
+        
+        // 停止拖拽
+        function stopDrag() {
+            if (!isDragging || !currentPiece) return;
+            
+            // 检查是否在原始网格上方并处理吸附效果
+            const grid = document.getElementById('grid');
+            const gridRect = grid.getBoundingClientRect();
+            const pieceRect = currentPiece.element.getBoundingClientRect();
+            
+            if (pieceRect.left < gridRect.right && 
+                pieceRect.right > gridRect.left && 
+                pieceRect.top < gridRect.bottom && 
+                pieceRect.bottom > gridRect.top) {
+                
+                // 计算最近的网格位置
+                const cells = document.querySelectorAll('.cell');
+                let bestFit = null;
+                let minDistance = Infinity;
+                
+                // 尝试找到最佳吸附位置
+                for (let i = 0; i < 100; i++) {
+                    const row = Math.floor(i / 10);
+                    const col = i % 10;
+                    
+                    // 检查这个位置是否可以放置当前碎片，并且是否是碎片的原始位置
+                    let canPlace = true;
+                    let totalDistance = 0;
+                    let isOriginalPosition = true;
+                    
+                    for (let j = 0; j < currentPiece.pattern.length; j++) {
+                        const [relRow, relCol] = currentPiece.pattern[j];
+                        const targetRow = row + relRow;
+                        const targetCol = col + relCol;
+                        const targetIndex = targetRow * 10 + targetCol;
+                        
+                        // 检查是否在网格范围内
+                        if (targetRow < 0 || targetRow >= 10 || targetCol < 0 || targetCol >= 10) {
+                            canPlace = false;
+                            break;
+                        }
+                        
+                        // 检查是否是原始位置
+                        if (!currentPiece.originalIndices.includes(targetIndex)) {
+                            isOriginalPosition = false;
+                        }
+                        
+                        // 计算距离
+                        const cellRect = cells[targetIndex].getBoundingClientRect();
+                        const pieceCellX = pieceRect.left + relCol * cellSize;
+                        const pieceCellY = pieceRect.top + relRow * cellSize;
+                        const distance = Math.sqrt(
+                            Math.pow(cellRect.left - pieceCellX, 2) + 
+                            Math.pow(cellRect.top - pieceCellY, 2)
+                        );
+                        
+                        totalDistance += distance;
+                    }
+                    
+                    // 只有在原始位置且距离合适时才考虑吸附
+                    if (canPlace && isOriginalPosition && totalDistance < minDistance) {
+                        minDistance = totalDistance;
+                        bestFit = { row, col };
+                    }
+                }
+                
+                // 如果找到原始位置且足够近，进行吸附
+                if (bestFit && minDistance < cellSize * 2) {
+                    const gridCellLeft = gridRect.left + bestFit.col * cellSize;
+                    const gridCellTop = gridRect.top + bestFit.row * cellSize;
+                    
+                    // 吸附到网格并移除碎片
+                    currentPiece.pattern.forEach(([relRow, relCol]) => {
+                        const targetRow = bestFit.row + relRow;
+                        const targetCol = bestFit.col + relCol;
+                        const targetIndex = targetRow * 10 + targetCol;
+                        
+                        if (targetRow >= 0 && targetRow < 10 && targetCol >= 0 && targetCol < 10) {
+                            // 显示原始网格中的数字
+                            cells[targetIndex].classList.remove('masked');
+                        }
+                    });
+                    
+                    // 移除碎片元素
+                    currentPiece.element.remove();
+                    pieces = pieces.filter(p => p !== currentPiece);
+                    currentPiece = null;
+                    isDragging = false;
+                    return;
+                }
+            }
+            
+            isDragging = false;
+            currentPiece.element.classList.remove('dragging');
+            currentPiece = null;
+        }
     </script>
 </body>
 </html>
