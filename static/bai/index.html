@@ -419,6 +419,7 @@
                 
                 // 添加拖拽事件
                 piece.addEventListener('mousedown', startDrag);
+                piece.addEventListener('touchstart', handleTouchStart, { passive: false });
                 
                 piecesContainer.appendChild(piece);
                 pieces.push(pieceInfo);
@@ -427,6 +428,50 @@
             // 添加全局事件监听
             document.addEventListener('mousemove', dragPiece);
             document.addEventListener('mouseup', stopDrag);
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd);
+            
+            // 处理触摸开始事件
+            function handleTouchStart(e) {
+                e.preventDefault();
+                if (e.touches.length !== 1) return; // 只处理单点触摸
+                if (isDragging) return; // 防止多点触摸
+                
+                const touch = e.touches[0];
+                const piece = e.currentTarget;
+                
+                isDragging = true;
+                currentPiece = pieces.find(p => p.element === piece);
+                
+                if (currentPiece) {
+                    currentPiece.element.classList.add('dragging');
+                    const rect = piece.getBoundingClientRect();
+                    offsetX = touch.clientX - rect.left;
+                    offsetY = touch.clientY - rect.top;
+                }
+            }
+            
+            // 处理触摸移动事件
+            function handleTouchMove(e) {
+                e.preventDefault();
+                if (!isDragging || !currentPiece || e.touches.length !== 1) return;
+                
+                const touch = e.touches[0];
+                const newX = touch.clientX - offsetX;
+                const newY = touch.clientY - offsetY;
+                
+                requestAnimationFrame(() => {
+                    currentPiece.element.style.left = `${newX}px`;
+                    currentPiece.element.style.top = `${newY}px`;
+                });
+            }
+            
+            // 处理触摸结束事件
+            function handleTouchEnd(e) {
+                e.preventDefault();
+                if (!isDragging || !currentPiece) return;
+                stopDrag();
+            }
         }
         
         // 开始拖拽
@@ -441,8 +486,13 @@
                 
                 // 计算鼠标在元素内的偏移量
                 const rect = currentPiece.element.getBoundingClientRect();
-                offsetX = e.clientX - rect.left;
-                offsetY = e.clientY - rect.top;
+                if (e.touches) {
+                    offsetX = e.touches[0].clientX - rect.left;
+                    offsetY = e.touches[0].clientY - rect.top;
+                } else {
+                    offsetX = e.clientX - rect.left;
+                    offsetY = e.clientY - rect.top;
+                }
             }
         }
         
@@ -450,9 +500,13 @@
         function dragPiece(e) {
             if (!isDragging || !currentPiece) return;
             
+            // 获取事件坐标，支持鼠标和触摸事件
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
             // 更新位置
-            currentPiece.element.style.left = `${e.clientX - offsetX}px`;
-            currentPiece.element.style.top = `${e.clientY - offsetY}px`;
+            currentPiece.element.style.left = `${clientX - offsetX}px`;
+            currentPiece.element.style.top = `${clientY - offsetY}px`;
         }
         
         // 停止拖拽
