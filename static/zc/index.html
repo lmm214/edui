@@ -47,6 +47,7 @@
             font-size: 1.25rem;
             font-weight: 500;
             color: #1f2937;
+            width: 3rem;
         }
         
                 :root {
@@ -54,10 +55,11 @@
                 }
                 .input-group input[type="range"] {
                     flex: 1;
-                    height: 8px;
+                    width: 220px;
+                    height: 12px;
                     -webkit-appearance: none;
                     background: #ccc;
-                    border-radius: 4px;
+                    border-radius: 6px;
                     outline: none;
                     padding: 0;
                     margin: 0;
@@ -65,8 +67,8 @@
                 
                 .input-group input[type="range"]::-webkit-slider-thumb {
                     -webkit-appearance: none;
-                    width: 20px;
-                    height: 20px;
+                    width: 28px;
+                    height: 28px;
                     border-radius: 50%;
                     background: var(--slider-color);
                     cursor: pointer;
@@ -222,7 +224,42 @@
             font-size: 2.25rem;
             z-index: 20;
         }
-        #perimeter-value{font-size:2.25rem;}
+
+        @media (max-width: 1024px) {
+            
+            .dimension-text {
+                font-size: 24px;
+            }
+            .status-text {
+                font-size: 1.5rem;
+                padding: 0.2rem 0.7rem;
+            }
+            .control-area {
+                padding: 0.25rem 1rem 0rem;
+            }
+            .control-area-1 {
+                gap: 1rem;
+            }
+            .input-group {
+                gap: 0.5rem;
+            }
+            .input-group label {
+                font-size: 1rem;
+                width: 1.5rem;
+            }
+            .input-group input[type="range"] {
+                width: 120px;
+            }
+            .color-preset-btn, .btn-secondary {
+                width: 36px;
+                height: 36px;
+            }
+            #perimeter-value {
+                font-size: 1.5rem;
+                width: 20px;
+            }
+        }
+        #perimeter-value{font-size:2.25rem;width:24px;}
     </style>
 </head>
 <body>
@@ -235,7 +272,6 @@
                     <span id="perimeter-value">12</span>
                 </div>
                 <div class="input-group">
-                    <label for="color-input">颜色</label>
                     <div class="color-presets">
                         <button class="color-preset-btn" style="background: #3b82f6" data-color="#3b82f6"></button>
                         <button class="color-preset-btn" style="background: #f97316" data-color="#f97316"></button>
@@ -262,7 +298,7 @@
         constructor(container) {
             this.container = container;
             this.perimeter = 12;
-            this.gridSize = 100;
+            this.gridSize = window.innerWidth <= 1024 ? 50 : 100;
             this.color = '#3b82f6';
             
             // 绘制状态
@@ -309,6 +345,12 @@
             this.svg.setAttribute('width', '100%');
             this.svg.setAttribute('height', '100%');
             this.svg.setAttribute('viewBox', `0 0 ${this.viewWidth} ${this.viewHeight}`);
+            
+            // 监听窗口大小变化
+            window.addEventListener('resize', () => {
+                this.gridSize = window.innerWidth <= 900 ? 50 : 100;
+                this.createGrid();
+            });
             this.svg.style.touchAction = 'none';
             canvasContainer.appendChild(this.svg);
             
@@ -359,6 +401,7 @@
                     point.setAttribute('class', 'grid-point');
                     point.setAttribute('data-x', x.toString());
                     point.setAttribute('data-y', y.toString());
+                    point.setAttribute('r', window.innerWidth <= 900 ? '4' : '8');
                     this.pointsGroup.appendChild(point);
                 }
             }
@@ -385,8 +428,62 @@
                     perimeterValue.textContent = this.perimeter;
                 };
                 perimeterInput.addEventListener('input', handlePerimeterChange);
-                perimeterInput.addEventListener('touchmove', handlePerimeterChange);
+                
+                // 完善触摸事件支持
+                perimeterInput.addEventListener('touchstart', (e) => {
+                    // 防止触摸事件被取消
+                    e.stopPropagation();
+                });
+                
+                perimeterInput.addEventListener('touchmove', (e) => {
+                    // 防止页面滚动
+                    e.preventDefault();
+                    
+                    // 获取触摸点在滑块上的位置
+                    const touch = e.touches[0];
+                    const sliderRect = perimeterInput.getBoundingClientRect();
+                    const newX = touch.clientX - sliderRect.left;
+                    const sliderWidth = sliderRect.width;
+                    
+                    // 计算新的滑块值
+                    const min = parseInt(perimeterInput.min) || 4;
+                    const max = parseInt(perimeterInput.max) || 24;
+                    const step = parseInt(perimeterInput.step) || 2;
+                    
+                    // 确保值在范围内并符合步长
+                    let newValue = min + (newX / sliderWidth) * (max - min);
+                    newValue = Math.round(newValue / step) * step;
+                    newValue = Math.max(min, Math.min(max, newValue));
+                    
+                    // 只有当值变化时才更新
+                    if (perimeterInput.value != newValue) {
+                        perimeterInput.value = newValue;
+                        handlePerimeterChange({target: perimeterInput});
+                    }
+                }, {passive: false});
+                
+                perimeterInput.addEventListener('touchend', (e) => {
+                    // 确保触摸结束时不会有其他干扰
+                    e.stopPropagation();
+                });
             }
+
+            // 初始化颜色预设按钮事件
+            const colorPresetBtns = document.querySelectorAll('.color-preset-btn');
+            colorPresetBtns.forEach(btn => {
+                const handlePresetColor = () => {
+                    const color = btn.dataset.color;
+                    this.color = color;
+                    colorInput.value = color;
+                    document.documentElement.style.setProperty('--slider-color', color);
+                    document.documentElement.style.setProperty('--rectangle-color', color);
+                };
+                btn.addEventListener('click', handlePresetColor);
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    handlePresetColor();
+                });
+            });
 
             if (colorInput) {
                 const handleColorChange = (e) => {
@@ -395,22 +492,25 @@
                     document.documentElement.style.setProperty('--rectangle-color', this.color);
                 };
                 colorInput.addEventListener('input', handleColorChange);
-                colorInput.addEventListener('touchstart', (e) => e.preventDefault());
+                
+                // 添加触摸屏支持
+                colorInput.addEventListener('touchstart', (e) => {
+                    // 允许打开颜色选择器
+                    e.stopPropagation();
+                });
+                
+                colorInput.addEventListener('touchend', (e) => {
+                    // 确保触摸结束时不会有其他干扰
+                    e.stopPropagation();
+                });
+                colorInput.addEventListener('touchstart', (e) => {
+                    // 允许打开颜色选择器
+                    e.stopPropagation();
+                });
 
-                // 添加预设颜色按钮的点击事件
-                const colorPresets = document.querySelectorAll('.color-preset-btn');
-                colorPresets.forEach(btn => {
-                    const handlePresetColor = () => {
-                        const color = btn.dataset.color;
-                        this.color = color;
-                        colorInput.value = color;
-                        document.documentElement.style.setProperty('--slider-color', color);
-                    };
-                    btn.addEventListener('click', handlePresetColor);
-                    btn.addEventListener('touchstart', (e) => {
-                        e.preventDefault();
-                        handlePresetColor();
-                    });
+                colorInput.addEventListener('touchend', (e) => {
+                    // 确保触摸结束时不会有其他干扰
+                    e.stopPropagation();
                 });
             }
             
@@ -448,7 +548,7 @@
             const gridY = Math.round(mouseY / this.gridSize) * this.gridSize;
             
             // 检查是否在网格点附近（设置捕获范围为网格大小的1/3）
-            const captureRange = this.gridSize / 2;
+            const captureRange = window.innerWidth <= 900 ? this.gridSize / 3 : this.gridSize / 2;
             const distanceToGrid = Math.sqrt(
                 Math.pow(mouseX - gridX, 2) + 
                 Math.pow(mouseY - gridY, 2)
@@ -675,7 +775,7 @@
             }
             
             // 检查是否在网格点附近
-            const captureRange = this.gridSize / 2;
+            const captureRange = window.innerWidth <= 900 ? this.gridSize / 3 : this.gridSize / 2;
             const distanceToGrid = Math.sqrt(
                 Math.pow(mouseX - gridX, 2) + 
                 Math.pow(mouseY - gridY, 2)
