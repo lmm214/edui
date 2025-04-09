@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最短路径演示</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            font-size: 18px;
+            overflow: hidden;
+        }
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .grid-container {
+            position: relative;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+        }
+        canvas {
+            display: block;
+        }
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            font-size: 20px;
+            z-index: 1000;
+        }
+        .selected-points {
+            margin-bottom: 10px;
+        }
+        .info-panel span{
+            font-size: 2rem;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .path-info {
+            margin-top: 10px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 12px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .path {
+            position: absolute;
+            pointer-events: none;
+        }
+        
+        h1 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+        
+        .axis-label {
+            position: absolute;
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .axis-arrow {
+            position: absolute;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="info-panel">
+            <h3>最短路径演示</h3>
+            <div class="selected-points">
+                <p>第一点: <span id="point1"></span></p>
+                <p>第二点: <span id="point2"></span></p>
+            </div>
+            <div class="path-info">
+                <p>数量: <span id="path-count">0</span></p>
+                <p>长度: <span id="path-length">0</span></p>
+            </div>
+            <div class="controls">
+                <button id="show-paths-btn" disabled>路径演示</button>
+                <button id="reset-btn">重置选择</button>
+            </div>
+        </div>
+        <div class="grid-container" id="grid-container">
+            <canvas id="grid-canvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // 配置参数
+        const config = {
+            gridSize: 6, // 网格大小 (10x10)
+            padding: 150,  // 画布内边距
+            pointRadius: 4, // 交点圆点半径
+            animationSpeed: 200, // 动画速度（毫秒）
+            axisLabelOffset: 10 // 坐标轴标签偏移量
+        };
+
+        // 计算画布尺寸和单元格大小
+        function calculateDimensions() {
+            const availableWidth = window.innerWidth;
+            const availableHeight = window.innerHeight;
+            
+            // 计算可用空间（考虑内边距）
+            const usableWidth = availableWidth - config.padding * 2;
+            const usableHeight = availableHeight - config.padding * 2;
+            
+            // 计算单元格大小（取较小值以确保完整显示）
+            config.cellSize = Math.min(
+                Math.floor(usableWidth / config.gridSize),
+                Math.floor(usableHeight / config.gridSize)
+            );
+            
+            // 更新画布尺寸
+            return {
+                width: config.padding * 2 + config.gridSize * config.cellSize,
+                height: config.padding * 2 + config.gridSize * config.cellSize
+            };
+        }
+
+        // 初始计算画布尺寸
+        let canvasWidth, canvasHeight;
+        function updateCanvasSize() {
+            const dimensions = calculateDimensions();
+            canvasWidth = dimensions.width;
+            canvasHeight = dimensions.height;
+            if (canvas) {
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
+                drawGrid();
+            }
+        }
+
+        // 获取DOM元素
+        const canvas = document.getElementById('grid-canvas');
+        const gridContainer = document.getElementById('grid-container');
+        const point1Element = document.getElementById('point1');
+        const point2Element = document.getElementById('point2');
+        const pathCountElement = document.getElementById('path-count');
+        const pathLengthElement = document.getElementById('path-length');
+        const resetBtn = document.getElementById('reset-btn');
+        const showPathsBtn = document.getElementById('show-paths-btn');
+
+        // 设置画布尺寸
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        const ctx = canvas.getContext('2d');
+
+        // 状态变量
+        let selectedPoints = [];
+        let allPaths = [];
+        let currentPathIndex = 0;
+        let animationInProgress = false;
+
+        // 初始化函数
+        function init() {
+            updateCanvasSize();
+            setupEventListeners();
+            // 添加窗口大小变化监听
+            window.addEventListener('resize', updateCanvasSize);
+        }
+
+        // 绘制网格
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            
+            // 绘制坐标轴
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            
+            // X轴
+            ctx.beginPath();
+            ctx.moveTo(config.padding - 20, canvasHeight - config.padding);
+            ctx.lineTo(canvasWidth - config.padding + 20, canvasHeight - config.padding);
+            ctx.stroke();
+            
+            // Y轴
+            ctx.beginPath();
+            ctx.moveTo(config.padding, config.padding - 20);
+            ctx.lineTo(config.padding, canvasHeight - config.padding + 20);
+            ctx.stroke();
+            
+            // 绘制箭头 - X轴
+            ctx.beginPath();
+            ctx.moveTo(canvasWidth - config.padding + 20, canvasHeight - config.padding);
+            ctx.lineTo(canvasWidth - config.padding + 10, canvasHeight - config.padding - 10);
+            ctx.lineTo(canvasWidth - config.padding + 10, canvasHeight - config.padding + 10);
+            ctx.closePath();
+            ctx.fillStyle = '#333';
+            ctx.fill();
+            
+            // 绘制箭头 - Y轴
+            ctx.beginPath();
+            ctx.moveTo(config.padding, config.padding - 20);
+            ctx.lineTo(config.padding - 10, config.padding - 10);
+            ctx.lineTo(config.padding + 10, config.padding - 10);
+            ctx.closePath();
+            ctx.fill();
+            
+            // 绘制网格线
+            ctx.strokeStyle = '#aaa';
+            ctx.lineWidth = 1;
+            
+            // 绘制垂直线
+            for (let i = 0; i <= config.gridSize; i++) {
+                const x = config.padding + i * config.cellSize;
+                ctx.beginPath();
+                ctx.moveTo(x, config.padding);
+                ctx.lineTo(x, canvasHeight - config.padding);
+                ctx.stroke();
+                
+                // 添加X轴坐标标签
+                if (i > 0) { // 跳过原点
+                    const fontSize = Math.max(18, Math.min(24, Math.floor(config.cellSize * 0.3)));
+                    ctx.font = `bold ${fontSize}px Arial`;
+                    ctx.fillStyle = '#333';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(i.toString(), x, canvasHeight - config.padding + fontSize + 5);
+                }
+            }
+            
+            // 绘制水平线
+            for (let i = 0; i <= config.gridSize; i++) {
+                const y = config.padding + i * config.cellSize;
+                ctx.beginPath();
+                ctx.moveTo(config.padding, y);
+                ctx.lineTo(canvasWidth - config.padding, y);
+                ctx.stroke();
+                
+                // 添加Y轴坐标标签
+                if (i > 0) { // 跳过原点
+                    const fontSize = Math.max(18, Math.min(24, Math.floor(config.cellSize * 0.3)));
+                    ctx.font = `bold ${fontSize}px Arial`;
+                    ctx.fillStyle = '#333';
+                    ctx.textAlign = 'right';
+                    ctx.fillText((config.gridSize - i).toString(), config.padding - (fontSize/2), y + (fontSize/3));
+                }
+            }
+            
+            // 绘制交点
+            ctx.fillStyle = '#333';
+            for (let x = 0; x <= config.gridSize; x++) {
+                for (let y = 0; y <= config.gridSize; y++) {
+                    const canvasX = config.padding + x * config.cellSize;
+                    const canvasY = config.padding + y * config.cellSize;
+                    
+                    ctx.beginPath();
+                    ctx.arc(canvasX, canvasY, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            // 绘制已选择的点
+            if (selectedPoints.length > 0) {
+                ctx.fillStyle = '#ff5252';
+                selectedPoints.forEach(point => {
+                    const canvasX = config.padding + point.x * config.cellSize;
+                    const canvasY = config.padding + point.y * config.cellSize;
+                    
+                    ctx.beginPath();
+                    ctx.arc(canvasX, canvasY, config.pointRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // 添加选中点的坐标标签
+                    ctx.font = 'bold 34px Arial';
+                    ctx.fillStyle = '#ff5252';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`(${point.x}, ${config.gridSize - point.y})`, canvasX, canvasY - 15);
+                });
+            }
+        }
+
+        // 设置事件监听器
+        function setupEventListeners() {
+            canvas.addEventListener('click', handleCanvasClick);
+            resetBtn.addEventListener('click', resetSelection);
+            showPathsBtn.addEventListener('click', showAllPaths);
+        }
+
+        // 处理画布点击事件
+        function handleCanvasClick(event) {
+            if (selectedPoints.length >= 2 || animationInProgress) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            const clickY = event.clientY - rect.top;
+            
+            // 查找最近的交点
+            let minDistance = Infinity;
+            let closestPoint = null;
+            
+            for (let x = 0; x <= config.gridSize; x++) {
+                for (let y = 0; y <= config.gridSize; y++) {
+                    const canvasX = config.padding + x * config.cellSize;
+                    const canvasY = config.padding + y * config.cellSize;
+                    
+                    const distance = Math.sqrt(
+                        Math.pow(clickX - canvasX, 2) + 
+                        Math.pow(clickY - canvasY, 2)
+                    );
+                    
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestPoint = { x, y };
+                    }
+                }
+            }
+            
+            // 如果点击足够接近交点
+            if (minDistance <= 20) {
+                // 检查是否已经选择了该点
+                const alreadySelected = selectedPoints.some(
+                    point => point.x === closestPoint.x && point.y === closestPoint.y
+                );
+                
+                if (!alreadySelected) {
+                    selectedPoints.push(closestPoint);
+                    updateUI();
+                    
+                    if (selectedPoints.length === 2) {
+                        findAllShortestPaths();
+                    }
+                }
+            }
+        }
+
+        // 更新UI
+        function updateUI() {
+            drawGrid();
+            
+            if (selectedPoints.length > 0) {
+                point1Element.textContent = `(${selectedPoints[0].x}, ${config.gridSize - selectedPoints[0].y})`;
+            } else {
+                point1Element.textContent = '';
+            }
+            
+            if (selectedPoints.length > 1) {
+                point2Element.textContent = `(${selectedPoints[1].x}, ${config.gridSize - selectedPoints[1].y})`;
+                showPathsBtn.disabled = false;
+            } else {
+                point2Element.textContent = '';
+                showPathsBtn.disabled = true;
+            }
+            
+            if (allPaths.length > 0) {
+                pathCountElement.textContent = allPaths.length;
+                const pathLength = calculatePathLength(allPaths[0]);
+                pathLengthElement.textContent = pathLength;
+            } else {
+                pathCountElement.textContent = '0';
+                pathLengthElement.textContent = '0';
+            }
+        }
+
+        // 重置选择
+        function resetSelection() {
+            selectedPoints = [];
+            allPaths = [];
+            currentPathIndex = 0;
+            clearPathElements();
+            updateUI();
+        }
+
+        // 查找所有最短路径
+        function findAllShortestPaths() {
+            if (selectedPoints.length !== 2) return;
+            
+            const start = selectedPoints[0];
+            const end = selectedPoints[1];
+            
+            // 计算曼哈顿距离（最短路径长度）
+            const manhattanDistance = 
+                Math.abs(end.x - start.x) + 
+                Math.abs(end.y - start.y);
+            
+            // 使用回溯法找出所有最短路径
+            allPaths = [];
+            const visited = Array(config.gridSize + 1)
+                .fill()
+                .map(() => Array(config.gridSize + 1).fill(false));
+            
+            findPaths(start, end, [start], visited, manhattanDistance);
+            updateUI();
+        }
+
+        // 回溯法查找路径
+        function findPaths(current, end, path, visited, targetLength) {
+            // 如果到达终点且路径长度正确
+            if (current.x === end.x && current.y === end.y) {
+                if (path.length - 1 === targetLength) {
+                    allPaths.push([...path]);
+                }
+                return;
+            }
+            
+            // 如果路径已经超过最短距离，剪枝
+            if (path.length - 1 > targetLength) {
+                return;
+            }
+            
+            // 标记当前点为已访问
+            visited[current.x][current.y] = true;
+            
+            // 可能的移动方向：上、右、下、左
+            const directions = [
+                { dx: 0, dy: -1 }, // 上
+                { dx: 1, dy: 0 },  // 右
+                { dx: 0, dy: 1 },  // 下
+                { dx: -1, dy: 0 }  // 左
+            ];
+            
+            for (const dir of directions) {
+                const nextX = current.x + dir.dx;
+                const nextY = current.y + dir.dy;
+                
+                // 检查是否在网格范围内且未访问过
+                if (
+                    nextX >= 0 && 
+                    nextX <= config.gridSize && 
+                    nextY >= 0 && 
+                    nextY <= config.gridSize && 
+                    !visited[nextX][nextY]
+                ) {
+                    // 添加到路径并继续搜索
+                    path.push({ x: nextX, y: nextY });
+                    findPaths({ x: nextX, y: nextY }, end, path, visited, targetLength);
+                    path.pop(); // 回溯
+                }
+            }
+            
+            // 取消标记当前点
+            visited[current.x][current.y] = false;
+        }
+
+        // 计算路径长度
+        function calculatePathLength(path) {
+            return path.length - 1;
+        }
+
+        // 显示所有最短路径
+        function showAllPaths() {
+            if (allPaths.length === 0 || animationInProgress) return;
+            
+            animationInProgress = true;
+            clearPathElements();
+            animatePath(allPaths[currentPathIndex], 0);
+        }
+
+        // 清除路径元素
+        function clearPathElements() {
+            const pathElements = document.querySelectorAll('.path');
+            pathElements.forEach(el => el.remove());
+        }
+
+        // 动画显示路径
+        function animatePath(path, index) {
+            if (index >= path.length - 1) {
+                // 当前路径动画完成，准备下一条路径
+                setTimeout(() => {
+                    currentPathIndex = (currentPathIndex + 1) % allPaths.length;
+                    clearPathElements();
+                    
+                    // 如果还有更多路径，继续动画
+                    if (currentPathIndex !== 0) {
+                        animatePath(allPaths[currentPathIndex], 0);
+                    } else {
+                        animationInProgress = false;
+                    }
+                }, config.animationSpeed * 2);
+                return;
+            }
+            
+            // 创建路径段元素
+            const pathSegment = document.createElement('div');
+            pathSegment.className = 'path';
+            
+            // 获取当前点和下一个点的坐标
+            const current = path[index];
+            const next = path[index + 1];
+            
+            const startX = config.padding + current.x * config.cellSize;
+            const startY = config.padding + current.y * config.cellSize;
+            const endX = config.padding + next.x * config.cellSize;
+            const endY = config.padding + next.y * config.cellSize;
+            
+            // 计算线段长度和角度
+            const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            const angle = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI;
+            
+            // 设置线段样式
+            pathSegment.style.width = `${length}px`;
+            pathSegment.style.height = '6px';
+            pathSegment.style.backgroundColor = getPathColor(currentPathIndex);
+            pathSegment.style.position = 'absolute';
+            pathSegment.style.left = `${startX}px`;
+            pathSegment.style.top = `${startY}px`;
+            pathSegment.style.transformOrigin = '0 50%';
+            pathSegment.style.transform = `rotate(${angle}deg)`;
+            pathSegment.style.opacity = '0';
+            pathSegment.style.transition = 'opacity 0.3s';
+            
+            // 添加到容器
+            gridContainer.appendChild(pathSegment);
+            
+            // 触发动画
+            setTimeout(() => {
+                pathSegment.style.opacity = '1';
+                
+                // 继续下一段
+                setTimeout(() => {
+                    animatePath(path, index + 1);
+                }, config.animationSpeed);
+            }, 10);
+        }
+
+        // 获取路径颜色（为不同路径生成不同颜色）
+        function getPathColor(index) {
+            const colors = [
+                '#FF5252', '#FF4081', '#E040FB', '#7C4DFF', 
+                '#536DFE', '#448AFF', '#40C4FF', '#18FFFF', 
+                '#64FFDA', '#69F0AE', '#B2FF59', '#EEFF41', 
+                '#FFFF00', '#FFD740', '#FFAB40', '#FF6E40'
+            ];
+            return colors[index % colors.length];
+        }
+
+        // 初始化应用
+        init();
+    </script>
+</body>
+</html>
