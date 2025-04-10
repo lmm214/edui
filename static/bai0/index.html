@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>百数表，猜一猜，拼一拼</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            margin: 0;
+            font-family: 'Comic Sans MS', '楷体', '微软雅黑',"Microsoft YaHei", Arial, sans-serif;
+            background-image: linear-gradient(to top, #fff1eb 0%, #ace0f9 100%);
+        }
+
+        .container {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: min(5vw, 140px);
+            max-width: 95vw;
+            margin: 0 auto;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(10, calc((90vh - min(3vh, 20px)) / 10));
+            gap: 0;
+            background-image: linear-gradient(to top, #feada6 0%, #f5efef 100%);
+            padding: min(1.5vh, 10px);
+            border-radius: min(1.5vh, 10px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            height: 90vh;
+            overflow: hidden;
+        }
+
+        .cell {
+            width: 100%;
+            aspect-ratio: 1;
+            border: 1px solid #bfc4ca;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            background-image: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%);
+            transition: all 0.3s ease;
+            font-size: calc((90vh - min(3vh, 20px)) / 20);
+            color: #2d4059;
+        }
+
+        .clear-btn {
+            width: min(15vw, 120px);
+            height: min(15vw, 120px);
+            font-size: min(5vw, 45px);
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .pieces-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            overflow: hidden;
+        }
+
+        .cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .clear-btn, .split-btn {
+            width: min(15vw, 120px);
+            height: min(15vw, 120px);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            color: white;
+            font-size: 45px;
+            font-weight: bold;
+            text-transform: none;
+        }
+        
+        .clear-btn {
+            background-color: #ff6b6b;
+        }
+        
+        .split-btn {
+            background-color: #4CAF50;
+        }
+
+        .selected {
+            border-color: #ffd93d;
+            transform: scale(1.1);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+
+        .clear-btn:hover, .split-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+        
+        .clear-btn:hover {
+            background-color: #ff5252;
+        }
+        
+        .split-btn:hover {
+            background-color: #3e8e41;
+        }
+        
+        .piece {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            pointer-events: auto;
+            transition: transform 0.1s ease;
+            z-index: 20;
+        }
+        .piece .cell{
+            color:#fff;
+            border: none;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            background-image: linear-gradient(to top, #0ba360 0%, #4CAF50 100%);
+        }
+        .piece.dragging {
+            cursor: grabbing;
+            z-index: 30;
+        }
+
+        .cell.masked {
+            color: transparent;
+            background-color: #e8f4ff;
+            border-color: #bfc4ca;
+        }
+
+        .cell.revealed {
+            color: #ff5252;
+            background-color: #ffd93d;
+            border-color: #ffbe0b;
+            animation: reveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes reveal {
+            from { transform: scale(0.8) rotate(-6deg); opacity: 0; }
+            to { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="grid" id="grid"></div>
+        <div class="controls">
+            <button class="clear-btn" onclick="startGuessing()">猜</button>
+            <button class="split-btn" onclick="startSplitting()">拼</button>
+        </div>
+    </div>
+    <div class="pieces-container" id="piecesContainer"></div>
+
+    <script>
+        // 全局变量
+        let currentColor = '#ffffff'; // 添加缺失的变量定义
+        let pieces = [];
+        let isDragging = false;
+        let currentPiece = null;
+        let offsetX, offsetY;
+        let cellSize;
+        
+        // 页面加载完成后创建网格
+        document.addEventListener('DOMContentLoaded', function() {
+            createGrid();
+        });
+        
+        function createGrid() {
+            const grid = document.getElementById('grid');
+            for (let i = 0; i < 100; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.textContent = i;
+                cell.dataset.index = i - 1; // 添加索引属性
+                cell.addEventListener('click', () => {
+                    if (cell.classList.contains('masked')) {
+                        cell.classList.remove('masked');
+                        cell.classList.add('revealed');
+                    } else {
+                        cell.style.backgroundColor = currentColor;
+                        cell.style.borderColor = currentColor === '#ffffff' ? '#e0e7ef' : currentColor;
+                    }
+                });
+                grid.appendChild(cell);
+            }
+        }
+
+        // 猜数字功能
+        function startGuessing() {
+            const cells = document.querySelectorAll('.cell');
+            const gridSize = 10;
+            let speed = 500; // 移动速度
+
+            // 获取当前位置的行列坐标
+            function getPosition(index) {
+                return {
+                    row: Math.floor(index / gridSize),
+                    col: index % gridSize
+                };
+            }
+
+            // 获取指定行列坐标的索引
+            function getIndex(row, col) {
+                return row * gridSize + col;
+            }
+
+            // 获取相邻的格子
+            function getAdjacentCells(pos) {
+                const adjacent = [];
+                const directions = [
+                    {row: 0, col: 1},  // 右
+                    {row: 0, col: -1}, // 左
+                    {row: 1, col: 0},  // 下
+                    {row: -1, col: 0}  // 上
+                ];
+
+                for (const dir of directions) {
+                    const newRow = pos.row + dir.row;
+                    const newCol = pos.col + dir.col;
+                    if (newRow >= 0 && newRow < gridSize && newCol >= 0 && newCol < gridSize) {
+                        adjacent.push({row: newRow, col: newCol});
+                    }
+                }
+                return adjacent;
+            }
+
+            // 生成移动路径
+            function generatePath() {
+                const path = [];
+                // 获取所有遮罩的格子
+                const maskedCells = Array.from(cells).map((cell, index) => {
+                    return {
+                        index: index,
+                        isMasked: !cell.classList.contains('revealed') && cell.style.backgroundColor === 'white'
+                    };
+                }).filter(cell => cell.isMasked);
+
+                if (maskedCells.length === 0) return path;
+
+                // 从遮罩的格子中随机选择起始格子
+                const startCell = maskedCells[Math.floor(Math.random() * maskedCells.length)];
+                const startPos = getPosition(startCell.index);
+                path.push(startCell.index);
+
+                let currentPos = startPos;
+                const visited = new Set([startCell.index]);
+
+                while (path.length < 3) { // 包括起始格子在内共11个格子
+                    const adjacent = getAdjacentCells(currentPos);
+                    const availableAdjacent = adjacent.filter(pos => {
+                        const index = getIndex(pos.row, pos.col);
+                        return !visited.has(index) && maskedCells.some(cell => cell.index === index);
+                    });
+
+                    if (availableAdjacent.length === 0) break;
+
+                    const nextPos = availableAdjacent[Math.floor(Math.random() * availableAdjacent.length)];
+                    const nextIndex = getIndex(nextPos.row, nextPos.col);
+                    path.push(nextIndex);
+                    visited.add(nextIndex);
+                    currentPos = nextPos;
+                }
+
+                return path;
+            }
+
+            // 先将所有格子遮罩
+            cells.forEach(cell => {
+                cell.classList.add('masked');
+                cell.style.backgroundColor = 'white';
+                cell.style.borderColor = '#bfc4ca';
+            });
+
+            const path = generatePath();
+            let currentStep = 0;
+
+            function animate() {
+                // 移除上一个高亮的格子
+                if (currentStep > 0) {
+                    cells[path[currentStep - 1]].classList.add('masked');
+                    cells[path[currentStep - 1]].classList.remove('revealed');
+                }
+
+                // 高亮当前格子
+                cells[path[currentStep]].classList.remove('masked');
+                cells[path[currentStep]].classList.add('revealed');
+
+                // 继续动画或结束
+                if (currentStep < path.length - 1) {
+                    currentStep++;
+                    setTimeout(animate, speed);
+                }
+            }
+
+            // 开始动画
+            setTimeout(animate, 500);
+        }
+
+        // 添加键盘事件监听
+        document.addEventListener('keydown', function(event) {
+            if (event.code === 'Space' || event.code === 'Enter') {
+                event.preventDefault();
+                startGuessing();
+            }
+        });
+
+        // 分割百数表功能
+        function startSplitting() {
+            const cells = document.querySelectorAll('.cell');
+            const gridSize = 10;
+            const piecesContainer = document.getElementById('piecesContainer');
+            
+            // 清空之前的碎片
+            piecesContainer.innerHTML = '';
+            pieces = [];
+            
+            // 获取单元格大小（添加错误检查）
+            if (cells.length === 0) {
+                console.error('没有找到单元格元素，请确保网格已创建');
+                return; // 如果没有单元格，则退出函数
+            }
+            
+            const firstCell = cells[0];
+            cellSize = firstCell.offsetWidth;
+            
+            // 隐藏原始百数表中的数字
+            cells.forEach(cell => {
+                cell.classList.add('masked');
+            });
+            
+            // 创建碎片（俄罗斯方块形状）
+            const tetrisPieces = [
+                [[0,0], [0,1], [1,0], [1,1]], // 方块
+                [[0,0], [1,0], [2,0], [3,0]], // 长条
+                [[0,0], [0,1], [0,2], [1,1]], // T形
+                [[0,0], [1,0], [1,1], [2,1]], // Z形
+                [[0,1], [1,1], [1,0], [2,0]], // S形
+                [[0,0], [1,0], [2,0], [2,1]], // L形
+                [[0,1], [1,1], [2,1], [2,0]]  // J形
+            ];
+            
+            // 随机选择起始位置并创建碎片
+            for (let i = 0; i < 15; i++) { // 创建10个碎片
+                const pieceType = tetrisPieces[Math.floor(Math.random() * tetrisPieces.length)];
+                const startRow = Math.floor(Math.random() * (gridSize - 3));
+                const startCol = Math.floor(Math.random() * (gridSize - 3));
+                
+                // 创建碎片元素
+                const piece = document.createElement('div');
+                piece.className = 'piece';
+                piece.style.width = `${cellSize * (pieceType.reduce((max, [r, c]) => Math.max(max, c), 0) + 1)}px`;
+                piece.style.height = `${cellSize * (pieceType.reduce((max, [r, c]) => Math.max(max, r), 0) + 1)}px`;
+                
+                // 随机位置（避免堆叠）
+                const randomX = Math.random() * (window.innerWidth - 200);
+                const randomY = Math.random() * (window.innerHeight - 200);
+                piece.style.left = `${randomX}px`;
+                piece.style.top = `${randomY}px`;
+                
+                // 存储碎片信息
+                const pieceInfo = {
+                    element: piece,
+                    cells: [],
+                    pattern: pieceType,
+                    originalIndices: []
+                };
+                
+                // 添加单元格到碎片
+                pieceType.forEach(([relRow, relCol]) => {
+                    const row = startRow + relRow;
+                    const col = startCol + relCol;
+                    const index = row * gridSize + col;
+                    
+                    if (index >= 0 && index < 100) {
+                        const cellClone = document.createElement('div');
+                        cellClone.className = 'cell';
+                        cellClone.textContent = index;
+                        cellClone.style.position = 'absolute';
+                        cellClone.style.left = `${relCol * cellSize}px`;
+                        cellClone.style.top = `${relRow * cellSize}px`;
+                        cellClone.style.width = `${cellSize}px`;
+                        cellClone.style.height = `${cellSize}px`;
+                        cellClone.style.fontSize = cells[0].style.fontSize || cells[0].computedStyleMap().get('font-size').toString();
+                        
+                        piece.appendChild(cellClone);
+                        pieceInfo.cells.push(cellClone);
+                        pieceInfo.originalIndices.push(index);
+                    }
+                });
+                
+                // 添加拖拽事件
+                piece.addEventListener('mousedown', startDrag);
+                piece.addEventListener('touchstart', handleTouchStart, { passive: false });
+                
+                piecesContainer.appendChild(piece);
+                pieces.push(pieceInfo);
+            }
+            
+            // 添加全局事件监听
+            document.addEventListener('mousemove', dragPiece);
+            document.addEventListener('mouseup', stopDrag);
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd);
+            
+            // 处理触摸开始事件
+            function handleTouchStart(e) {
+                e.preventDefault();
+                if (e.touches.length !== 1) return; // 只处理单点触摸
+                if (isDragging) return; // 防止多点触摸
+                
+                const touch = e.touches[0];
+                const piece = e.currentTarget;
+                
+                isDragging = true;
+                currentPiece = pieces.find(p => p.element === piece);
+                
+                if (currentPiece) {
+                    currentPiece.element.classList.add('dragging');
+                    const rect = piece.getBoundingClientRect();
+                    offsetX = touch.clientX - rect.left;
+                    offsetY = touch.clientY - rect.top;
+                }
+            }
+            
+            // 处理触摸移动事件
+            function handleTouchMove(e) {
+                e.preventDefault();
+                if (!isDragging || !currentPiece || e.touches.length !== 1) return;
+                
+                const touch = e.touches[0];
+                const newX = touch.clientX - offsetX;
+                const newY = touch.clientY - offsetY;
+                
+                requestAnimationFrame(() => {
+                    currentPiece.element.style.left = `${newX}px`;
+                    currentPiece.element.style.top = `${newY}px`;
+                });
+            }
+            
+            // 处理触摸结束事件
+            function handleTouchEnd(e) {
+                e.preventDefault();
+                if (!isDragging || !currentPiece) return;
+                stopDrag();
+            }
+        }
+        
+        // 开始拖拽
+        function startDrag(e) {
+            if (isDragging) return;
+            
+            isDragging = true;
+            currentPiece = pieces.find(p => p.element === e.currentTarget);
+            
+            if (currentPiece) {
+                currentPiece.element.classList.add('dragging');
+                
+                // 计算鼠标在元素内的偏移量
+                const rect = currentPiece.element.getBoundingClientRect();
+                if (e.touches) {
+                    offsetX = e.touches[0].clientX - rect.left;
+                    offsetY = e.touches[0].clientY - rect.top;
+                } else {
+                    offsetX = e.clientX - rect.left;
+                    offsetY = e.clientY - rect.top;
+                }
+            }
+        }
+        
+        // 拖拽过程
+        function dragPiece(e) {
+            if (!isDragging || !currentPiece) return;
+            
+            // 获取事件坐标，支持鼠标和触摸事件
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            // 更新位置
+            currentPiece.element.style.left = `${clientX - offsetX}px`;
+            currentPiece.element.style.top = `${clientY - offsetY}px`;
+        }
+        
+        // 停止拖拽
+        function stopDrag() {
+            if (!isDragging || !currentPiece) return;
+            
+            // 检查是否在原始网格上方并处理吸附效果
+            const grid = document.getElementById('grid');
+            const gridRect = grid.getBoundingClientRect();
+            const pieceRect = currentPiece.element.getBoundingClientRect();
+            
+            if (pieceRect.left < gridRect.right && 
+                pieceRect.right > gridRect.left && 
+                pieceRect.top < gridRect.bottom && 
+                pieceRect.bottom > gridRect.top) {
+                
+                // 计算最近的网格位置
+                const cells = document.querySelectorAll('.cell');
+                let bestFit = null;
+                let minDistance = Infinity;
+                
+                // 尝试找到最佳吸附位置
+                for (let i = 0; i < 100; i++) {
+                    const row = Math.floor(i / 10);
+                    const col = i % 10;
+                    
+                    // 检查这个位置是否可以放置当前碎片，并且是否是碎片的原始位置
+                    let canPlace = true;
+                    let totalDistance = 0;
+                    let isOriginalPosition = true;
+                    
+                    for (let j = 0; j < currentPiece.pattern.length; j++) {
+                        const [relRow, relCol] = currentPiece.pattern[j];
+                        const targetRow = row + relRow;
+                        const targetCol = col + relCol;
+                        const targetIndex = targetRow * 10 + targetCol;
+                        
+                        // 检查是否在网格范围内
+                        if (targetRow < 0 || targetRow >= 10 || targetCol < 0 || targetCol >= 10) {
+                            canPlace = false;
+                            break;
+                        }
+                        
+                        // 检查是否是原始位置
+                        if (!currentPiece.originalIndices.includes(targetIndex)) {
+                            isOriginalPosition = false;
+                        }
+                        
+                        // 计算距离
+                        const cellRect = cells[targetIndex].getBoundingClientRect();
+                        const pieceCellX = pieceRect.left + relCol * cellSize;
+                        const pieceCellY = pieceRect.top + relRow * cellSize;
+                        const distance = Math.sqrt(
+                            Math.pow(cellRect.left - pieceCellX, 2) + 
+                            Math.pow(cellRect.top - pieceCellY, 2)
+                        );
+                        
+                        totalDistance += distance;
+                    }
+                    
+                    // 只有在原始位置且距离合适时才考虑吸附
+                    if (canPlace && isOriginalPosition && totalDistance < minDistance) {
+                        minDistance = totalDistance;
+                        bestFit = { row, col };
+                    }
+                }
+                
+                // 如果找到原始位置且足够近，进行吸附
+                if (bestFit && minDistance < cellSize * 2) {
+                    const gridCellLeft = gridRect.left + bestFit.col * cellSize;
+                    const gridCellTop = gridRect.top + bestFit.row * cellSize;
+                    
+                    // 吸附到网格并移除碎片
+                    currentPiece.pattern.forEach(([relRow, relCol]) => {
+                        const targetRow = bestFit.row + relRow;
+                        const targetCol = bestFit.col + relCol;
+                        const targetIndex = targetRow * 10 + targetCol;
+                        
+                        if (targetRow >= 0 && targetRow < 10 && targetCol >= 0 && targetCol < 10) {
+                            // 显示原始网格中的数字
+                            cells[targetIndex].classList.remove('masked');
+                        }
+                    });
+                    
+                    // 移除碎片元素
+                    currentPiece.element.remove();
+                    pieces = pieces.filter(p => p !== currentPiece);
+                    currentPiece = null;
+                    isDragging = false;
+                    return;
+                }
+            }
+            
+            isDragging = false;
+            currentPiece.element.classList.remove('dragging');
+            currentPiece = null;
+        }
+    </script>
+</body>
+</html>
