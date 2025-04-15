@@ -22,28 +22,29 @@ async function loadPromptsFromJson() {
         prompts = [];
         categories = [];
         
-        // 从1.json开始尝试加载，直到遇到404错误
+        // 从1.json开始尝试加载，直到遇到无效数据
         for (let i = 1; i <= 100; i++) {
             try {
                 const response = await fetch(`prompts/${i}.json`);
                 if (!response.ok) {
-                    // 如果文件不存在（404），说明已经到达末尾
-                    if (response.status === 404) {
-                        break;
-                    }
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const promptData = await response.json();
+                
+                // 验证JSON数据是否包含必要字段
+                if (!promptData.id || !promptData.title || !promptData.category || !promptData.description || !promptData.content) {
+                    console.log(`提示词${i}.json数据格式无效，停止加载`);
+                    break;
+                }
+                
                 prompts.push(promptData);
                 // 收集不重复的分类
                 if (promptData.category && !categories.includes(promptData.category)) {
                     categories.push(promptData.category);
                 }
             } catch (error) {
-                if (error.message.includes('404')) {
-                    break;
-                }
                 console.error(`加载提示词${i}.json失败:`, error);
+                break;
             }
         }
     } catch (error) {
