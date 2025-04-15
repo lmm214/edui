@@ -21,15 +21,17 @@ async function loadPromptsFromJson() {
         // 动态加载所有提示词文件
         prompts = [];
         categories = [];
-        const promptFiles = await fetch('prompts/')
-            .then(response => response.text())
-            .then(text => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(text, 'text/html');
-                return Array.from(doc.querySelectorAll('a'))
-                    .map(a => a.getAttribute('href'))
-                    .filter(href => href.endsWith('.json') && href !== 'categories.json');
-            });
+        const response = await fetch('prompts/');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const text = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, 'text/html');
+        const links = doc.querySelectorAll('a');
+        const promptFiles = Array.from(links)
+            .map(a => a.getAttribute('href'))
+            .filter(href => href && href.endsWith('.json') && href !== 'categories.json');
 
         await Promise.all(promptFiles.map(async file => {
             try {
