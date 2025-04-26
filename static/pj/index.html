@@ -21,15 +21,18 @@
             padding: 24px;
             background-color: var(--background-color);
             color: var(--text-color);
+            overflow-x: hidden;
         }
         h4, p { margin: 0 0 10px; }
-        .container { max-width: 1200px; margin: 0 auto; }
+        .container { max-width: 1200px; margin: 0 auto; width: 100%; overflow-x: hidden; }
         .main-content {
             display: grid;
-            grid-template-columns: 1fr 2fr;
+            grid-template-columns: 300px 1fr;
             gap: 24px;
         }
-        @media (max-width: 800px) { .main-content { grid-template-columns: 1fr; } }
+        @media (max-width: 800px) {
+            .main-content { grid-template-columns: 1fr; }
+        }
         .panel {
             background: white;
             padding: 16px;
@@ -67,13 +70,13 @@
         }
         .preview-area {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 8px;
             margin-bottom:2rem;
         }
         .preview-image {
             width: 100%;
-            height: 140px;
+            height: 100px;
             object-fit: cover;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             transition: all 0.3s ease;
@@ -100,6 +103,17 @@
             display: flex;
             gap: 12px;
             width: 100%;
+            flex-direction: row;
+            flex-wrap: wrap;
+        }
+        .merge-buttons button:nth-child(1),
+        .merge-buttons button:nth-child(2) {
+            flex: 1 1 calc(50% - 6px);
+        }
+        .merge-buttons button:nth-child(3),
+        .merge-buttons button:nth-child(4) {
+            flex: 1 1 calc(50% - 6px);
+            margin-top: 8px;
         }
         button {
             align-items: center;
@@ -135,11 +149,16 @@
             color: var(--text-active-color);
             border-color: var(--border-active-color);
         }
-        #result {
-            max-width: 100%;
+        .result {
+            overflow: hidden;
+            width: 100%;
             display: block;
             height: auto;
             min-height: 120px;
+            max-width: none;
+        }
+        .result img {
+            width: 100%;
         }
     </style>
 </head>
@@ -166,6 +185,12 @@
                             </button>
                             <button class="btn-option" data-direction="vertical">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-layout-list mr-2"><rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect><path d="M14 4h7"></path><path d="M14 9h7"></path><path d="M14 15h7"></path><path d="M14 20h7"></path></svg>纵向拼接
+                            </button>
+                            <button class="btn-option" data-direction="grid4">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-grid-2x2 mr-2"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M3 12h18"></path><path d="M12 3v18"></path></svg>四宫格
+                            </button>
+                            <button class="btn-option" data-direction="grid9">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-grid-3x3 mr-2"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M3 9h18"></path><path d="M3 15h18"></path><path d="M9 3v18"></path><path d="M15 3v18"></path></svg>九宫格
                             </button>
                         </div>
                     </div>
@@ -194,7 +219,10 @@
                             <p>暂无拼接结果，请上传图片并点击"开始拼接"</p>
                         </div>
                         <canvas id="resultCanvas" style="display: none;"></canvas>
-                        <img id="result" style="display: none;">
+                        <div class="result">
+                            <img id="resultImg" style="display: none;">
+                        </div>
+                        
                     </div>
                 </div>
             </div>
@@ -206,7 +234,7 @@
         const fileInput = document.getElementById('fileInput');
         const previewArea = document.getElementById('previewArea');
         const resultCanvas = document.getElementById('resultCanvas');
-        const result = document.getElementById('result');
+        const result = document.getElementById('resultImg');
         const downloadBtn = document.getElementById('downloadBtn');
         const uploadCount = document.getElementById('uploadCount');
         let images = [];
@@ -234,7 +262,7 @@
             images = [];
             previewArea.innerHTML = '';
             downloadBtn.disabled = true;
-            result.style.display = 'none';
+            resultImg.style.display = 'none';
             resultEmpty.style.display = 'block';
 
             const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
@@ -308,39 +336,31 @@
             const toIndex = parseInt(this.dataset.index);
             if (fromIndex === toIndex) return;
 
-            // 更新图片数组顺序
-            const temp = images[fromIndex];
-            images[fromIndex] = images[toIndex];
-            images[toIndex] = temp;
-
-            // 更新预览图片顺序
+            // 获取所有预览图片
             const previewImages = Array.from(previewArea.getElementsByClassName('preview-image'));
-            const fromImg = previewImages.find(img => parseInt(img.dataset.index) === fromIndex);
-            const toImg = previewImages.find(img => parseInt(img.dataset.index) === toIndex);
             
-            if (fromImg && toImg) {
-                // 更新数据索引
-                fromImg.dataset.index = toIndex;
-                toImg.dataset.index = fromIndex;
-                
-                // 更新DOM位置
-                const parent = previewArea;
-                const fromRect = fromImg.getBoundingClientRect();
-                const toRect = toImg.getBoundingClientRect();
-                
-                // 创建临时占位元素保持布局稳定
-                const fromPlaceholder = document.createElement('div');
-                const toPlaceholder = document.createElement('div');
-                fromPlaceholder.style.width = fromRect.width + 'px';
-                fromPlaceholder.style.height = fromRect.height + 'px';
-                toPlaceholder.style.width = toRect.width + 'px';
-                toPlaceholder.style.height = toRect.height + 'px';
-                
-                // 替换元素
-                parent.replaceChild(fromPlaceholder, fromImg);
-                parent.replaceChild(toPlaceholder, toImg);
-                parent.replaceChild(toImg, fromPlaceholder);
-                parent.replaceChild(fromImg, toPlaceholder);
+            // 更新图片数组顺序
+            const draggedImage = images[fromIndex];
+            if (fromIndex < toIndex) {
+                // 向后移动
+                for (let i = fromIndex; i < toIndex; i++) {
+                    images[i] = images[i + 1];
+                    previewImages[i].dataset.index = i;
+                }
+            } else {
+                // 向前移动
+                for (let i = fromIndex; i > toIndex; i--) {
+                    images[i] = images[i - 1];
+                    previewImages[i].dataset.index = i;
+                }
+            }
+            images[toIndex] = draggedImage;
+            
+            // 更新预览图片顺序
+            const draggedPreview = previewImages.find(img => parseInt(img.dataset.index) === fromIndex);
+            if (draggedPreview) {
+                draggedPreview.dataset.index = toIndex;
+                previewArea.insertBefore(draggedPreview, previewImages[toIndex + (fromIndex < toIndex ? 1 : 0)]);
             }
         }
 
@@ -372,6 +392,7 @@
             let totalHeight = 0;
             let minWidth = Infinity;
             let minHeight = Infinity;
+            let gridSize = direction === 'grid4' ? 2 : direction === 'grid9' ? 3 : 1;
 
             // 计算最小宽度和高度
             images.forEach(img => {
@@ -379,40 +400,66 @@
                 minHeight = Math.min(minHeight, img.height);
             });
 
-            // 计算缩放后的尺寸和总宽高
-            const scaledImages = images.map(img => {
-                let scale, newWidth, newHeight;
-                if (direction === 'horizontal') {
-                    scale = minHeight / img.height;
-                    newWidth = img.width * scale;
-                    newHeight = minHeight;
-                    totalWidth += newWidth;
-                } else {
-                    scale = minWidth / img.width;
-                    newWidth = minWidth;
-                    newHeight = img.height * scale;
-                    totalHeight += newHeight;
-                }
-                return { img, scale, newWidth, newHeight };
-            });
-
             const ctx = resultCanvas.getContext('2d');
-            if (direction === 'horizontal') {
-                resultCanvas.width = totalWidth;
-                resultCanvas.height = minHeight;
-                let x = 0;
-                scaledImages.forEach(({ img, scale, newWidth, newHeight }) => {
-                    ctx.drawImage(img, x, 0, newWidth, newHeight);
-                    x += newWidth;
+
+            if (direction === 'grid4' || direction === 'grid9') {
+                // 网格布局
+                const maxImages = direction === 'grid4' ? 4 : 9;
+                const cellSize = 300; // 每个格子的大小
+                resultCanvas.width = cellSize * gridSize;
+                resultCanvas.height = cellSize * gridSize;
+
+                // 填充白色背景
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, resultCanvas.width, resultCanvas.height);
+
+                // 绘制图片
+                const availableImages = images.slice(0, maxImages);
+                availableImages.forEach((img, index) => {
+                    const row = Math.floor(index / gridSize);
+                    const col = index % gridSize;
+                    const scale = Math.min(cellSize / img.width, cellSize / img.height);
+                    const newWidth = img.width * scale;
+                    const newHeight = img.height * scale;
+                    const x = col * cellSize + (cellSize - newWidth) / 2;
+                    const y = row * cellSize + (cellSize - newHeight) / 2;
+                    ctx.drawImage(img, x, y, newWidth, newHeight);
                 });
             } else {
-                resultCanvas.width = minWidth;
-                resultCanvas.height = totalHeight;
-                let y = 0;
-                scaledImages.forEach(({ img, scale, newWidth, newHeight }) => {
-                    ctx.drawImage(img, 0, y, newWidth, newHeight);
-                    y += newHeight;
+                // 计算缩放后的尺寸和总宽高
+                const scaledImages = images.map(img => {
+                    let scale, newWidth, newHeight;
+                    if (direction === 'horizontal') {
+                        scale = minHeight / img.height;
+                        newWidth = img.width * scale;
+                        newHeight = minHeight;
+                        totalWidth += newWidth;
+                    } else {
+                        scale = minWidth / img.width;
+                        newWidth = minWidth;
+                        newHeight = img.height * scale;
+                        totalHeight += newHeight;
+                    }
+                    return { img, scale, newWidth, newHeight };
                 });
+
+                if (direction === 'horizontal') {
+                    resultCanvas.width = totalWidth;
+                    resultCanvas.height = minHeight;
+                    let x = 0;
+                    scaledImages.forEach(({ img, scale, newWidth, newHeight }) => {
+                        ctx.drawImage(img, x, 0, newWidth, newHeight);
+                        x += newWidth;
+                    });
+                } else {
+                    resultCanvas.width = minWidth;
+                    resultCanvas.height = totalHeight;
+                    let y = 0;
+                    scaledImages.forEach(({ img, scale, newWidth, newHeight }) => {
+                        ctx.drawImage(img, 0, y, newWidth, newHeight);
+                        y += newHeight;
+                    });
+                }
             }
 
             result.src = resultCanvas.toDataURL('image/png');
