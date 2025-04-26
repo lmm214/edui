@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片拼接工具</title>
+    <style>
+        :root {
+            --primary-color: rgb(37 99 235);
+            --success-color: #10B981;
+            --background-color: rgb(239 246 255);
+            --border-color: rgb(209 213 219);
+            --border-active-color: rgb(59 130 246);
+            --text-color: #1F2937;
+            --text-active-color: rgb(37 99 235);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            min-height: 100vh;
+            margin: 0;
+            padding: 24px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+        h4, p { margin: 0 0 10px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 24px;
+        }
+        @media (max-width: 800px) { .main-content { grid-template-columns: 1fr; } }
+        .panel {
+            background: white;
+            padding: 16px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        header {
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        h1 {
+            color: var(--text-color);
+            font-size: 1.5rem;
+            margin: 0 0 0.5rem;
+        }
+        .upload-area {
+            border: 2px dashed var(--border-color);
+            padding: 20px;
+            margin: 10px 0;
+            text-align: center;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: #FAFAFA;
+            flex: 1;
+        }
+        .upload-area:hover {
+            border-color: var(--border-active-color);
+            background-color: #F3F4F6;
+        }
+        .upload-svg {
+            color: var(--border-color);
+            width: 3rem;
+            height: 3rem;
+        }
+        .preview-area {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 16px;
+            margin-bottom:2rem;
+        }
+        .preview-image {
+            width: 100%;
+            height: 140px;
+            object-fit: cover;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            cursor: move;
+        }
+        .preview-image.dragging { opacity: 0.5; transform: scale(0.95); }
+        .preview-image:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 48px 0;
+            color: #9CA3AF;
+            font-size: 0.875rem;
+        }
+        .buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 160px;
+        }
+        .merge-buttons {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+        }
+        button {
+            align-items: center;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .btn-primary, .btn-success {
+            color: white;
+            width: 100%;
+        }
+        .btn-primary { background-color: var(--primary-color); }
+        .btn-success { background-color: var(--success-color); }
+        .btn-option {
+            flex: 1;
+            background-color: white;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+        .btn-option.active {
+            background-color: var(--background-color);
+            color: var(--text-active-color);
+            border-color: var(--border-active-color);
+        }
+        #result {
+            max-width: 100%;
+            display: block;
+            height: auto;
+            min-height: 120px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>图片拼接工具</h1>
+            <p>上传多张图片，选择拼接方式并下载结果</p>
+        </header>
+        <div class="main-content">
+            <div class="panel">
+                <h4>上传图片</h4>
+                <div class="upload-area" id="uploadArea">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="upload-svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
+                    <p>点击或拖拽图片上传</p>
+                    <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+                </div>
+                <div class="buttons">
+                    <div class="section">
+                        <h4>拼接方式</h4>
+                        <div class="merge-buttons">
+                            <button class="btn-option active" data-direction="horizontal">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-layout-grid mr-2"><rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="3" rx="1"></rect><rect width="7" height="7" x="14" y="14" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect></svg>横向拼接
+                            </button>
+                            <button class="btn-option" data-direction="vertical">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-layout-list mr-2"><rect width="7" height="7" x="3" y="3" rx="1"></rect><rect width="7" height="7" x="3" y="14" rx="1"></rect><path d="M14 4h7"></path><path d="M14 9h7"></path><path d="M14 15h7"></path><path d="M14 20h7"></path></svg>纵向拼接
+                            </button>
+                        </div>
+                    </div>
+                    <button class="btn-primary" id="mergeBtn" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image-plus mr-2"><path d="M16 5h6"></path><path d="M19 2v6"></path><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5"></path><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path><circle cx="9" cy="9" r="2"></circle></svg>开始拼接
+                    </button>
+                    <button class="btn-success" id="downloadBtn" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download mr-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>下载结果
+                    </button>
+                </div>
+            </div>
+            <div class="panel right-content">
+                <div class="section">
+                    <h4>已上传图片 (<span id="imageCount">0</span>)</h4>
+                    <div class="preview-area" id="previewArea">
+                        <div class="empty-state">
+                            <p>试试拖动图片</p>
+                            <p>支持改变顺序</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="section">
+                    <h4>拼接结果</h4>
+                    <div class="result-area">
+                        <div class="empty-state" id="resultEmpty">
+                            <p>暂无拼接结果，请上传图片并点击"开始拼接"</p>
+                        </div>
+                        <canvas id="resultCanvas" style="display: none;"></canvas>
+                        <img id="result" style="display: none;">
+                    </div>
+                </div>
+            </div>
+
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const previewArea = document.getElementById('previewArea');
+        const resultCanvas = document.getElementById('resultCanvas');
+        const result = document.getElementById('result');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const uploadCount = document.getElementById('uploadCount');
+        let images = [];
+
+        uploadArea.onclick = () => fileInput.click();
+        uploadArea.ondragover = (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = 'var(--primary-color)';
+            uploadArea.style.backgroundColor = '#F3F4F6';
+        };
+        uploadArea.ondragleave = () => {
+            uploadArea.style.borderColor = 'var(--border-color)';
+            uploadArea.style.backgroundColor = '#FAFAFA';
+        };
+        uploadArea.ondrop = (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = 'var(--border-color)';
+            uploadArea.style.backgroundColor = '#FAFAFA';
+            handleFiles(e.dataTransfer.files);
+        };
+
+        fileInput.onchange = () => handleFiles(fileInput.files);
+
+        function handleFiles(files) {
+            images = [];
+            previewArea.innerHTML = '';
+            downloadBtn.disabled = true;
+            result.style.display = 'none';
+            resultEmpty.style.display = 'block';
+
+            const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+            document.getElementById('imageCount').textContent = validFiles.length;
+
+            if (validFiles.length === 0) {
+                previewArea.innerHTML = `
+                    <div class="empty-state">
+                        <i class="ri-image-line"></i>
+                        <p>暂无图片，请上传图片</p>
+                    </div>
+                `;
+                return;
+            }
+
+            validFiles.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        images.push(img);
+                        const preview = document.createElement('img');
+                        preview.src = e.target.result;
+                        preview.className = 'preview-image';
+                        preview.style.opacity = '0';
+                        preview.style.transform = 'translateY(20px)';
+                        preview.draggable = true;
+                        preview.dataset.index = index;
+                        previewArea.appendChild(preview);
+                        
+                        // 添加渐入动画
+                        setTimeout(() => {
+                            preview.style.transition = 'all 0.3s ease';
+                            preview.style.opacity = '1';
+                            preview.style.transform = 'translateY(0)';
+                        }, index * 100);
+
+                        // 更新拼接按钮状态
+                        mergeBtn.disabled = images.length < 2 || !selectedDirection;
+                        
+                        // 添加拖拽事件
+                        preview.addEventListener('dragstart', handleDragStart);
+                        preview.addEventListener('dragend', handleDragEnd);
+                        preview.addEventListener('dragover', handleDragOver);
+                        preview.addEventListener('drop', handleDrop);
+                    };
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // 拖拽相关函数
+        function handleDragStart(e) {
+            this.classList.add('dragging');
+            e.dataTransfer.setData('text/plain', this.dataset.index);
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+            const toIndex = parseInt(this.dataset.index);
+            if (fromIndex === toIndex) return;
+
+            // 更新图片数组顺序
+            const temp = images[fromIndex];
+            images[fromIndex] = images[toIndex];
+            images[toIndex] = temp;
+
+            // 更新预览图片顺序
+            const previewImages = Array.from(previewArea.getElementsByClassName('preview-image'));
+            const fromImg = previewImages.find(img => parseInt(img.dataset.index) === fromIndex);
+            const toImg = previewImages.find(img => parseInt(img.dataset.index) === toIndex);
+            
+            if (fromImg && toImg) {
+                // 更新数据索引
+                fromImg.dataset.index = toIndex;
+                toImg.dataset.index = fromIndex;
+                
+                // 更新DOM位置
+                const parent = previewArea;
+                const fromRect = fromImg.getBoundingClientRect();
+                const toRect = toImg.getBoundingClientRect();
+                
+                // 创建临时占位元素保持布局稳定
+                const fromPlaceholder = document.createElement('div');
+                const toPlaceholder = document.createElement('div');
+                fromPlaceholder.style.width = fromRect.width + 'px';
+                fromPlaceholder.style.height = fromRect.height + 'px';
+                toPlaceholder.style.width = toRect.width + 'px';
+                toPlaceholder.style.height = toRect.height + 'px';
+                
+                // 替换元素
+                parent.replaceChild(fromPlaceholder, fromImg);
+                parent.replaceChild(toPlaceholder, toImg);
+                parent.replaceChild(toImg, fromPlaceholder);
+                parent.replaceChild(fromImg, toPlaceholder);
+            }
+        }
+
+        let selectedDirection = 'horizontal';
+        document.querySelectorAll('.btn-option').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.btn-option').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                selectedDirection = btn.dataset.direction;
+                mergeBtn.disabled = images.length < 2;
+            });
+        });
+
+        const mergeBtn = document.getElementById('mergeBtn');
+        mergeBtn.addEventListener('click', () => {
+            if (images.length < 2) {
+                alert('请至少上传两张图片');
+                return;
+            }
+            if (!selectedDirection) {
+                alert('请选择拼接方式');
+                return;
+            }
+            merge(selectedDirection);
+        });
+
+        function merge(direction) {
+            let totalWidth = 0;
+            let totalHeight = 0;
+            let minWidth = Infinity;
+            let minHeight = Infinity;
+
+            // 计算最小宽度和高度
+            images.forEach(img => {
+                minWidth = Math.min(minWidth, img.width);
+                minHeight = Math.min(minHeight, img.height);
+            });
+
+            // 计算缩放后的尺寸和总宽高
+            const scaledImages = images.map(img => {
+                let scale, newWidth, newHeight;
+                if (direction === 'horizontal') {
+                    scale = minHeight / img.height;
+                    newWidth = img.width * scale;
+                    newHeight = minHeight;
+                    totalWidth += newWidth;
+                } else {
+                    scale = minWidth / img.width;
+                    newWidth = minWidth;
+                    newHeight = img.height * scale;
+                    totalHeight += newHeight;
+                }
+                return { img, scale, newWidth, newHeight };
+            });
+
+            const ctx = resultCanvas.getContext('2d');
+            if (direction === 'horizontal') {
+                resultCanvas.width = totalWidth;
+                resultCanvas.height = minHeight;
+                let x = 0;
+                scaledImages.forEach(({ img, scale, newWidth, newHeight }) => {
+                    ctx.drawImage(img, x, 0, newWidth, newHeight);
+                    x += newWidth;
+                });
+            } else {
+                resultCanvas.width = minWidth;
+                resultCanvas.height = totalHeight;
+                let y = 0;
+                scaledImages.forEach(({ img, scale, newWidth, newHeight }) => {
+                    ctx.drawImage(img, 0, y, newWidth, newHeight);
+                    y += newHeight;
+                });
+            }
+
+            result.src = resultCanvas.toDataURL('image/png');
+            result.style.display = 'block';
+            resultEmpty.style.display = 'none';
+            downloadBtn.disabled = false;
+            downloadBtn.onclick = () => {
+                const link = document.createElement('a');
+                link.download = '拼接结果.png';
+                link.href = result.src;
+                link.click();
+            };
+        }
+    </script>
+</body>
+</html>
