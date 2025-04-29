@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圈圈小圆点</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f0f2f5;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.55);
+            color: white;
+            cursor: pointer;
+            margin: 0 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        button.save{
+            border-radius: unset;
+            background-color: #45a049;
+        }
+        .score {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 48px;
+            font-weight: bold;
+            color: #ff8000;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border: 3px solid #ff8000;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .settings-dialog {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            z-index: 100;
+            min-width: 300px;
+            max-width: 90%;
+        }
+
+        .settings-dialog.show {
+            display: block;
+            animation: dialogFadeIn 0.3s ease-out;
+        }
+
+        @keyframes dialogFadeIn {
+            from { opacity: 0; transform: translate(-50%, -48%); }
+            to { opacity: 1; transform: translate(-50%, -50%); }
+        }
+
+        .settings-dialog h3 {
+            margin: 0 0 20px 0;
+            font-size: 24px;
+            color: #333;
+        }
+
+        .settings-dialog label {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 18px;
+            color: #666;
+        }
+
+        .settings-dialog input[type="number"] {
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 18px;
+            transition: border-color 0.3s;
+        }
+
+        .settings-dialog input[type="number"]:focus {
+            border-color: #1a73e8;
+            outline: none;
+        }
+
+        .settings-dialog button.save {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            color: white;
+            background-color: #1a73e8;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        .settings-dialog button.save:hover {
+            background-color: #1557b0;
+        }
+
+        .settings-dialog button.save:active {
+            transform: scale(0.98);
+        }
+
+        /* 虚拟键盘样式 */
+        .virtual-keyboard {
+            display: none;
+            margin-top: 10px;
+            background: #f5f5f5;
+            border-radius: 12px;
+            padding: 15px;
+            grid-gap: 10px;
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .virtual-keyboard.show {
+            display: grid;
+        }
+
+        .keyboard-input {
+            grid-column: 1 / -1;
+            padding: 20px 0;
+            font-size: 24px;
+            text-align: center;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background: white;
+        }
+
+        .key-btn {
+            padding: 15px;
+            font-size: 20px;
+            color: #333;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0;
+        }
+
+        .key-btn:hover {
+            background: #f0f0f0;
+        }
+
+        .key-btn:active {
+            transform: scale(0.95);
+        }
+
+        .key-btn.zero {
+            grid-column: 2;
+        }
+
+        .key-btn.confirm {
+            grid-column: 3;
+            background: #1a73e8;
+            color: white;
+            border: none;
+        }
+
+        .key-btn.confirm:hover {
+            background: #1557b0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <button onclick="generateDots()"><svg t="1745908676998" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="8362" width="48" height="48"><path d="M91.556 575.926l320.512 1.553a11.5 11.5 0 0 1 8.082 3.373c4.488 4.494 4.483 11.776-0.011 16.264L304.142 712.96c52.677 54.393 126.493 88.207 208.208 88.207 135.019 0 248.469-92.314 280.637-217.248l148.003 0.001C906.5 789.416 727.718 946 512.35 946c-121.75 0-231.807-50.04-310.715-130.67L99.626 917.205a11.5 11.5 0 0 1-8.126 3.363c-6.351 0-11.5-5.149-11.5-11.5V587.37c0.03-6.352 5.205-11.475 11.556-11.445zM512.35 77c120.871 0 230.219 49.321 309.003 128.93l106.02-105.881a11.5 11.5 0 0 1 8.127-3.363c6.351 0 11.5 5.149 11.5 11.5V429.882a11.496 11.496 0 0 1-5.887 9.984c0.091 0.503 0.175 1.01 0.257 1.516h-147.8l-0.191-0.744-178.447-0.864a11.5 11.5 0 0 1-7.831-3.13l-0.25-0.244c-4.489-4.494-4.484-11.775 0.01-16.263l111.991-111.844c-52.56-53.37-125.665-86.46-206.502-86.46-135.846 0-249.859 93.449-281.22 219.548H83.33C116.866 234.755 296.18 77 512.35 77z" fill="#13227a" p-id="8363"></path></svg></button>
+            <button onclick="showSettings()"><svg t="1745908618839" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6245" width="48" height="48"><path d="M992 416c-4.266667-27.733333-21.333333-46.933333-42.666667-46.933333h-4.266666c-70.4 0-128-57.6-128-130.133334 0-23.466667 10.666667-49.066667 10.666666-49.066666 12.8-23.466667 4.266667-55.466667-17.066666-70.4h-2.133334l-123.733333-68.266667H682.666667c-6.4-2.133333-14.933333-4.266667-23.466667-4.266667-17.066667 0-34.133333 6.4-44.8 19.2-14.933333 14.933333-61.866667 55.466667-100.266667 55.466667-38.4 0-85.333333-40.533333-100.266666-57.6-10.666667-14.933333-29.866667-21.333333-46.933334-21.333333-8.533333 0-17.066667 2.133333-23.466666 4.266666H341.333333l-128 70.4h-2.133333c-19.2 17.066667-27.733333 49.066667-17.066667 72.533334 0 0 10.666667 25.6 10.666667 49.066666 0 70.4-57.6 130.133333-128 130.133334h-2.133333c-19.2 0-36.266667 19.2-42.666667 46.933333 0 2.133333-10.666667 55.466667-10.666667 96 0 42.666667 10.666667 96 10.666667 98.133333 4.266667 27.733333 21.333333 46.933333 42.666667 46.933334h4.266666c70.4 0 128 57.6 128 130.133333 0 23.466667-10.666667 49.066667-10.666666 49.066667-12.8 23.466667-4.266667 53.333333 17.066666 68.266666h2.133334l119.466666 68.266667h2.133334c6.4 4.266667 14.933333 4.266667 23.466666 4.266667 17.066667 0 34.133333-6.4 46.933334-19.2 14.933333-14.933333 64-59.733333 102.4-59.733334 40.533333 0 87.466667 44.8 102.4 61.866667 10.666667 12.8 27.733333 19.2 46.933333 19.2 8.533333 0 17.066667-2.133333 23.466667-4.266667h2.133333l123.733333-70.4h2.133334c21.333333-14.933333 29.866667-46.933333 19.2-70.4 0 0-10.666667-25.6-10.666667-49.066666 0-70.4 57.6-130.133333 128-130.133334h4.266667c19.2 0 36.266667-17.066667 42.666666-46.933333 0-2.133333 10.666667-55.466667 10.666667-98.133333-2.133333-38.4-12.8-91.733333-12.8-93.866667zM512 682.666667c-93.866667 0-170.666667-76.8-170.666667-170.666667s76.8-170.666667 170.666667-170.666667 170.666667 76.8 170.666667 170.666667-76.8 170.666667-170.666667 170.666667z" fill="#13227a" p-id="6246"></path><path d="M512 381.866667c-70.4 0-130.133333 57.6-130.133333 130.133333 0 72.533333 57.6 130.133333 130.133333 130.133333 70.4 0 130.133333-57.6 130.133333-130.133333 0-72.533333-59.733333-130.133333-130.133333-130.133333z" fill="#13227a" p-id="6247"></path></svg></button>
+        </div>
+        <div class="score"><span id="score">0</span> 个</div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+    <div class="settings-dialog" id="settingsDialog">
+        <h3>设置</h3>
+        <div>
+            <div class="virtual-keyboard" id="virtual-keyboard">
+                <input type="text" class="keyboard-input" id="keyboard-input" value="350" readonly>
+                <button class="key-btn">1</button>
+                <button class="key-btn">2</button>
+                <button class="key-btn">3</button>
+                <button class="key-btn">4</button>
+                <button class="key-btn">5</button>
+                <button class="key-btn">6</button>
+                <button class="key-btn">7</button>
+                <button class="key-btn">8</button>
+                <button class="key-btn">9</button>
+                <button class="key-btn del">清空</button>
+                <button class="key-btn zero">0</button>
+                <button class="key-btn confirm">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let dots = [];
+        let selectedDots = new Set();
+        let isDrawing = false;
+        let startX, startY;
+        let path = [];
+
+        // 调整画布大小
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            generateDots();
+        }
+
+        // 监听窗口大小变化
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 生成随机圆点
+        function generateDots() {
+            dots = [];
+            selectedDots.clear();
+            updateScore();
+            const dotCount = parseInt(document.getElementById('keyboard-input').value) || 50;
+            const dotRadius = Math.min(canvas.width, canvas.height) * 0.01;
+
+            for (let i = 0; i < dotCount; i++) {
+                dots.push({
+                    x: Math.random() * (canvas.width - 2 * dotRadius) + dotRadius,
+                    y: Math.random() * (canvas.height - 2 * dotRadius) + dotRadius,
+                    radius: dotRadius,
+                    selected: false
+                });
+            }
+            drawCanvas();
+        }
+
+        // 绘制画布
+        function drawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制所有圆点
+            dots.forEach(dot => {
+                // 添加阴影效果
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+                ctx.shadowBlur = 4;
+                ctx.shadowOffsetX = 2;
+                ctx.shadowOffsetY = 2;
+
+                ctx.beginPath();
+                ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
+
+                // 创建径向渐变
+                const gradient = ctx.createRadialGradient(
+                    dot.x - dot.radius/3, dot.y - dot.radius/3, dot.radius/4,
+                    dot.x, dot.y, dot.radius
+                );
+
+                if (selectedDots.has(dot)) {
+                    gradient.addColorStop(0, '#7FD683');
+                    gradient.addColorStop(1, '#4CAF50');
+                } else {
+                    gradient.addColorStop(0, '#666');
+                    gradient.addColorStop(1, '#333');
+                }
+
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.closePath();
+
+                // 重置阴影效果，避免影响其他绘制
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+            });
+
+            // 如果正在绘制，绘制路径
+            if (isDrawing && path.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(path[0].x, path[0].y);
+                for (let i = 1; i < path.length; i++) {
+                    ctx.lineTo(path[i].x, path[i].y);
+                }
+                ctx.strokeStyle = '#4CAF50';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        // 检查点是否在路径内
+        function isPointInPath(dot) {
+            if (path.length < 3) return false;
+            let inside = false;
+            for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+                const xi = path[i].x, yi = path[i].y;
+                const xj = path[j].x, yj = path[j].y;
+                const intersect = ((yi > dot.y) !== (yj > dot.y)) &&
+                    (dot.x < (xj - xi) * (dot.y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        // 更新分数
+        function updateScore() {
+            document.getElementById('score').textContent = selectedDots.size;
+        }
+
+        // 事件处理
+        function handleStart(e) {
+            isDrawing = true;
+            path = [];
+            selectedDots.clear(); // 清除上一次的圈选记录
+            updateScore(); // 更新分数显示
+            const point = getEventPoint(e);
+            path.push(point);
+            startX = point.x;
+            startY = point.y;
+            drawCanvas(); // 重绘画布以清除上一次的选择效果
+        }
+
+        function handleMove(e) {
+            if (!isDrawing) return;
+            const point = getEventPoint(e);
+            path.push(point);
+            drawCanvas();
+        }
+
+        function handleEnd() {
+            if (!isDrawing) return;
+            isDrawing = false;
+
+            if (path.length >= 3) {
+                path.push(path[0]); // 闭合路径
+                dots.forEach(dot => {
+                    if (isPointInPath(dot)) {
+                        selectedDots.add(dot);
+                    }
+                });
+            }
+
+            path = [];
+            updateScore();
+            drawCanvas();
+        }
+
+        function getEventPoint(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        // 添加触摸和鼠标事件监听
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', handleStart);
+        canvas.addEventListener('touchmove', handleMove);
+        canvas.addEventListener('touchend', handleEnd);
+
+        // 设置相关函数
+        function showSettings() {
+            document.getElementById('settingsDialog').classList.add('show');
+        }
+
+        function saveSettings() {
+            document.getElementById('settingsDialog').classList.remove('show');
+            document.getElementById('virtual-keyboard').classList.remove('show');
+            generateDots();
+        }
+
+        // 虚拟键盘相关函数
+        const virtualKeyboard = document.getElementById('virtual-keyboard');
+        const keyboardInput = document.getElementById('keyboard-input');
+
+        // 显示虚拟键盘
+        function showVirtualKeyboard() {
+            virtualKeyboard.classList.add('show');
+        }
+
+        // 初始显示虚拟键盘
+        showVirtualKeyboard();
+
+        // 数字按钮点击事件
+        virtualKeyboard.querySelectorAll('.key-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (this.classList.contains('confirm')) {
+                    const value = parseInt(keyboardInput.value) || 0;
+                    if (value >= 1 && value <= 1000) {
+                        saveSettings();
+                    } else {
+                        alert('请输入1-1000之间的数字');
+                    }
+                } else if (this.classList.contains('del')) {
+                    keyboardInput.value = '0';
+                } else if (!this.classList.contains('zero') || keyboardInput.value !== '0') {
+                    const digit = this.textContent;
+                    if (keyboardInput.value === '0') {
+                        keyboardInput.value = digit;
+                    } else {
+                        keyboardInput.value += digit;
+                    }
+                }
+            });
+        });
+
+        // 初始化游戏
+        generateDots();
+    </script>
+</body>
+</html>
