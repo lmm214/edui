@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title id="pageTitle">LaTeX 公式在线渲染与导出 - 实时预览SVG/PNG</title>
     <meta id="metaDescription" name="description" content="一款简洁易用的在线 LaTeX 数学公式编辑器，支持实时预览并将公式导出为 SVG 或 PNG 图像。由 CCR &amp; AI 创作。">
-    <script id="MathJax-script" async src="https://lf3-cdn-tos.bytecdntp.com/cdn/expire-1-M/mathjax/3.2.0/es5/tex-svg.min.js"></script>
+    <script id="MathJax-script" async src="tex-svg.min.js"></script>
     <style>
         :root {
             --bg-color: #f4f7f9;
@@ -86,7 +86,7 @@
             min-height: 80px; padding: 20px;border-radius: 6px;
             background-color: rgba(124,86,86,0.6); /* 固定中性背景色 */
             display: flex; justify-content: center; align-items: center;
-            overflow: auto; font-size: 1.75em;
+            overflow: auto; font-size: 2rem;
             transition: all 0.3s ease;
         }
         #rendered-math svg { max-width: 100%; display: block; margin: auto; transition: color 0.3s ease; }
@@ -140,7 +140,6 @@
             </div>
             <div class="button-group">
                 <button onclick="renderLatex()">渲染公式</button>
-                <button id="export-svg" onclick="exportSVG()" disabled>导出SVG</button>
                 <button id="export-png" onclick="exportPNG()" disabled>导出PNG</button>
             </div>
             <label for="latex-input">LaTeX 公式：</label>
@@ -161,14 +160,13 @@
 
     <script>
         // 声明DOM元素变量
-        let latexInput, output, renderStatus, exportSvgButton, exportPngButton, htmlElement, themeToggleButton;
+        let latexInput, output, renderStatus, exportPngButton, htmlElement, themeToggleButton;
 
         // DOM元素初始化
         document.addEventListener('DOMContentLoaded', function() {
             latexInput = document.getElementById('latex-input');
             output = document.getElementById('rendered-math');
             renderStatus = document.getElementById('render-status');
-            exportSvgButton = document.getElementById('export-svg');
             exportPngButton = document.getElementById('export-png');
             htmlElement = document.documentElement;
             themeToggleButton = document.getElementById('theme-toggle');
@@ -244,26 +242,46 @@
         function renderLatex() {
             const input = latexInput.value.trim();
             output.innerHTML = ''; renderStatus.className = '';
-            if (!input) { renderStatus.textContent = messages.statusInitial; exportSvgButton.disabled = true; exportPngButton.disabled = true; return; }
+            if (!input) { renderStatus.textContent = messages.statusInitial; exportPngButton.disabled = true; return; }
             renderStatus.textContent = messages.statusRendering;
             output.textContent = '$$' + input + '$$';
             if (window.MathJax) {
                 MathJax.typesetPromise([output]).then(() => {
-                    const svgElement = output.querySelector('svg'); 
+                    const svgElement = output.querySelector('svg');
                     if (svgElement) {
-                        exportSvgButton.disabled = false; exportPngButton.disabled = false;
-                        renderStatus.textContent = messages.statusDone;
-                        applyFormulaColor(isFormulaCurrentlyWhite); // Apply current formula color
+                        // 创建canvas元素
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        const svgData = new XMLSerializer().serializeToString(svgElement);
+                        const img = new Image();
+                        img.onload = function() {
+                            // 设置canvas尺寸
+                            canvas.width = img.width * 2; // 2倍分辨率
+                            canvas.height = img.height * 2;
+                            ctx.scale(2, 2); // 提高清晰度
+                            
+                            // 绘制背景
+                            ctx.fillStyle = 'rgba(124,86,86,0.6)';
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                            
+                            // 绘制公式
+                            ctx.drawImage(img, 0, 0);
+                            
+                            // 更新状态
+                            renderStatus.textContent = messages.statusDone;
+                            exportPngButton.disabled = false;
+                        };
+                        img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
                     } else {
                         const mathJaxError = output.querySelector('[data-mjx-error]');
                         if (mathJaxError) { renderStatus.textContent = `渲染失败: ${mathJaxError.getAttribute('title')}。 请检查公式语法。`; renderStatus.className = 'error-message'; }
                         else { renderStatus.textContent = messages.statusErrorSyntaxGeneral; renderStatus.className = 'error-message'; output.innerHTML = `<p class="error-message">${messages.statusErrorSyntaxGeneral}</p>`; }
-                        exportSvgButton.disabled = true; exportPngButton.disabled = true;
+                        exportPngButton.disabled = true;
                     }
                 }).catch(err => {
                     console.error("MathJax Typesetting error:", err); output.innerHTML = `<p class="error-message">${messages.statusErrorSyntaxGeneral}: ${err.message || 'Unknown error'}</p>`;
                     renderStatus.textContent = messages.statusErrorSyntaxGeneral; renderStatus.className = 'error-message';
-                    exportSvgButton.disabled = true; exportPngButton.disabled = true;
+                    exportPngButton.disabled = true;
                 });
             } else { renderStatus.textContent = messages.errorLoadMathJax; renderStatus.className = 'error-message'; output.innerHTML = `<p class="error-message">${messages.errorLoadMathJax}</p>`; }
         }
@@ -271,79 +289,54 @@
         let debounceTimer;
         function triggerRenderDebounced() {
             clearTimeout(debounceTimer);
-            if (latexInput.value.trim() === "") { output.innerHTML = ''; renderStatus.textContent = messages.statusInitial; renderStatus.className = ''; exportSvgButton.disabled = true; exportPngButton.disabled = true; return; }
+            if (latexInput.value.trim() === "") { output.innerHTML = ''; renderStatus.textContent = messages.statusInitial; renderStatus.className = ''; exportPngButton.disabled = true; return; }
             renderStatus.textContent = messages.statusInputInProgress; renderStatus.className = '';
             debounceTimer = setTimeout(renderLatex, 1000);
         }
 
-        function exportSVG() {
-            const svg = document.querySelector('#rendered-math svg');
-            if (!svg) { alert(messages.errorNoRenderedFormula); return; }
-            const svgClone = svg.cloneNode(true);
-            const formulaColorForExport = isFormulaCurrentlyWhite ? FORMULA_COLOR_WHITE : FORMULA_COLOR_BLACK;
-            svgClone.style.color = formulaColorForExport;
-            svgClone.querySelectorAll('path, g, text, rect, circle, line, use').forEach(el => {
-                const style = getComputedStyle(el); const originalFill = style.fill; const originalStroke = style.stroke;
-                const parentColor = getComputedStyle(svg).color;
-                if (el.getAttribute('fill') === 'currentColor' || originalFill === 'currentColor' || originalFill === parentColor) { el.style.fill = formulaColorForExport; }
-                if (el.getAttribute('stroke') === 'currentColor' || originalStroke === 'currentColor' || originalStroke === parentColor) { el.style.stroke = formulaColorForExport; }
-            });
-            let svgWidth = svgClone.getAttribute('width'), svgHeight = svgClone.getAttribute('height');
-            const viewBox = svgClone.getAttribute('viewBox');
-            if ((!svgWidth || !svgHeight || svgWidth.endsWith('ex') || svgHeight.endsWith('ex')) && viewBox) {
-                const parts = viewBox.split(' '); if (parts.length === 4) { svgClone.setAttribute('width', parts[2]); svgClone.setAttribute('height', parts[3]); }
-            } else if (!svgWidth || !svgHeight) { try { const bbox = svg.getBBox(); if (bbox.width && bbox.height) { svgClone.setAttribute('width', bbox.width.toString()); svgClone.setAttribute('height', bbox.height.toString()); } } catch (e) { console.error("Error getting BBox for SVG:", e); } }
-            const serializer = new XMLSerializer(); let source = serializer.serializeToString(svgClone);
-            if (!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) { source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"'); }
-            const now = new Date();
-            const timestamp = `gs-${String(now.getFullYear()).slice(-2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
-            const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
-            const a = document.createElement('a'); a.href = url; a.download = `${timestamp}.svg`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
-        }
 
         function exportPNG() {
             const svgElement = document.querySelector('#rendered-math svg');
             if (!svgElement) { alert(messages.errorNoRenderedFormula); return; }
-            const serializer = new XMLSerializer(); const svgNodeToExport = svgElement.cloneNode(true);
-            const formulaColorForExport = isFormulaCurrentlyWhite ? FORMULA_COLOR_WHITE : FORMULA_COLOR_BLACK;
-            svgNodeToExport.style.color = formulaColorForExport;
-            svgNodeToExport.querySelectorAll('path, g, text, rect, circle, line, use').forEach(el => {
-                const style = getComputedStyle(el); const originalFill = style.getPropertyValue('fill'); const originalStroke = style.getPropertyValue('stroke');
-                const parentColor = getComputedStyle(svgElement).getPropertyValue('color');
-                if (el.getAttribute('fill') === 'currentColor' || originalFill === 'currentColor' || originalFill === parentColor ) { el.style.fill = formulaColorForExport; }
-                if (el.getAttribute('stroke') === 'currentColor' || originalStroke === 'currentColor' || originalStroke === parentColor) { el.style.stroke = formulaColorForExport; }
-            });
-            let svgNominalWidth, svgNominalHeight; const viewBox = svgNodeToExport.getAttribute('viewBox');
-            if (viewBox) { const parts = viewBox.split(' '); svgNominalWidth = parseFloat(parts[2]); svgNominalHeight = parseFloat(parts[3]); }
-            else { try { const bbox = svgElement.getBBox(); svgNominalWidth = bbox.width; svgNominalHeight = bbox.height; } catch (e) { console.error("Error getting BBox for PNG export:", e); alert(messages.alertSVGDimensionError); return; } }
-            const wAttr = svgNodeToExport.getAttribute('width'); const hAttr = svgNodeToExport.getAttribute('height');
-            if (wAttr && !wAttr.endsWith('ex') && parseFloat(wAttr) > 0) svgNominalWidth = parseFloat(wAttr);
-            if (hAttr && !hAttr.endsWith('ex') && parseFloat(hAttr) > 0) svgNominalHeight = parseFloat(hAttr);
-            if (!svgNominalWidth || !svgNominalHeight || svgNominalWidth <= 0 || svgNominalHeight <= 0) { alert(messages.alertSVGDimensionError); console.error("PNG Export: SVG nominal dimensions are invalid:", svgNominalWidth, svgNominalHeight); return; }
-            let svgString = serializer.serializeToString(svgNodeToExport);
-            if (!svgString.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) { svgString = svgString.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"'); }
-            const now = new Date();
-            const timestamp = `gs-${String(now.getFullYear()).slice(-2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
-            const img = new Image(); const svgBase64 = btoa(unescape(encodeURIComponent(svgString))); const imageSrc = 'data:image/svg+xml;base64,' + svgBase64;
-            img.onload = function () {
-                const desiredDPI = 300; const screenDPI = 96; const scaleFactor = desiredDPI / screenDPI;
-                const canvas = document.createElement('canvas');
-                canvas.width = Math.max(1, svgNominalWidth * scaleFactor); canvas.height = Math.max(1, svgNominalHeight * scaleFactor);
-                const ctx = canvas.getContext('2d'); // Canvas is transparent by default
-                ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
-                canvas.toBlob(function (blob) {
-                    if (blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${timestamp}.png`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href); }
-                    else { alert(messages.errorCreatePNG); }
-                }, 'image/png');
+
+            // 创建canvas元素
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const img = new Image();
+
+            img.onload = function() {
+                // 设置canvas尺寸（2倍分辨率以确保清晰度）
+                canvas.width = img.width * 20;
+                canvas.height = img.height * 20;
+                ctx.scale(20, 20);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // 绘制公式（使用当前选择的颜色）
+                const formulaColor = isFormulaCurrentlyWhite ? FORMULA_COLOR_WHITE : FORMULA_COLOR_BLACK;
+                ctx.fillStyle = formulaColor;
+                ctx.drawImage(img, 0, 0);
+
+                // 生成时间戳文件名
+                const now = new Date();
+                const timestamp = `gs-${String(now.getFullYear()).slice(-2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+
+                // 创建下载链接并触发下载
+                const link = document.createElement('a');
+                link.download = `${timestamp}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
             };
-            img.onerror = function(e) { alert(messages.errorLoadSVGImage); console.error("Error loading SVG into image for PNG export:", e, imageSrc.substring(0,100) + "..."); }
-            img.src = imageSrc;
+
+            // 加载SVG数据
+            img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
         }
+
 
         function autoResize(textarea) { textarea.style.height = 'auto'; textarea.style.height = textarea.scrollHeight + 'px'; }
 
         function getURLParameter(name) {
-            const urlParams = new URLSearchParams(window.location.search);
+            const urlParams = new URLSearchParams(window.location.search);//.replace(/\+/g, '%2B')
             return urlParams.get(name);
         }
 
@@ -352,7 +345,6 @@
             latexInput = document.getElementById('latex-input');
             output = document.getElementById('rendered-math');
             renderStatus = document.getElementById('render-status');
-            exportSvgButton = document.getElementById('export-svg');
             exportPngButton = document.getElementById('export-png');
             htmlElement = document.documentElement;
             themeToggleButton = document.getElementById('theme-toggle');
