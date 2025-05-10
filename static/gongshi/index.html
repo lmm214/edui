@@ -96,6 +96,49 @@
         }
         footer a { color: var(--link-color); text-decoration: none; transition: color 0.3s ease; }
         footer a:hover { text-decoration: underline; color: var(--button-hover-bg-color); }
+
+
+
+        /* --- START FORMULA HISTORY STYLES --- */
+        #formula-history-section {
+            margin-top: 30px; /* Space above the history section */
+        }
+        #formula-history-section h3 {
+            color: var(--heading-color);
+            margin-bottom: 10px;
+            font-size: 1.2em; /* Adjust size as needed */
+            text-align: center;
+        }
+        #formula-history-list {
+            list-style-type: none;
+            padding: 0;
+            margin: 0 auto; /* Center the list if it has a max-width */
+            max-width: 100%; /* Ensure it doesn't overflow container */
+            max-height: 200px; /* Limit height and make scrollable */
+            overflow-y: auto;
+            border: 1px solid var(--input-border-color);
+            border-radius: 6px;
+            background-color: var(--input-bg-color); /* Match input background */
+        }
+        #formula-history-list li {
+            padding: 10px 15px;
+            border-bottom: 1px solid var(--input-border-color);
+            cursor: pointer;
+            transition: background-color 0.2s ease, color 0.2s ease;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--input-text-color); /* Match input text color */
+            font-size: 0.95em; /* Slightly smaller than main input */
+        }
+        #formula-history-list li:last-child {
+            border-bottom: none;
+        }
+        #formula-history-list li:hover {
+            background-color: var(--menu-item-hover-bg);
+            /* For dark theme, ensure hover provides good contrast if var is not sufficient */
+        }
+
         @media (max-width: 768px) {
             .header-controls { position: static; flex-direction: row; justify-content: flex-end; width: 100%; padding-bottom: 10px; }
             h2 { margin-top: 15px; }
@@ -114,6 +157,7 @@
             button:not(.icon-button):not(.theme-toggle-button):not(#toggle-formula-color-btn) { width: 100%; }
             #rendered-math { font-size: 1.3em; padding: 15px; min-height: 60px; }
             footer { font-size: 0.85em; }
+            #formula-history-list li { padding: 8px 10px; font-size: 0.85em; }
         }
         .logo {
             width: 42px; height: 42px; display: block; margin: 0 auto;cursor: pointer;
@@ -121,6 +165,7 @@
             border: 1px solid #efefef ;
             border-radius: 50%;
         }
+        h4 {padding:0;margin:0 0 5px;}
     </style>
 </head>
 <body>
@@ -142,11 +187,15 @@
                 <button onclick="renderLatex()">渲染公式</button>
                 <button id="export-png" onclick="exportPNG()" disabled>导出PNG</button>
             </div>
-            <label for="latex-input">LaTeX 公式：</label>
+            <h4>输入/修改 LaTeX 公式：</h4>
             <textarea id="latex-input" rows="3" placeholder="例如：x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}"
                 oninput="autoResize(this); triggerRenderDebounced()"></textarea>
 
-
+            <div id="formula-history-section">
+                <h4 data-translate-key="historyTitle">历史记录</h4>
+                <ul id="formula-history-list">
+                </ul>
+            </div>
 
 
         </div>
@@ -239,6 +288,89 @@
             exportPngButton = document.getElementById('export-png');
         });
 
+        
+        // --- START FORMULA HISTORY ---
+        const MAX_HISTORY_ITEMS = 20; // Maximum number of history items to store
+        const FORMULA_HISTORY_KEY = 'latexFormulaHistory';
+        let formulaHistoryArray = []; // In-memory cache of history
+
+        // DOM elements for history - get them once available
+        let formulaHistoryListElement; 
+        let formulaHistorySectionElement;
+
+        function initializeHistoryElements() { // Call this in window.onload
+            formulaHistoryListElement = document.getElementById('formula-history-list');
+            formulaHistorySectionElement = document.getElementById('formula-history-section'); // The whole section div
+        }
+        
+        function renderFormulaHistoryList() {
+            if (!formulaHistoryListElement || !formulaHistorySectionElement) return;
+            
+            formulaHistoryListElement.innerHTML = ''; // Clear existing items
+            
+            if (formulaHistoryArray.length === 0) {
+                formulaHistorySectionElement.style.display = 'none'; // Hide section if no history
+            } else {
+                formulaHistorySectionElement.style.display = 'block'; // Show section if there is history
+                formulaHistoryArray.forEach(formula => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = formula;
+                    listItem.title = formula; // Show full formula on hover if it's truncated by ellipsis
+                    formulaHistoryListElement.appendChild(listItem);
+                });
+            }
+        }
+
+        function loadFormulaHistory() {
+            const storedHistory = localStorage.getItem(FORMULA_HISTORY_KEY);
+            if (storedHistory) {
+                try {
+                    formulaHistoryArray = JSON.parse(storedHistory);
+                } catch (e) {
+                    console.error("Error parsing formula history from localStorage:", e);
+                    formulaHistoryArray = []; // Reset if corrupted
+                    localStorage.removeItem(FORMULA_HISTORY_KEY); // Clear corrupted data
+                }
+            }
+            renderFormulaHistoryList();
+        }
+
+        function saveFormulaHistory() {
+            localStorage.setItem(FORMULA_HISTORY_KEY, JSON.stringify(formulaHistoryArray));
+        }
+
+        function addFormulaToHistory(formulaText) {
+            if (!formulaText || formulaText.trim() === "") return;
+            const trimmedFormula = formulaText.trim();
+
+            // Remove existing entry if present, to move it to the top (most recent)
+            const existingIndex = formulaHistoryArray.indexOf(trimmedFormula);
+            if (existingIndex > -1) {
+                formulaHistoryArray.splice(existingIndex, 1);
+            }
+
+            formulaHistoryArray.unshift(trimmedFormula); // Add to the beginning
+
+            // Enforce history limit
+            if (formulaHistoryArray.length > MAX_HISTORY_ITEMS) {
+                formulaHistoryArray = formulaHistoryArray.slice(0, MAX_HISTORY_ITEMS);
+            }
+            
+            saveFormulaHistory();
+            renderFormulaHistoryList();
+        }
+
+        function handleHistoryItemClick(event) {
+            if (event.target && event.target.tagName === 'LI') {
+                const formula = event.target.textContent;
+                latexInput.value = formula;
+                autoResize(latexInput); // Resize textarea to fit content
+                renderLatex();          // Automatically render the formula
+                latexInput.focus();     // Optional: bring focus back to input
+            }
+        }
+        // --- END FORMULA HISTORY ---
+
         function renderLatex() {
             const input = latexInput.value.trim();
             output.innerHTML = ''; renderStatus.className = '';
@@ -249,6 +381,7 @@
                 MathJax.typesetPromise([output]).then(() => {
                     const svgElement = output.querySelector('svg');
                     if (svgElement) {
+                        addFormulaToHistory(input); // Add to history on successful render
                         // 创建canvas元素
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
@@ -355,7 +488,14 @@
             
             // 初始化公式颜色
             applyFormulaColor(isFormulaCurrentlyWhite);
-            
+
+            // Initialize Formula History
+            initializeHistoryElements(); // Get DOM elements for history
+            loadFormulaHistory();        // Load history from localStorage
+            if (formulaHistoryListElement) { // Add event listener if element exists
+                formulaHistoryListElement.addEventListener('click', handleHistoryItemClick);
+            }
+
             // 初始化渲染状态
             if (output.innerHTML.trim() === '' && latexInput.value.trim() === '') {
                 renderStatus.textContent = messages.statusInitial;
