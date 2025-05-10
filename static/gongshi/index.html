@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="pageTitle">LaTeX 公式在线渲染与导出 - 实时预览SVG/PNG</title>
+    <meta id="metaDescription" name="description" content="一款简洁易用的在线 LaTeX 数学公式编辑器，支持实时预览并将公式导出为 SVG 或 PNG 图像。由 CCR &amp; AI 创作。">
+    <script id="MathJax-script" async src="https://lf3-cdn-tos.bytecdntp.com/cdn/expire-1-M/mathjax/3.2.0/es5/tex-svg.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f7f9;
+            --text-color: #333;
+            --container-bg-color: #ffffff;
+            --container-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            --input-bg-color: #ffffff;
+            --input-border-color: #dcdfe6;
+            --input-focus-border-color: #4a90e2;
+            --input-focus-shadow-color: rgba(74, 144, 226, 0.15);
+            --input-text-color: #333;
+            --button-bg-color: #4a90e2;
+            --button-text-color: #fff;
+            --button-hover-bg-color: #357abd;
+            --button-active-bg-color: #2a6496;
+            --button-disabled-bg-color: #c0c4cc;
+            --button-disabled-text-color: #777;
+            --rendered-border-color: #dcdfe6;
+            --heading-color: #2c3e50;
+            --label-color: #555;
+            --status-text-color: #777;
+            --error-text-color: red;
+            --link-color: #4a90e2;
+            --footer-text-color: #555;
+            --preview-btn-border: var(--input-border-color);
+            --preview-btn-bg: var(--input-bg-color);
+            --preview-btn-text: var(--text-color);
+        }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            line-height: 1.6; margin: 0; padding: 20px; background-color: var(--bg-color);
+            color: var(--text-color); display: flex; flex-direction: column; align-items: center;
+            transition: background-color 0.3s ease, color 0.3s ease; min-height: 100vh; box-sizing: border-box;
+        }
+        .main-content-wrapper { flex-grow: 1; width: 100%; display: flex; flex-direction: column; align-items: center; }
+        .container {
+            width: 100%; max-width: 600px; background-color: var(--container-bg-color);
+            padding: 30px; border-radius: 8px; box-shadow: var(--container-shadow);
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+            position: relative; margin-bottom: 30px;
+        }
+        .header-controls { display: flex; justify-content: flex-end; align-items: center; gap: 10px; position: absolute; top: 15px; right: 15px; }
+        
+        h2 { color: var(--heading-color); text-align: center; margin-top: 20px; margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: var(--label-color); }
+        #latex-input {
+            width: 100%; font-size: 14pt; min-height: 4em; resize: vertical; box-sizing: border-box;
+            padding: 12px 15px; border: 1px solid var(--input-border-color); border-radius: 6px;
+            background-color: var(--input-bg-color); color: var(--input-text-color);
+            transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease, color 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05) inset;
+        }
+        #latex-input:focus { border-color: var(--input-focus-border-color); box-shadow: 0 0 0 3px var(--input-focus-shadow-color), 0 1px 3px rgba(0,0,0,0.05) inset; outline: none; }
+        .button-group { margin: 25px 0; display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; }
+        button:not(.icon-button):not(.theme-toggle-button):not(#toggle-formula-color-btn) {
+            padding: 10px 20px; font-size: 1em; color: var(--button-text-color);
+            background-color: var(--button-bg-color); border: none; border-radius: 5px; cursor: pointer;
+            transition: background-color 0.3s ease, color 0.3s ease, transform 0.1s ease, box-shadow 0.1s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        button:not(.icon-button):not(.theme-toggle-button):not(#toggle-formula-color-btn):hover:not(:disabled) { background-color: var(--button-hover-bg-color); transform: translateY(-1px); }
+        button:not(.icon-button):not(.theme-toggle-button):not(#toggle-formula-color-btn):active:not(:disabled) { background-color: var(--button-active-bg-color); transform: translateY(0px); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        button:not(.icon-button):not(.theme-toggle-button):not(#toggle-formula-color-btn):disabled { background-color: var(--button-disabled-bg-color); color: var(--button-disabled-text-color); cursor: not-allowed; box-shadow: none; transform: none; }
+        .formula-controls-container { display: flex; justify-content: center; margin-bottom: 10px; }
+        #toggle-formula-color-btn {
+            padding: 6px 12px; font-size: 0.9em; border: 1px solid var(--preview-btn-border);
+            background-color: var(--preview-btn-bg); color: var(--preview-btn-text);
+            border-radius: 4px; cursor: pointer;
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+        #toggle-formula-color-btn:hover { border-color: var(--input-focus-border-color); }
+        #rendered-math-container { margin-top: 20px; }
+        #render-status { text-align:center; margin-bottom: 10px; font-style: italic; color: var(--status-text-color); }
+        .error-message { color: var(--error-text-color) !important; text-align: center; }
+        #rendered-math {
+            min-height: 80px; padding: 20px; border: 1px dashed var(--rendered-border-color); border-radius: 6px;
+            background-color: #BBBBBB; /* 固定中性背景色 */
+            display: flex; justify-content: center; align-items: center;
+            overflow: auto; font-size: 1.75em;
+            transition: border-color 0.3s ease; /* 移除 background-color transition */
+        }
+        #rendered-math svg { max-width: 100%; display: block; margin: auto; transition: color 0.3s ease; }
+        footer {
+            text-align: center; font-size: 0.9em; color: var(--footer-text-color);
+            transition: color 0.3s ease, border-color 0.3s ease;
+        }
+        footer a { color: var(--link-color); text-decoration: none; transition: color 0.3s ease; }
+        footer a:hover { text-decoration: underline; color: var(--button-hover-bg-color); }
+        @media (max-width: 768px) {
+            .container { padding: 20px; margin-bottom: 20px; }
+            .header-controls { position: static; flex-direction: row; justify-content: flex-end; width: 100%; padding-bottom: 10px; }
+            h2 { margin-top: 15px; }
+            .icon-button, .theme-toggle-button { width: 35px; height: 35px; }
+            .icon-button { font-size: 20px; }
+            .theme-toggle-button { font-size: 18px; }
+            .formula-controls-container { flex-wrap: wrap; }
+            #toggle-formula-color-btn { flex-grow: 1; text-align: center; margin-top: 5px; }
+            footer { padding: 15px 10px; }
+        }
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            h2 { font-size: 1.5em; }
+            #latex-input { font-size: 13pt; }
+            .button-group { flex-direction: column; }
+            button:not(.icon-button):not(.theme-toggle-button):not(#toggle-formula-color-btn) { width: 100%; }
+            #rendered-math { font-size: 1.3em; padding: 15px; min-height: 60px; }
+            footer { font-size: 0.85em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-content-wrapper">
+        <div class="container">
+
+
+            <h2>LaTeX 公式渲染与导出</h2>
+            <label for="latex-input">输入 LaTeX 公式：</label>
+            <textarea id="latex-input" rows="3" placeholder="例如：x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}"
+                oninput="autoResize(this); triggerRenderDebounced()"></textarea>
+
+            <div class="button-group">
+                <button onclick="renderLatex()">渲染公式</button>
+                <button id="export-svg" onclick="exportSVG()" disabled>导出SVG</button>
+                <button id="export-png" onclick="exportPNG()" disabled>导出PNG</button>
+            </div>
+
+            <div id="rendered-math-container">
+                 <p id="render-status">输入公式后点击"渲染公式"进行预览</p>
+                 <div class="formula-controls-container">
+                     <button id="toggle-formula-color-btn">切换公式颜色</button>
+                 </div>
+                <div id="rendered-math"></div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p id="footer-text-container">
+            <a href="https://meta.appinn.net/t/topic/71065" target="_blank" rel="noopener noreferrer">@CCR &amp; AI</a>
+        </p>
+    </footer>
+
+    <script>
+        // 声明DOM元素变量
+        let latexInput, output, renderStatus, exportSvgButton, exportPngButton, htmlElement, themeToggleButton;
+
+        // DOM元素初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            latexInput = document.getElementById('latex-input');
+            output = document.getElementById('rendered-math');
+            renderStatus = document.getElementById('render-status');
+            exportSvgButton = document.getElementById('export-svg');
+            exportPngButton = document.getElementById('export-png');
+            htmlElement = document.documentElement;
+            themeToggleButton = document.getElementById('theme-toggle');
+        });
+
+        // 状态和错误信息
+        const messages = {
+            "pageTitle": "LaTeX 公式在线渲染与导出 - 实时预览SVG/PNG",
+            "metaDescription": "一款简洁易用的在线 LaTeX 数学公式编辑器，支持实时预览并将公式导出为 SVG 或 PNG 图像。由 CCR &amp; AI 创作。",
+            "themeToggleSymbol": "🌙",
+            "languageMenuTitle": "选择语言",
+            "mainHeading": "LaTeX 公式渲染与导出",
+            "inputLabel": "输入 LaTeX 公式：",
+            "inputPlaceholder": "例如：x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}",
+            "renderButton": "渲染公式",
+            "exportSvgButton": "导出SVG",
+            "exportPngButton": "导出PNG",
+            "themeToggleTitle": "切换主题",
+            "toggleFormulaColorBtnText": "切换公式颜色",
+            "statusInitial": "输入公式后点击\"渲染公式\"进行预览",
+            "statusRendering": "正在渲染...",
+            "statusDone": "渲染完成！",
+            "statusErrorSyntaxGeneral": "渲染失败，请检查公式语法。",
+            "statusErrorSyntaxSpecific": "渲染失败: {{mathJaxError}}。 请检查公式语法。",
+            "statusInputInProgress": "输入中...建议手动点击渲染。",
+            "errorLoadMathJax": "MathJax 库未加载。",
+            "errorLoadSVGImage": "加载SVG图像失败，无法导出PNG。",
+            "errorCreatePNG": "创建PNG文件失败。",
+            "errorNoRenderedFormula": "请先成功渲染公式。",
+            "alertSVGDimensionError": "无法确定SVG的有效尺寸，无法导出PNG。请确保公式已正确渲染。"
+        };
+
+        // 使用固定的中文界面
+        document.documentElement.lang = 'zh-CN';
+        document.title = messages.pageTitle;
+        document.getElementById('metaDescription').setAttribute('content', messages.metaDescription);
+
+        // --- START FORMULA COLOR TOGGLE (Simplified with fixed preview BG) ---
+        const FORMULA_COLOR_BLACK = '#212529';
+        const FORMULA_COLOR_WHITE = '#FFFFFF';
+        let isFormulaCurrentlyWhite = false; // Default: formula is black
+
+        const toggleFormulaColorBtn = document.getElementById('toggle-formula-color-btn');
+        const renderedMathDiv = document.getElementById('rendered-math');
+
+        function applyFormulaColor(isWhite) {
+            const svgElement = renderedMathDiv.querySelector('svg');
+            if (svgElement) {
+                svgElement.style.color = isWhite ? FORMULA_COLOR_WHITE : FORMULA_COLOR_BLACK;
+            }
+            // Button text is handled by data-translate-key and setLanguage
+        }
+
+        if (toggleFormulaColorBtn) {
+            toggleFormulaColorBtn.addEventListener('click', () => {
+                isFormulaCurrentlyWhite = !isFormulaCurrentlyWhite;
+                applyFormulaColor(isFormulaCurrentlyWhite);
+            });
+        }
+        // --- END FORMULA COLOR TOGGLE ---
+
+
+
+        // DOM元素初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            latexInput = document.getElementById('latex-input');
+            output = document.getElementById('rendered-math');
+            renderStatus = document.getElementById('render-status');
+            exportSvgButton = document.getElementById('export-svg');
+            exportPngButton = document.getElementById('export-png');
+        });
+
+        function renderLatex() {
+            const input = latexInput.value.trim();
+            output.innerHTML = ''; renderStatus.className = '';
+            if (!input) { renderStatus.textContent = messages.statusInitial; exportSvgButton.disabled = true; exportPngButton.disabled = true; return; }
+            renderStatus.textContent = messages.statusRendering;
+            output.textContent = '$$' + input + '$$';
+            if (window.MathJax) {
+                MathJax.typesetPromise([output]).then(() => {
+                    const svgElement = output.querySelector('svg'); 
+                    if (svgElement) {
+                        exportSvgButton.disabled = false; exportPngButton.disabled = false;
+                        renderStatus.textContent = messages.statusDone;
+                        applyFormulaColor(isFormulaCurrentlyWhite); // Apply current formula color
+                    } else {
+                        const mathJaxError = output.querySelector('[data-mjx-error]');
+                        if (mathJaxError) { renderStatus.textContent = `渲染失败: ${mathJaxError.getAttribute('title')}。 请检查公式语法。`; renderStatus.className = 'error-message'; }
+                        else { renderStatus.textContent = messages.statusErrorSyntaxGeneral; renderStatus.className = 'error-message'; output.innerHTML = `<p class="error-message">${messages.statusErrorSyntaxGeneral}</p>`; }
+                        exportSvgButton.disabled = true; exportPngButton.disabled = true;
+                    }
+                }).catch(err => {
+                    console.error("MathJax Typesetting error:", err); output.innerHTML = `<p class="error-message">${messages.statusErrorSyntaxGeneral}: ${err.message || 'Unknown error'}</p>`;
+                    renderStatus.textContent = messages.statusErrorSyntaxGeneral; renderStatus.className = 'error-message';
+                    exportSvgButton.disabled = true; exportPngButton.disabled = true;
+                });
+            } else { renderStatus.textContent = messages.errorLoadMathJax; renderStatus.className = 'error-message'; output.innerHTML = `<p class="error-message">${messages.errorLoadMathJax}</p>`; }
+        }
+
+        let debounceTimer;
+        function triggerRenderDebounced() {
+            clearTimeout(debounceTimer);
+            if (latexInput.value.trim() === "") { output.innerHTML = ''; renderStatus.textContent = messages.statusInitial; renderStatus.className = ''; exportSvgButton.disabled = true; exportPngButton.disabled = true; return; }
+            renderStatus.textContent = messages.statusInputInProgress; renderStatus.className = '';
+            debounceTimer = setTimeout(renderLatex, 1000);
+        }
+
+        function exportSVG() {
+            const svg = document.querySelector('#rendered-math svg');
+            if (!svg) { alert(messages.errorNoRenderedFormula); return; }
+            const svgClone = svg.cloneNode(true);
+            const formulaColorForExport = isFormulaCurrentlyWhite ? FORMULA_COLOR_WHITE : FORMULA_COLOR_BLACK;
+            svgClone.style.color = formulaColorForExport;
+            svgClone.querySelectorAll('path, g, text, rect, circle, line, use').forEach(el => {
+                const style = getComputedStyle(el); const originalFill = style.fill; const originalStroke = style.stroke;
+                const parentColor = getComputedStyle(svg).color;
+                if (el.getAttribute('fill') === 'currentColor' || originalFill === 'currentColor' || originalFill === parentColor) { el.style.fill = formulaColorForExport; }
+                if (el.getAttribute('stroke') === 'currentColor' || originalStroke === 'currentColor' || originalStroke === parentColor) { el.style.stroke = formulaColorForExport; }
+            });
+            let svgWidth = svgClone.getAttribute('width'), svgHeight = svgClone.getAttribute('height');
+            const viewBox = svgClone.getAttribute('viewBox');
+            if ((!svgWidth || !svgHeight || svgWidth.endsWith('ex') || svgHeight.endsWith('ex')) && viewBox) {
+                const parts = viewBox.split(' '); if (parts.length === 4) { svgClone.setAttribute('width', parts[2]); svgClone.setAttribute('height', parts[3]); }
+            } else if (!svgWidth || !svgHeight) { try { const bbox = svg.getBBox(); if (bbox.width && bbox.height) { svgClone.setAttribute('width', bbox.width.toString()); svgClone.setAttribute('height', bbox.height.toString()); } } catch (e) { console.error("Error getting BBox for SVG:", e); } }
+            const serializer = new XMLSerializer(); let source = serializer.serializeToString(svgClone);
+            if (!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) { source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"'); }
+            const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+            const a = document.createElement('a'); a.href = url; a.download = 'formula.svg'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+        }
+
+        function exportPNG() {
+            const svgElement = document.querySelector('#rendered-math svg');
+            if (!svgElement) { alert(messages.errorNoRenderedFormula); return; }
+            const serializer = new XMLSerializer(); const svgNodeToExport = svgElement.cloneNode(true);
+            const formulaColorForExport = isFormulaCurrentlyWhite ? FORMULA_COLOR_WHITE : FORMULA_COLOR_BLACK;
+            svgNodeToExport.style.color = formulaColorForExport;
+            svgNodeToExport.querySelectorAll('path, g, text, rect, circle, line, use').forEach(el => {
+                const style = getComputedStyle(el); const originalFill = style.getPropertyValue('fill'); const originalStroke = style.getPropertyValue('stroke');
+                const parentColor = getComputedStyle(svgElement).getPropertyValue('color');
+                if (el.getAttribute('fill') === 'currentColor' || originalFill === 'currentColor' || originalFill === parentColor ) { el.style.fill = formulaColorForExport; }
+                if (el.getAttribute('stroke') === 'currentColor' || originalStroke === 'currentColor' || originalStroke === parentColor) { el.style.stroke = formulaColorForExport; }
+            });
+            let svgNominalWidth, svgNominalHeight; const viewBox = svgNodeToExport.getAttribute('viewBox');
+            if (viewBox) { const parts = viewBox.split(' '); svgNominalWidth = parseFloat(parts[2]); svgNominalHeight = parseFloat(parts[3]); }
+            else { try { const bbox = svgElement.getBBox(); svgNominalWidth = bbox.width; svgNominalHeight = bbox.height; } catch (e) { console.error("Error getting BBox for PNG export:", e); alert(messages.alertSVGDimensionError); return; } }
+            const wAttr = svgNodeToExport.getAttribute('width'); const hAttr = svgNodeToExport.getAttribute('height');
+            if (wAttr && !wAttr.endsWith('ex') && parseFloat(wAttr) > 0) svgNominalWidth = parseFloat(wAttr);
+            if (hAttr && !hAttr.endsWith('ex') && parseFloat(hAttr) > 0) svgNominalHeight = parseFloat(hAttr);
+            if (!svgNominalWidth || !svgNominalHeight || svgNominalWidth <= 0 || svgNominalHeight <= 0) { alert(messages.alertSVGDimensionError); console.error("PNG Export: SVG nominal dimensions are invalid:", svgNominalWidth, svgNominalHeight); return; }
+            let svgString = serializer.serializeToString(svgNodeToExport);
+            if (!svgString.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) { svgString = svgString.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"'); }
+            const img = new Image(); const svgBase64 = btoa(unescape(encodeURIComponent(svgString))); const imageSrc = 'data:image/svg+xml;base64,' + svgBase64;
+            img.onload = function () {
+                const desiredDPI = 300; const screenDPI = 96; const scaleFactor = desiredDPI / screenDPI;
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, svgNominalWidth * scaleFactor); canvas.height = Math.max(1, svgNominalHeight * scaleFactor);
+                const ctx = canvas.getContext('2d'); // Canvas is transparent by default
+                ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(function (blob) {
+                    if (blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'formula.png'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href); }
+                    else { alert(messages.errorCreatePNG); }
+                }, 'image/png');
+            };
+            img.onerror = function(e) { alert(messages.errorLoadSVGImage); console.error("Error loading SVG into image for PNG export:", e, imageSrc.substring(0,100) + "..."); }
+            img.src = imageSrc;
+        }
+
+        function autoResize(textarea) { textarea.style.height = 'auto'; textarea.style.height = textarea.scrollHeight + 'px'; }
+
+        function getURLParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        window.onload = () => {
+            // 初始化DOM元素
+            latexInput = document.getElementById('latex-input');
+            output = document.getElementById('rendered-math');
+            renderStatus = document.getElementById('render-status');
+            exportSvgButton = document.getElementById('export-svg');
+            exportPngButton = document.getElementById('export-png');
+            htmlElement = document.documentElement;
+            themeToggleButton = document.getElementById('theme-toggle');
+
+            // 初始化界面语言
+            document.title = messages.pageTitle;
+            document.getElementById('metaDescription').setAttribute('content', messages.metaDescription);
+            
+            // 初始化公式颜色
+            applyFormulaColor(isFormulaCurrentlyWhite);
+            
+            // 初始化渲染状态
+            if (output.innerHTML.trim() === '' && latexInput.value.trim() === '') {
+                renderStatus.textContent = messages.statusInitial;
+            }
+            
+            // 获取并处理 URL 参数
+            const textParam = getURLParameter('text');
+            if (textParam) {
+                try {
+                    const decodedText = decodeURIComponent(textParam);
+                    latexInput.value = decodedText;
+                    autoResize(latexInput);
+                    renderLatex(); // 自动渲染公式
+                } catch (e) {
+                    console.error('URL parameter decoding error:', e);
+                }
+            } else {
+                if (latexInput.value.trim()) { renderLatex(); }
+                else { output.style.backgroundColor = '#BBBBBB'; } // Set initial fixed BG if no formula
+                autoResize(latexInput);
+            }
+        };
+    </script>
+</body>
+</html>
