@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>摆正方体</title>
+    <style>
+        body {
+            margin: 0;
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: inset 0 0 400px rgba(0, 0, 0, 0.1);
+        }
+        
+        .container {
+            flex: 1;
+            position: relative;
+            border: 2px dashed rgba(0, 0, 0, 0.4);
+            background-color: #fff;
+            margin: 20px;
+            border-radius: 4px;
+            background-size: var(--grid-size) var(--grid-size);
+        }
+        
+        .draggable {
+            width: 90px;
+            height: 90px;
+            cursor: move;
+            position: absolute;
+            border: 1px solid rgba(0, 0, 0, 0.5);
+            left: -1px;
+            top: -1px;
+            will-change: transform;
+        }
+        
+        .draggable.selected {
+            opacity: 0.6;
+            z-index: 1000 !important;
+        }
+        
+        .source-container {
+            margin: 0 auto;
+            height: 180px;
+            padding: 0;
+            display: flex;
+            gap: 60px;
+            align-items: center;
+        }
+
+        .size-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .size-control input {
+            width: 120px;
+            height: 20px;
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        
+        .size-control input::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #4a90e2;
+            border-radius: 50%;
+            cursor: pointer;
+            margin-top: -8px;
+        }
+        
+        .size-control input::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: #ddd;
+            border-radius: 2px;
+        }
+        
+        .source {
+            width: 90px;
+            height: 90px;
+            cursor: move;
+            border: 1px solid rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .draggable-inner,.source-inner {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+        }
+
+        .draggable-inner::before,
+        .draggable-inner::after,
+        .source-inner::before,
+        .source-inner::after {
+            content: '';
+            position: absolute;
+            background-color: inherit;
+            border: 1px solid rgba(0, 0, 0, 0.5);
+        }
+
+        .draggable-inner::before,.source-inner::before {
+            width: 100%;
+            height: 29px;
+            top:-31px;
+            left:14px;
+            transform: skewX(-45deg);
+            filter: brightness(1.2);
+        }
+
+        .draggable-inner::after,.source-inner::after {
+            width: 29px;
+            height: 100%;
+            top:-16px;
+            right: -31px;
+            transform: skewY(-45deg);
+        }
+        .draggable.white,.source.white { background-color: #f9f9f9; }
+        .draggable.white .draggable-inner::before,.source.white .source-inner::before {
+            background-color: #e2e2e2;
+        }
+        .draggable.white .draggable-inner::after,.source.white .source-inner::after {
+            background-color: #c4c4c4;
+        }
+        .source.blue { background-color: rgba(128,155,191,0.5); }
+        .draggable.blue .draggable-inner::before,.source.blue .source-inner::before {
+            background-color: rgba(128,155,191,0.2);
+        }
+        .draggable.blue .draggable-inner::after,.source.blue .source-inner::after {
+            background-color: rgba(128,155,191,0.9);
+        }
+        .source.orange { background-color: rgba(245,166,35,0.5); }
+        .draggable.orange .draggable-inner::before,.source.orange .source-inner::before {
+            background-color: rgba(245,166,35,0.2);
+        }
+        .draggable.orange .draggable-inner::after,.source.orange .source-inner::after {
+            background-color: rgba(245,166,35,0.9);
+        }
+        .source.red { background-color: rgba(208,2,27,0.5); }
+        .draggable.red .draggable-inner::before,.source.red .source-inner::before {
+            background-color: rgba(208,2,27,0.2);
+        }
+        .draggable.red .draggable-inner::after,.source.red .source-inner::after {
+            background-color: rgba(208,2,27,0.9);
+        }
+        .source.green { background-color: rgba(126,211,33,0.5); }
+        .draggable.green .draggable-inner::before,.source.green .source-inner::before {
+            background-color: rgba(126,211,33,0.2);
+        }
+        .draggable.green .draggable-inner::after,.source.green .source-inner::after {
+            background-color: rgba(126,211,33,0.9);
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="container"></div>
+    <div class="source-container">
+        <div class="source blue" draggable="true" id="source-blue"><div class="source-inner"></div></div>
+        <div class="source orange" draggable="true" id="source-orange"><div class="source-inner"></div></div>
+        <div class="source white" draggable="true" id="source-white"><div class="source-inner"></div></div>
+        <div class="source red" draggable="true" id="source-red"><div class="source-inner"></div></div>
+        <div class="source green" draggable="true" id="source-green"><div class="source-inner"></div></div>
+    </div>
+
+    <script>
+        let draggedElement = null;
+        let selectedElement = null;
+        let offsetX = 0;
+        let offsetY = 0;
+        let gridSize = 90;
+        let isDragging = false;
+        document.documentElement.style.setProperty('--grid-size', gridSize + 'px');
+        const container = document.getElementById('container');
+        const sources = document.querySelectorAll('.source');
+        let blockSize = 89;
+
+        function selectElement(element) {
+            if (selectedElement) {
+                selectedElement.classList.remove('selected');
+            }
+            selectedElement = element;
+            if (selectedElement) {
+                selectedElement.classList.add('selected');
+            }
+        }
+
+        function createDraggable(x, y, color) {
+            const draggable = document.createElement('div');
+            draggable.className = 'draggable';
+            const inner = document.createElement('div');
+            inner.className = 'draggable-inner';
+            draggable.appendChild(inner);
+            const colorClass = Array.from(color.classList).find(cls => cls !== 'source');
+            if (colorClass) {
+                draggable.classList.add(colorClass);
+            }
+            draggable.style.backgroundColor = getComputedStyle(color).backgroundColor;;
+            draggable.style.width = blockSize + 'px';
+            draggable.style.height = blockSize + 'px';
+            container.appendChild(draggable);
+            
+            draggable.addEventListener('mousedown', startDragging);
+            draggable.addEventListener('touchstart', startDragging, { passive: false });
+            
+            draggable.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!isDragging) {
+                    selectElement(draggable);
+                }
+            });
+            
+            return draggable;
+        }
+
+        function updateZIndex() {
+            const draggables = Array.from(document.querySelectorAll('.draggable'));
+            let maxZIndex = Math.max(...draggables.map(el => parseInt(el.style.zIndex) || 0));
+            if (draggedElement) {
+                draggedElement.style.zIndex = maxZIndex + 1;
+            }
+        }
+
+        function startDragging(e) {
+            e.preventDefault();
+            draggedElement = e.target.closest('.draggable');
+            if (!draggedElement) return;
+            isDragging = false;
+            
+            const transform = getComputedStyle(draggedElement).transform;
+            const matrix = new DOMMatrix(transform);
+            const point = e.touches ? e.touches[0] : e;
+            offsetX = point.clientX - matrix.m41;
+            offsetY = point.clientY - matrix.m42;
+
+            draggedElement.style.transition = 'none';
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('mouseup', stopDragging);
+            document.addEventListener('touchmove', onDrag, { passive: false });
+            document.addEventListener('touchend', stopDragging);
+        }
+
+        function onDrag(e) {
+            e.preventDefault();
+            if (!draggedElement) return;
+            
+            const containerRect = container.getBoundingClientRect();
+            const point = e.touches ? e.touches[0] : e;
+            let x = point.clientX - containerRect.left - offsetX;
+            let y = point.clientY - containerRect.top - offsetY;
+            
+            draggedElement.style.transform = `translate(${x}px, ${y}px)`;
+            updateZIndex();
+            isDragging = true;
+        }
+
+        function stopDragging() {
+            if (!draggedElement) return;
+            
+            const transform = getComputedStyle(draggedElement).transform;
+            const matrix = new DOMMatrix(transform);
+            const x = matrix.m41;
+            const y = matrix.m42;
+            
+            // 计算到最近网格点的距离
+            let minDistance = Infinity;
+            let snappedX = x;
+            let snappedY = y;
+            
+            // 遍历所有可能的网格点（包括偏移网格）
+            for (let offsetX = 0; offsetX < gridSize; offsetX += 30) {
+                for (let offsetY = 0; offsetY < gridSize; offsetY += 30) {
+                    const gridX = Math.round((x - offsetX) / gridSize) * gridSize + offsetX + 1;
+                    const gridY = Math.round((y - offsetY) / gridSize) * gridSize + offsetY + 1;
+                    
+                    const distance = Math.sqrt(
+                        Math.pow(x - gridX, 2) + Math.pow(y - gridY, 2)
+                    );
+                    
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        snappedX = gridX;
+                        snappedY = gridY;
+                    }
+                }
+            }
+            
+            draggedElement.style.transition = 'transform 0.4s ease';
+            draggedElement.style.transform = `translate(${snappedX}px, ${snappedY}px)`;
+            updateZIndex();
+            
+            // 在动画结束后再次更新层级
+            const element = draggedElement;
+            element.addEventListener('transitionend', function onTransitionEnd() {
+                updateZIndex();
+                element.removeEventListener('transitionend', onTransitionEnd);
+            });
+            
+            draggedElement = null;
+            document.removeEventListener('mousemove', onDrag);
+            document.removeEventListener('mouseup', stopDragging);
+            document.removeEventListener('touchmove', onDrag);
+            document.removeEventListener('touchend', stopDragging);
+        }
+
+        sources.forEach(source => {
+            const startSourceDrag = (e) => {
+                e.preventDefault();
+                const rect = source.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                const point = e.touches ? e.touches[0] : e;
+                const x = point.clientX - containerRect.left - rect.width / 2;
+                const y = point.clientY - containerRect.top - rect.height / 2;
+                
+                draggedElement = createDraggable(x, y, source);
+                offsetX = rect.width / 2;
+                offsetY = rect.height / 2;
+                draggedElement.style.transition = 'none';
+                
+                document.addEventListener('mousemove', onDrag);
+                document.addEventListener('mouseup', stopDragging);
+                document.addEventListener('touchmove', onDrag, { passive: false });
+                document.addEventListener('touchend', stopDragging);
+            };
+            
+            source.addEventListener('mousedown', startSourceDrag);
+            source.addEventListener('touchstart', startSourceDrag, { passive: false });
+        });
+        
+        container.addEventListener('click', (e) => {
+            if (e.target === container) {
+                selectElement(null);
+            }
+        });
+    </script>
+</body>
+</html>
