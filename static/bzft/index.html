@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -310,23 +311,52 @@
         }
 
         sources.forEach(source => {
+            let isDraggingSource = false;
+            let initialPoint = null;
+            
             const startSourceDrag = (e) => {
                 e.preventDefault();
-                const rect = source.getBoundingClientRect();
-                const containerRect = container.getBoundingClientRect();
-                const point = e.touches ? e.touches[0] : e;
-                const x = point.clientX - containerRect.left - rect.width / 2;
-                const y = point.clientY - containerRect.top - rect.height / 2;
+                isDraggingSource = false;
+                initialPoint = e.touches ? e.touches[0] : e;
                 
-                draggedElement = createDraggable(x, y, source);
-                offsetX = rect.width / 2;
-                offsetY = rect.height / 2;
-                draggedElement.style.transition = 'none';
+                const onSourceMove = (moveEvent) => {
+                    const currentPoint = moveEvent.touches ? moveEvent.touches[0] : moveEvent;
+                    const movedDistance = Math.sqrt(
+                        Math.pow(currentPoint.clientX - initialPoint.clientX, 2) +
+                        Math.pow(currentPoint.clientY - initialPoint.clientY, 2)
+                    );
+                    
+                    if (movedDistance > 5 && !isDraggingSource) {
+                        isDraggingSource = true;
+                        const containerRect = container.getBoundingClientRect();
+                        const x = currentPoint.clientX - containerRect.left - blockSize / 2;
+                        const y = currentPoint.clientY - containerRect.top - blockSize / 2;
+                        
+                        draggedElement = createDraggable(x, y, source);
+                        offsetX = blockSize / 2;
+                        offsetY = blockSize / 2;
+                        draggedElement.style.transition = 'none';
+                        onDrag(moveEvent);
+                    } else if (isDraggingSource) {
+                        onDrag(moveEvent);
+                    }
+                };
                 
-                document.addEventListener('mousemove', onDrag);
-                document.addEventListener('mouseup', stopDragging);
-                document.addEventListener('touchmove', onDrag, { passive: false });
-                document.addEventListener('touchend', stopDragging);
+                const onSourceUp = () => {
+                    document.removeEventListener('mousemove', onSourceMove);
+                    document.removeEventListener('mouseup', onSourceUp);
+                    document.removeEventListener('touchmove', onSourceMove);
+                    document.removeEventListener('touchend', onSourceUp);
+                    
+                    if (isDraggingSource) {
+                        stopDragging();
+                    }
+                };
+                
+                document.addEventListener('mousemove', onSourceMove);
+                document.addEventListener('mouseup', onSourceUp);
+                document.addEventListener('touchmove', onSourceMove, { passive: false });
+                document.addEventListener('touchend', onSourceUp);
             };
             
             source.addEventListener('mousedown', startSourceDrag);
