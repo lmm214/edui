@@ -41,15 +41,29 @@
 {{ end }}
 
 {{ define "main" }}
-            <!-- 最近使用 start -->
-            <div id="recordALL">
-                <h4 class="text-gray"><i class="icon-fire" style="margin-right: 7px;" id="最近使用"></i>最近使用
-                </h4>
-                <div class="row">
-                    <div id="recordItems"></div>
-                </div>
+            <!-- 搜索框 start -->
+            <div class="search-container">
+                <input type="text" id="searchInput" class="form-control" placeholder="搜索名称、描述...">
             </div>
-            <br/>
+            <!-- 搜索结果 start -->
+            <div id="searchResults" style="display: none;">
+                <h4 class="text-gray"><i class="icon-search"></i> 搜索结果</h4>
+                <div class="row" id="searchResultsContainer"></div>
+                <br/>
+            </div>
+            <!-- 搜索结果 end -->
+            
+            <!-- 原始内容容器 -->
+            <div id="originalContent">
+                <!-- 最近使用 start -->
+                <div id="recordALL">
+                    <h4 class="text-gray"><i class="icon-fire" style="margin-right: 7px;" id="最近使用"></i>最近使用
+                    </h4>
+                    <div class="row">
+                        <div id="recordItems"></div>
+                    </div>
+                </div>
+                <br/>
             <!-- 最近使用 end -->
             {{ range .Site.Data.links.list }}
             {{if .sub}}
@@ -117,11 +131,152 @@
             {{ end }}
             <br />
             {{ end }}
+            </div>
+            <!-- 原始内容容器结束 -->
 {{ end }}
 
 
 {{ define "footer" }}
 <script src="js/jquery-1.11.1.min.js"></script>
+<!-- 搜索功能 -->
+<script type="text/javascript">
+// 准备搜索数据
+var searchData = [];
+{{ range $listIndex, $list := .Site.Data.links.list }}
+    {{if .sub}}
+        {{range .sub}}
+            {{range .item}}
+            searchData.push({
+                siteName: "{{.siteName}}",
+                description: "{{.description}}",
+                siteLink: "{{.siteLink}}",
+                siteLogo: "{{.siteLogo}}",
+                siteImage: "{{.siteImage}}"
+            });
+            {{end}}
+        {{end}}
+    {{else}}
+        {{range .item}}
+        searchData.push({
+            siteName: "{{.siteName}}",
+            description: "{{.description}}",
+            siteLink: "{{.siteLink}}",
+            siteLogo: "{{.siteLogo}}",
+            siteImage: "{{.siteImage}}"
+        });
+        {{end}}
+    {{end}}
+{{end}}
+
+// 搜索功能
+function performSearch(query) {
+    if (!query || query.trim() === '') {
+        $('#searchResults').hide();
+        $('#originalContent').show();
+        return;
+    }
+    
+    query = query.toLowerCase();
+    var results = searchData.filter(function(item) {
+        return item.siteName.toLowerCase().includes(query) ||
+               item.description.toLowerCase().includes(query);
+    });
+    
+    displaySearchResults(results);
+}
+
+function displaySearchResults(results) {
+    var container = $('#searchResultsContainer');
+    container.empty();
+    
+    if (results.length === 0) {
+        container.html('<div class="col-sm-12"><p class="text-muted">未找到匹配的结果</p></div>');
+    } else {
+        results.forEach(function(item) {
+            var cardHtml = '<div class="col-sm-3">';
+            
+            if (item.siteImage) {
+                cardHtml += '<div class="xe-widget xe-conversations box2 label-info" data-toggle="tooltip" data-placement="bottom" title="" data-original-title="<img src=\'' + item.siteImage + '\' width=\'148\'>">'
+            } else {
+                cardHtml += '<div class="xe-widget xe-conversations box2 label-info" onclick="window.open(\'' + item.siteLink + '\', \'_blank\')" data-toggle="tooltip" data-placement="bottom" title="" data-original-title="' + item.siteLink + '">';
+            }
+            
+            cardHtml += '<div class="xe-comment-entry">';
+            cardHtml += '<a class="xe-user-img">';
+            
+            if (item.siteLogo) {
+                cardHtml += '<img data-src="' + item.siteLogo + '" class="lozad img-circle" width="40" height="40">';
+            } else {
+                cardHtml += '<img avatar="' + item.siteName + '" class="img-circle" width="40" height="40">';
+            }
+            
+            cardHtml += '</a>';
+            cardHtml += '<div class="xe-comment">';
+            cardHtml += '<a href="javascript:void 0;" class="xe-user-name overflowClip_1">';
+            cardHtml += '<strong>' + item.siteName + '</strong>';
+            cardHtml += '</a>';
+            cardHtml += '<p class="overflowClip_2">' + item.description + '</p>';
+            cardHtml += '</div>';
+            cardHtml += '</div>';
+            cardHtml += '</div>';
+            cardHtml += '</div>';
+            
+            container.append(cardHtml);
+        });
+    }
+    
+    $('#originalContent').hide();
+    $('#searchResults').show();
+    
+    // 重新初始化图片懒加载
+    const observer = lozad();
+    observer.observe();
+    
+    // 初始化LetterAvatar为没有logo的网站生成字母头像
+    if (typeof LetterAvatar !== 'undefined') {
+        LetterAvatar.transform();
+    }
+    
+    // 重新绑定点击事件
+    $('#searchResultsContainer .xe-widget').off('click').on('click', function(){
+        var itemclick = $(this).attr('data-original-title');
+        if (itemclick && !itemclick.startsWith('<img')) {
+            var dataClick = JSON.parse(localStorage.getItem(myStorage)) || [];
+            var indexNum = dataClick.indexOf(itemclick);
+            if(indexNum >= 0 ){
+                dataClick.splice(indexNum,1);
+            }
+            if(dataClick.length == 8 ){
+                dataClick.shift();
+            }
+            dataClick.push(itemclick);
+            localStorage.setItem(myStorage, JSON.stringify(dataClick));
+        }
+    });
+}
+
+function clearSearch() {
+    $('#searchInput').val('');
+    $('#searchResults').hide();
+    $('#originalContent').show();
+}
+
+// 绑定搜索事件
+$(document).ready(function() {
+    $('#searchInput').on('input', function() {
+        var query = $(this).val();
+        performSearch(query);
+    });
+    
+    $('#searchInput').on('keypress', function(e) {
+        if (e.which === 13) { // Enter键
+            e.preventDefault();
+            var query = $(this).val();
+            performSearch(query);
+        }
+    });
+});
+</script>
 <!-- 锚点平滑移动 -->
 <script type="text/javascript">
 $(document).ready(function() {
