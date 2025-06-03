@@ -216,18 +216,15 @@
 <body>
     <div class="header">
         <div class="stats">
-            <div class="stat-item">
-                <span>已完成：</span><span id="completed-count">0</span>
-            </div>
-            <div class="stat-item">
-                <span>总人数：</span><span id="total-count">45</span>
+            <div class="stat-item" id="progress-or-next">
+                <span id="progress-display">已完成：<span id="completed-count">0</span>/<span id="total-count">45</span></span>
+                <span id="next-display" onclick="nextRound()" style="display: none; cursor: pointer;">继续登记</span>
             </div>
             <div class="stat-item" onclick="switchToNextFacePack()" style="cursor: pointer;">
                 <span>表情包：</span><span id="current-face-pack">经典</span>
             </div>
-            <div class="stat-item" onclick="document.getElementById('nameFileInput').click()">导入名单</div>
-            <input type="file" id="nameFileInput" class="file-input" accept=".txt" onchange="handleFileImport(event)">
-            <div class="stat-item" onclick="resetAll()">重置</div>
+            <div class="stat-item" onclick="document.getElementById('nameFileInput').click()" style="cursor: pointer;">导入名单</div>
+            <div class="stat-item" onclick="clearAllConfig()">重置</div>
         </div>
         <div class="progress-bar">
             <div class="progress-fill" id="progress-fill"></div>
@@ -236,6 +233,9 @@
         <div class="import-section">
         </div>
     </div>
+
+    <!-- 隐藏的文件输入框 -->
+    <input type="file" id="nameFileInput" accept=".txt" style="display: none;" onchange="handleFileImport(event)">
 
     <div class="grid-container" id="grid-container">
         <!-- 学生卡片将通过JavaScript生成 -->
@@ -619,6 +619,17 @@
             // 更新当前表情包名称
             const packName = facePackConfigs[currentFacePack]?.name || '未知表情包';
             document.getElementById('current-face-pack').textContent = packName;
+            
+            // 控制进度显示和"下一项"按钮的切换
+            const progressDisplay = document.getElementById('progress-display');
+            const nextDisplay = document.getElementById('next-display');
+            if (completedCount === totalStudents && totalStudents > 0) {
+                progressDisplay.style.display = 'none';
+                nextDisplay.style.display = 'inline';
+            } else {
+                progressDisplay.style.display = 'inline';
+                nextDisplay.style.display = 'none';
+            }
         }
 
         // 切换表情包功能
@@ -641,14 +652,40 @@
             switchFacePack(nextPack);
         }
 
-        // 重置所有状态
-        function resetAll() {
-            if (confirm('确定要重置所有学生的作业状态吗？')) {
-                initializeStudents();
+        // 下一项功能 - 重新开始统计（保留姓名列表和配置）
+        function nextRound() {
+                // 重置所有学生的完成状态，但保留姓名列表
+                students.forEach(student => {
+                    student.completed = false;
+                    student.statusLevel = 0;
+                });
+                completedCount = 0;
+                currentUpgradeLevel = 0;
                 studentEmotionCache = {}; // 清空表情缓存
                 lastUpgradeTriggeredAt = 0; // 重置升级触发记录
+                
+                // 保存状态并重新渲染
+                saveToStorage();
+                renderStudents();
+        }
+
+        // 清空所有配置 - 恢复到最初始状态
+        function clearAllConfig() {
+            if (confirm('确定要清空所有配置吗？这将删除姓名列表、重置人数为45人，并清除所有数据。')) {
+                // 恢复到最初始状态
+                nameList = [];
+                totalStudents = 45;
+                currentFacePack = 'face1';
+                studentEmotionCache = {};
+                lastUpgradeTriggeredAt = 0;
+                
+                // 重新初始化学生数据
+                initializeStudents();
+                
                 // 清除本地存储
                 localStorage.removeItem('homeworkStatus');
+                
+                // 重新渲染
                 renderStudents();
             }
         }
@@ -724,9 +761,6 @@
                 
                 // 重新初始化学生数据
                 initializeStudents();
-                
-                // 隐藏姓名列表显示
-                document.getElementById('nameListDisplay').style.display = 'none';
                 
                 // 保存到本地存储并重新渲染
                 saveToStorage();
