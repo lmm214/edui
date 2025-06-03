@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作业表情包</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-image: linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: #6a5acd;
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        .stat-item {
+            background: rgba(255,255,255,0.2);
+            padding: 10px 20px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 10px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .student-card {
+            background-image: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%);
+            border-radius: 50%;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+            aspect-ratio: 1;
+        }
+
+        .student-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        }
+
+        .student-card.completed {
+            background-image: linear-gradient(to top, #9795f0 0%, #fbc8d4 100%);
+            color: white;
+        }
+
+        .student-card.completed.face1 {
+            background-image: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        .student-card.completed.face2 {
+            background-image: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+
+        .student-card.completed.face3 {
+            background-image: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        }
+
+        .student-number {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #6a5acd;
+        }
+
+        .student-card.completed .student-number {
+            color: white;
+        }
+
+        .emoji {
+            width: 50px;
+            height: 50px;
+            margin: 5px auto;
+            display: block;
+            transition: all 0.5s ease;
+            object-fit: contain;
+        }
+
+        .status-text {
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 10px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            border-radius: 10px;
+            transition: width 0.5s ease;
+            width: 0%;
+        }
+
+        .reset-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .reset-btn:hover {
+            background: white;
+            color: #667eea;
+        }
+
+        @media (max-width: 1024px) {
+            .grid-container {
+                grid-template-columns: repeat(8, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .grid-container {
+                grid-template-columns: repeat(7, 1fr);
+            }
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .grid-container {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="stats">
+            <div class="stat-item">
+                <span>已完成：</span><span id="completed-count">0</span>
+            </div>
+            <div class="stat-item" onclick="switchToNextFacePack()" style="cursor: pointer;">
+                <span>表情包：</span><span id="current-face-pack">经典</span>
+            </div>
+            <div class="stat-item" onclick="resetAll()">重置</div>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+    </div>
+
+    <div class="grid-container" id="grid-container">
+        <!-- 学生卡片将通过JavaScript生成 -->
+    </div>
+
+    <script src="jsconfetti.js"></script>
+    <script>
+        const confetti = new JSConfetti();
+        function showConfetti() {
+            confetti.addConfetti({
+                confettiNumber: 500
+            })
+        }
+        // 表情包配置 - 支持多套表情包切换
+        const facePackConfigs = {
+            face1: {
+                name: '经典',
+                // 按数字前缀分组的表情图片 - 对应升级等级
+                groups: {
+                    0: [{ image: 'face1/0笑脸表情.png', text: '等待中' }], // 默认状态
+                    1: [
+                        { image: 'face1/1爱慕敬佩表情.png', text: '还行吧' },
+                        { image: 'face1/1可爱表情笑脸.png', text: '还好啦' },
+                        { image: 'face1/1装可爱表情.png', text: '装可爱' }
+                    ], // 升级等级1
+                    2: [
+                        { image: 'face1/2不可能表情.png', text: '不可能' },
+                        { image: 'face1/2努力加油表情.png', text: '要加油' }
+                    ], // 升级等级2
+                    3: [
+                        { image: 'face1/3尴尬流汗表情.png', text: '尴尬了' },
+                        { image: 'face1/3惊讶惊奇表情.png', text: '惊讶中' }
+                    ], // 升级等级3
+                    4: [
+                        { image: 'face1/4大哭悲伤表情.png', text: '大哭中' },
+                        { image: 'face1/4生气愤怒表情.png', text: '生气了' }
+                    ], // 升级等级4
+                    5: [
+                        { image: 'face1/5闭嘴尴尬表情.png', text: '闭嘴了' }
+                    ], // 升级等级5
+                    6: [
+                        { image: 'face1/6瞌睡睡觉表情.png', text: '睡着了' }
+                    ], // 升级等级6
+                    completed: { image: 'face1/99装酷帅气表情.png', text: '已完成' }
+                }
+            },
+            face2: {
+                name: '夸张',
+                // 按数字前缀分组的表情图片 - 对应升级等级
+                groups: {
+                    0: [{ image: 'face2/0睥视.png', text: '睥视中' }], // 默认状态
+                    1: [
+                        { image: 'face2/1尬笑.png', text: '尬笑了' },
+                        { image: 'face2/1恐慌.png', text: '恐慌中' },
+                        { image: 'face2/1无语.png', text: '无语了' },
+                        { image: 'face2/1开心.png', text: '开心了' }
+                    ], // 升级等级1
+                    2: [
+                        { image: 'face2/2不耐烦.png', text: '不耐烦' },
+                        { image: 'face2/2吃惊.png', text: '吃惊了' },
+                        { image: 'face2/2轻视.png', text: '轻视中' },
+                        { image: 'face2/2歪嘴.png', text: '歪嘴笑' }
+                    ], // 升级等级2
+                    3: [
+                        { image: 'face2/3傲娇.png', text: '傲娇中' },
+                        { image: 'face2/3白眼.png', text: '翻白眼' },
+                        { image: 'face2/3紧张.png', text: '紧张了' }
+                    ], // 升级等级3
+                    4: [
+                        { image: 'face2/4厌恶.png', text: '厌恶中' },
+                        { image: 'face2/4害怕.png', text: '害怕了' }
+                    ], // 升级等级4
+                    5: [
+                        { image: 'face2/5失落.png', text: '失落了' },
+                        { image: 'face2/5沮丧.png', text: '沮丧中' }
+                    ], // 升级等级5
+                    6: [
+                        { image: 'face2/6坏笑.png', text: '坏笑中' }
+                    ], // 升级等级6
+                    completed: { image: 'face2/99惊喜.png', text: '已完成' }
+                }
+            },
+            face3: {
+                name: '傲娇',
+                // 按数字前缀分组的表情图片 - 对应升级等级
+                groups: {
+                    0: [{ image: 'face3/0开心.png', text: '开心中' }], // 默认状态
+                    1: [
+                        { image: 'face3/1懵B.png', text: '懵懵的' },
+                        { image: 'face3/1眨眼.png', text: '眨眼中' },
+                        { image: 'face3/1震惊.png', text: '震惊了' }
+                    ], // 升级等级1
+                    2: [
+                        { image: 'face3/2思考.png', text: '思考中' }
+                    ], // 升级等级2
+                    3: [
+                        { image: 'face3/3害怕.png', text: '害怕了' },
+                        { image: 'face3/3斜眼.png', text: '斜眼看' },
+                        { image: 'face3/3难过.png', text: '难过了' }
+                    ], // 升级等级3
+                    4: [
+                        { image: 'face3/4头晕.png', text: '头晕了' },
+                        { image: 'face3/4疲惫.png', text: '疲惫了' },
+                        { image: 'face3/4笑哭.png', text: '笑哭了' },
+                        { image: 'face3/4迷茫.png', text: '迷茫中' }
+                    ], // 升级等级4
+                    5: [
+                        { image: 'face3/5生气.png', text: '生气了' },
+                        { image: 'face3/5面无表情.png', text: '面无表情' }
+                    ], // 升级等级5
+                    6: [
+                        { image: 'face3/6受伤.png', text: '受伤了' }
+                    ], // 升级等级6
+                    completed: { image: 'face3/99酷.png', text: '已完成' }
+                }
+            }
+            // 预留 face4 等扩展位置
+        };
+
+        // 当前使用的表情包
+        let currentFacePack = 'face1';
+
+        // 为每个学生分配随机表情的缓存
+        let studentEmotionCache = {};
+
+        // 预计算的升级阈值 - 性能优化
+        const UPGRADE_THRESHOLDS = [
+            { completedCount: 9, level: 1, percentage: 0.2 },   // 20% (9/45)
+            { completedCount: 18, level: 2, percentage: 0.4 },  // 40% (18/45)
+            { completedCount: 27, level: 3, percentage: 0.6 },  // 60% (27/45)
+            { completedCount: 32, level: 4, percentage: 0.7 },  // 70% (32/45)
+            { completedCount: 36, level: 5, percentage: 0.8 },  // 80% (36/45)
+            { completedCount: 41, level: 6, percentage: 0.9 }   // 90% (41/45)
+        ];
+
+        // 上次触发升级的完成数量，避免重复计算
+        let lastUpgradeTriggeredAt = 0;
+
+        // 获取当前状态配置
+        function getStatusConfig(level, studentId = null) {
+            const pack = facePackConfigs[currentFacePack];
+            if (!pack) return null;
+            
+            if (level === 'completed') {
+                return { ...pack.groups.completed, class: 'completed' };
+            }
+            
+            // 为特定学生获取随机表情（带缓存）
+            if (studentId !== null) {
+                const cacheKey = `${currentFacePack}_${level}_${studentId}`;
+                if (!studentEmotionCache[cacheKey]) {
+                    const group = pack.groups[level] || pack.groups[0];
+                    if (Array.isArray(group)) {
+                        // 随机选择组内的一个表情
+                        const randomIndex = Math.floor(Math.random() * group.length);
+                        studentEmotionCache[cacheKey] = group[randomIndex];
+                    } else {
+                        studentEmotionCache[cacheKey] = group;
+                    }
+                }
+                return { ...studentEmotionCache[cacheKey], class: '' };
+            }
+            
+            // 默认返回组内第一个表情
+            const group = pack.groups[level] || pack.groups[0];
+            const emotion = Array.isArray(group) ? group[0] : group;
+            return { ...emotion, class: '' };
+        }
+
+        let students = [];
+        let completedCount = 0;
+        let currentUpgradeLevel = 0; // 当前升级等级
+
+        // 从本地存储加载状态
+        function loadFromStorage() {
+            try {
+                const savedData = localStorage.getItem('homeworkStatus');
+                if (savedData) {
+                    const data = JSON.parse(savedData);
+                    students = data.students || [];
+                    completedCount = data.completedCount || 0;
+                    currentUpgradeLevel = data.currentUpgradeLevel || 0;
+                    studentEmotionCache = data.studentEmotionCache || {};
+                    currentFacePack = data.currentFacePack || 'face1';
+                    lastUpgradeTriggeredAt = data.lastUpgradeTriggeredAt || 0;
+                    return true;
+                }
+            } catch (error) {
+                console.error('加载本地存储失败:', error);
+            }
+            return false;
+        }
+
+        // 保存状态到本地存储
+        function saveToStorage() {
+            try {
+                const data = {
+                    students,
+                    completedCount,
+                    currentUpgradeLevel,
+                    studentEmotionCache,
+                    currentFacePack,
+                    lastUpgradeTriggeredAt
+                };
+                localStorage.setItem('homeworkStatus', JSON.stringify(data));
+            } catch (error) {
+                console.error('保存到本地存储失败:', error);
+            }
+        }
+
+        // 初始化学生数据
+        function initializeStudents() {
+            students = [];
+            for (let i = 1; i <= 45; i++) {
+                students.push({
+                    id: i,
+                    number: i.toString().padStart(2, '0'),
+                    completed: false,
+                    statusLevel: 0
+                });
+            }
+            completedCount = 0;
+            currentUpgradeLevel = 0;
+        }
+
+        // 计算当前应该升级的等级 - 性能优化版本
+        function calculateUpgradeLevel() {
+            if (completedCount === 45) {
+                showConfetti()
+                setTimeout(() => {
+                  showConfetti()
+                  setTimeout(() => {
+                      showConfetti()
+                  }, 800)
+                }, 600)
+                return 6;
+            }
+            
+            // 找到当前应该达到的最高等级
+            let maxAvailableLevel = 0;
+            for (const threshold of UPGRADE_THRESHOLDS) {
+                if (completedCount >= threshold.completedCount) {
+                    maxAvailableLevel = threshold.level;
+                }
+            }
+            
+            return Math.max(currentUpgradeLevel, maxAvailableLevel);
+        }
+
+        // 检查是否需要触发升级 - 性能优化
+        function shouldTriggerUpgrade() {
+            // 只在达到关键阈值时才触发升级
+            for (const threshold of UPGRADE_THRESHOLDS) {
+                if (completedCount === threshold.completedCount && lastUpgradeTriggeredAt < threshold.completedCount) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 渐进式更新学生状态等级 - 性能优化版本
+        function updateStudentLevels() {
+            // 只在关键阈值点触发升级计算
+            if (!shouldTriggerUpgrade()) {
+                return;
+            }
+            
+            const targetLevel = calculateUpgradeLevel();
+            
+            if (targetLevel > currentUpgradeLevel) {
+                // 获取所有未完成的学生
+                const incompleteStudents = students.filter(s => !s.completed);
+                const remainingCount = incompleteStudents.length;
+                
+                if (remainingCount > 0) {
+                    // 预计算的升级比例
+                    const upgradeRatios = {
+                        1: 0.5, 2: 0.6, 3: 0.7, 4: 0.8, 5: 0.9, 6: 1.0
+                    };
+                    
+                    const upgradeRatio = upgradeRatios[targetLevel] || 0.5;
+                    const upgradeCount = targetLevel >= 6 ? remainingCount : Math.floor(remainingCount * upgradeRatio);
+                    
+                    // 随机选择要升级的学生
+                    const shuffled = [...incompleteStudents].sort(() => Math.random() - 0.5);
+                    for (let i = 0; i < upgradeCount && i < shuffled.length; i++) {
+                        shuffled[i].statusLevel = targetLevel;
+                        // 清除该学生的表情缓存，强制重新分配
+                        Object.keys(studentEmotionCache).forEach(key => {
+                            if (key.includes(`_${shuffled[i].id}`)) {
+                                delete studentEmotionCache[key];
+                            }
+                        });
+                    }
+                }
+                
+                currentUpgradeLevel = targetLevel;
+                lastUpgradeTriggeredAt = completedCount;
+            }
+        }
+
+        // 渲染学生卡片
+        function renderStudents() {
+            const container = document.getElementById('grid-container');
+            
+            // 更新学生等级
+            updateStudentLevels();
+            
+            container.innerHTML = '';
+            
+            students.forEach(student => {
+                const card = document.createElement('div');
+                card.className = 'student-card';
+                
+                let status;
+                if (student.completed) {
+                    status = getStatusConfig('completed');
+                    card.classList.add('completed', currentFacePack);
+                } else {
+                    // 使用学生的个人状态等级
+                    const level = student.statusLevel || 0;
+                    status = getStatusConfig(level, student.id);
+                }
+                
+                card.innerHTML = `
+                        <div class="student-number">${student.number}</div>
+                        <img class="emoji" src="${status.image}" alt="${status.text}" onerror="this.style.display='none'" />
+                    `;
+                card.addEventListener('click', () => toggleStudent(student.id));
+                container.appendChild(card);
+            });
+            
+            updateStats();
+        }
+
+        // 切换学生状态
+        function toggleStudent(studentId) {
+            const student = students.find(s => s.id === studentId);
+            if (student) {
+                student.completed = !student.completed;
+                completedCount += student.completed ? 1 : -1;
+                
+                // 如果学生完成了作业，重置其状态等级
+                if (student.completed) {
+                    student.statusLevel = 0;
+                }
+                
+                // 保存到本地存储
+                saveToStorage();
+                renderStudents();
+            }
+        }
+
+        // 更新统计信息
+        function updateStats() {
+            const completionRate = Math.round((completedCount / 45) * 100);
+            document.getElementById('completed-count').textContent = completedCount;
+            document.getElementById('progress-fill').style.width = completionRate + '%';
+            
+            // 更新当前表情包名称
+            const packName = facePackConfigs[currentFacePack]?.name || '未知表情包';
+            document.getElementById('current-face-pack').textContent = packName;
+        }
+
+        // 切换表情包功能
+        function switchFacePack(packName) {
+            if (facePackConfigs[packName]) {
+                currentFacePack = packName;
+                studentEmotionCache = {}; // 清空表情缓存，重新分配
+                saveToStorage(); // 保存当前表情包选择
+                renderStudents();
+                console.log(`已切换到表情包: ${facePackConfigs[packName].name}`);
+            }
+        }
+
+        // 切换到下一个表情包
+        function switchToNextFacePack() {
+            const packKeys = Object.keys(facePackConfigs);
+            const currentIndex = packKeys.indexOf(currentFacePack);
+            const nextIndex = (currentIndex + 1) % packKeys.length;
+            const nextPack = packKeys[nextIndex];
+            switchFacePack(nextPack);
+        }
+
+        // 重置所有状态
+        function resetAll() {
+            if (confirm('确定要重置所有学生的作业状态吗？')) {
+                initializeStudents();
+                studentEmotionCache = {}; // 清空表情缓存
+                lastUpgradeTriggeredAt = 0; // 重置升级触发记录
+                // 清除本地存储
+                localStorage.removeItem('homeworkStatus');
+                renderStudents();
+            }
+        }
+
+        // 重新分配表情（保持完成状态不变）
+        function reshuffleEmotions() {
+            studentEmotionCache = {}; // 清空缓存，重新随机分配
+            renderStudents();
+        }
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 尝试从本地存储加载数据
+            if (!loadFromStorage()) {
+                // 如果没有保存的数据，则初始化
+                initializeStudents();
+            }
+            renderStudents();
+        });
+
+        // 添加一些动画效果
+        document.addEventListener('DOMContentLoaded', function() {
+            // 为卡片添加进入动画
+            setTimeout(() => {
+                const cards = document.querySelectorAll('.student-card');
+                cards.forEach((card, index) => {
+                    setTimeout(() => {
+                        card.style.opacity = '0';
+                        card.style.transform = 'translateY(20px)';
+                        card.style.transition = 'all 0.3s ease';
+                        
+                        setTimeout(() => {
+                            card.style.opacity = '1';
+                            card.style.transform = 'translateY(0)';
+                        }, 50);
+                    }, index * 20);
+                });
+            }, 100);
+        });
+    </script>
+</body>
+</html>
