@@ -35,6 +35,7 @@
 
         .stat-item {
             background: rgba(255,255,255,0.2);
+            box-shadow: inset 5px 5px 5px rgba(0, 0, 0, 0.05);
             padding: 10px 20px;
             border-radius: 20px;
             backdrop-filter: blur(10px);
@@ -55,7 +56,7 @@
             text-align: center;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: inset 5px 5px 5px rgba(0, 0, 0, 0.1);
             position: relative;
             overflow: hidden;
             aspect-ratio: 1;
@@ -68,6 +69,7 @@
 
         .student-card.completed {
             background-image: linear-gradient(to top, #9795f0 0%, #fbc8d4 100%);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
             color: white;
         }
 
@@ -108,11 +110,12 @@
         }
 
         .progress-bar {
-            width: 100%;
+            width: 500px;
             height: 20px;
             background: rgba(255,255,255,0.3);
+            box-shadow: inset 5px 5px 5px rgba(0, 0, 0, 0.05);
             border-radius: 10px;
-            margin: 20px 0;
+            margin: 20px auto;
             overflow: hidden;
         }
 
@@ -139,6 +142,53 @@
         .reset-btn:hover {
             background: white;
             color: #667eea;
+        }
+
+        .import-section {
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .import-btn {
+            background: rgba(106, 90, 205, 0.8);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+        }
+
+        .import-btn:hover {
+            background: rgba(106, 90, 205, 1);
+            transform: translateY(-2px);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .name-list-display {
+            background: rgba(255,255,255,0.9);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            text-align: left;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .name-item {
+            display: inline-block;
+            background: rgba(106, 90, 205, 0.1);
+            padding: 2px 8px;
+            margin: 2px;
+            border-radius: 12px;
+            border: 1px solid rgba(106, 90, 205, 0.3);
         }
 
         @media (max-width: 1024px) {
@@ -169,13 +219,21 @@
             <div class="stat-item">
                 <span>已完成：</span><span id="completed-count">0</span>
             </div>
+            <div class="stat-item">
+                <span>总人数：</span><span id="total-count">45</span>
+            </div>
             <div class="stat-item" onclick="switchToNextFacePack()" style="cursor: pointer;">
                 <span>表情包：</span><span id="current-face-pack">经典</span>
             </div>
+            <div class="stat-item" onclick="document.getElementById('nameFileInput').click()">导入名单</div>
+            <input type="file" id="nameFileInput" class="file-input" accept=".txt" onchange="handleFileImport(event)">
             <div class="stat-item" onclick="resetAll()">重置</div>
         </div>
         <div class="progress-bar">
             <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        
+        <div class="import-section">
         </div>
     </div>
 
@@ -303,15 +361,17 @@
         // 为每个学生分配随机表情的缓存
         let studentEmotionCache = {};
 
-        // 预计算的升级阈值 - 性能优化
-        const UPGRADE_THRESHOLDS = [
-            { completedCount: 9, level: 1, percentage: 0.2 },   // 20% (9/45)
-            { completedCount: 18, level: 2, percentage: 0.4 },  // 40% (18/45)
-            { completedCount: 27, level: 3, percentage: 0.6 },  // 60% (27/45)
-            { completedCount: 32, level: 4, percentage: 0.7 },  // 70% (32/45)
-            { completedCount: 36, level: 5, percentage: 0.8 },  // 80% (36/45)
-            { completedCount: 41, level: 6, percentage: 0.9 }   // 90% (41/45)
-        ];
+        // 动态计算升级阈值
+        function getUpgradeThresholds() {
+            return [
+                { completedCount: Math.floor(totalStudents * 0.2), level: 1, percentage: 0.2 },   // 20%
+                { completedCount: Math.floor(totalStudents * 0.4), level: 2, percentage: 0.4 },   // 40%
+                { completedCount: Math.floor(totalStudents * 0.6), level: 3, percentage: 0.6 },   // 60%
+                { completedCount: Math.floor(totalStudents * 0.7), level: 4, percentage: 0.7 },   // 70%
+                { completedCount: Math.floor(totalStudents * 0.8), level: 5, percentage: 0.8 },   // 80%
+                { completedCount: Math.floor(totalStudents * 0.9), level: 6, percentage: 0.9 }    // 90%
+            ];
+        }
 
         // 上次触发升级的完成数量，避免重复计算
         let lastUpgradeTriggeredAt = 0;
@@ -350,6 +410,8 @@
         let students = [];
         let completedCount = 0;
         let currentUpgradeLevel = 0; // 当前升级等级
+        let totalStudents = 45; // 总学生数，默认45人
+        let nameList = []; // 导入的姓名列表
 
         // 从本地存储加载状态
         function loadFromStorage() {
@@ -363,6 +425,8 @@
                     studentEmotionCache = data.studentEmotionCache || {};
                     currentFacePack = data.currentFacePack || 'face1';
                     lastUpgradeTriggeredAt = data.lastUpgradeTriggeredAt || 0;
+                    totalStudents = data.totalStudents || 45;
+                    nameList = data.nameList || [];
                     return true;
                 }
             } catch (error) {
@@ -380,7 +444,9 @@
                     currentUpgradeLevel,
                     studentEmotionCache,
                     currentFacePack,
-                    lastUpgradeTriggeredAt
+                    lastUpgradeTriggeredAt,
+                    totalStudents,
+                    nameList
                 };
                 localStorage.setItem('homeworkStatus', JSON.stringify(data));
             } catch (error) {
@@ -391,13 +457,23 @@
         // 初始化学生数据
         function initializeStudents() {
             students = [];
-            for (let i = 1; i <= 45; i++) {
-                students.push({
+            for (let i = 1; i <= totalStudents; i++) {
+                const student = {
                     id: i,
                     number: i.toString().padStart(2, '0'),
                     completed: false,
                     statusLevel: 0
-                });
+                };
+                
+                // 如果有导入的姓名列表，使用姓名；否则使用编号
+                if (nameList.length > 0 && i <= nameList.length) {
+                    student.name = nameList[i - 1];
+                    student.displayName = nameList[i - 1];
+                } else {
+                    student.displayName = student.number;
+                }
+                
+                students.push(student);
             }
             completedCount = 0;
             currentUpgradeLevel = 0;
@@ -407,7 +483,8 @@
         function calculateUpgradeLevel() {
             // 找到当前应该达到的最高等级
             let maxAvailableLevel = 0;
-            for (const threshold of UPGRADE_THRESHOLDS) {
+            const thresholds = getUpgradeThresholds();
+            for (const threshold of thresholds) {
                 if (completedCount >= threshold.completedCount) {
                     maxAvailableLevel = threshold.level;
                 }
@@ -419,7 +496,8 @@
         // 检查是否需要触发升级 - 性能优化
         function shouldTriggerUpgrade() {
             // 只在达到关键阈值时才触发升级
-            for (const threshold of UPGRADE_THRESHOLDS) {
+            const thresholds = getUpgradeThresholds();
+            for (const threshold of thresholds) {
                 if (completedCount === threshold.completedCount && lastUpgradeTriggeredAt < threshold.completedCount) {
                     return true;
                 }
@@ -492,7 +570,7 @@
                 }
                 
                 card.innerHTML = `
-                        <div class="student-number">${student.number}</div>
+                        <div class="student-number">${student.displayName || student.number}</div>
                         <img class="emoji" src="${status.image}" alt="${status.text}" onerror="this.style.display='none'" />
                     `;
                 card.addEventListener('click', () => toggleStudent(student.id));
@@ -515,7 +593,7 @@
                 }
                 
                 // 检查是否全部完成，触发碎纸特效
-                if (completedCount === 45) {
+                if (completedCount === totalStudents) {
                     showConfetti();
                     setTimeout(() => {
                         showConfetti();
@@ -533,8 +611,9 @@
 
         // 更新统计信息
         function updateStats() {
-            const completionRate = Math.round((completedCount / 45) * 100);
+            const completionRate = totalStudents > 0 ? Math.round((completedCount / totalStudents) * 100) : 0;
             document.getElementById('completed-count').textContent = completedCount;
+            document.getElementById('total-count').textContent = totalStudents;
             document.getElementById('progress-fill').style.width = completionRate + '%';
             
             // 更新当前表情包名称
@@ -578,6 +657,83 @@
         function reshuffleEmotions() {
             studentEmotionCache = {}; // 清空缓存，重新随机分配
             renderStudents();
+        }
+
+        // 处理文件导入
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            if (!file.name.toLowerCase().endsWith('.txt')) {
+                alert('请选择 .txt 格式的文件！');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const content = e.target.result;
+                    // 按行分割，过滤空行和空白字符
+                    const names = content.split('\n')
+                        .map(name => name.trim())
+                        .filter(name => name.length > 0);
+                    
+                    if (names.length === 0) {
+                        alert('文件中没有找到有效的姓名！');
+                        return;
+                    }
+                    
+                    // 更新姓名列表和总人数
+                    nameList = names;
+                    totalStudents = names.length;
+                    
+                    // 重新初始化学生数据
+                    initializeStudents();
+                    
+                    // 保存到本地存储并重新渲染
+                    saveToStorage();
+                    renderStudents();
+                    
+                    alert(`成功导入 ${names.length} 个姓名！`);
+                } catch (error) {
+                    console.error('文件读取错误:', error);
+                    alert('文件读取失败，请检查文件格式！');
+                }
+            };
+            
+            reader.onerror = function() {
+                alert('文件读取失败！');
+            };
+            
+            reader.readAsText(file, 'UTF-8');
+            
+            // 清空文件输入，允许重复选择同一文件
+            event.target.value = '';
+        }
+
+        // 清空姓名名单
+        function clearNameList() {
+            if (nameList.length === 0) {
+                alert('当前没有导入的姓名名单！');
+                return;
+            }
+            
+            if (confirm('确定要清空导入的姓名名单吗？将恢复为默认的45人编号模式。')) {
+                nameList = [];
+                totalStudents = 45;
+                
+                // 重新初始化学生数据
+                initializeStudents();
+                
+                // 隐藏姓名列表显示
+                document.getElementById('nameListDisplay').style.display = 'none';
+                
+                // 保存到本地存储并重新渲染
+                saveToStorage();
+                renderStudents();
+                
+                alert('姓名名单已清空，恢复为默认45人模式！');
+            }
         }
 
         // 页面加载时初始化
