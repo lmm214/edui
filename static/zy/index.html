@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>作业表情包</title>
+    <title>作业登记表情包</title>
     <style>
         * {
             margin: 0;
@@ -29,8 +29,7 @@
         .stats {
             display: flex;
             gap: 30px;
-            margin-bottom: 20px;
-            font-size: 1.2rem;
+            font-size: 1rem;
         }
 
         .stat-item {
@@ -51,7 +50,7 @@
 
         .student-card {
             background-image: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%);
-            border-radius: 50%;
+            border-radius: 20px;
             padding: 10px;
             text-align: center;
             cursor: pointer;
@@ -61,6 +60,7 @@
             overflow: hidden;
             aspect-ratio: 1;
         }
+        .face2 .student-card{border-radius: 50%;}
 
         .student-card:hover {
             transform: translateY(-5px);
@@ -91,7 +91,18 @@
             color: #6a5acd;
         }
 
+        .student-name {
+            font-size: 0.9rem;
+            font-weight: normal;
+            color: #6a5acd;
+            margin-top: 2px;
+        }
+
         .student-card.completed .student-number {
+            color: white;
+        }
+
+        .student-card.completed .student-name {
             color: white;
         }
 
@@ -109,11 +120,9 @@
         @keyframes breathe {
             0%, 100% {
                 transform: scale(1) translateY(0);
-                opacity: 0.8;
             }
             50% {
                 transform: scale(1.06) translateY(2px);
-                opacity: 1;
             }
         }
         
@@ -125,12 +134,10 @@
         @keyframes breatheCompleted {
             0%, 100% {
                 transform: scale(1);
-                opacity: 0.9;
                 filter: brightness(1);
             }
             50% {
                 transform: scale(1.08);
-                opacity: 1;
                 filter: brightness(1.1);
             }
         }
@@ -173,11 +180,6 @@
         .reset-btn:hover {
             background: white;
             color: #667eea;
-        }
-
-        .import-section {
-            margin: 20px 0;
-            text-align: center;
         }
 
         .import-btn {
@@ -255,13 +257,10 @@
                 <span>表情包：</span><span id="current-face-pack">经典</span>
             </div>
             <div class="stat-item" onclick="document.getElementById('nameFileInput').click()" style="cursor: pointer;">导入名单</div>
-            <div class="stat-item" onclick="clearAllConfig()">重置</div>
+            <div class="stat-item" onclick="clearAllConfig()">重置修改</div>
         </div>
         <div class="progress-bar">
             <div class="progress-fill" id="progress-fill"></div>
-        </div>
-        
-        <div class="import-section">
         </div>
     </div>
 
@@ -498,8 +497,17 @@
                 
                 // 如果有导入的姓名列表，使用姓名；否则使用编号
                 if (nameList.length > 0 && i <= nameList.length) {
-                    student.name = nameList[i - 1];
-                    student.displayName = nameList[i - 1];
+                    const nameData = nameList[i - 1];
+                    if (typeof nameData === 'object') {
+                        // 新格式：包含数字和姓名的对象
+                        student.name = nameData.name;
+                        student.originalNumber = nameData.number;
+                        student.displayName = nameData.name;
+                    } else {
+                        // 旧格式：纯字符串
+                        student.name = nameData;
+                        student.displayName = nameData;
+                    }
                 } else {
                     student.displayName = student.number;
                 }
@@ -581,6 +589,9 @@
         function renderStudents() {
             const container = document.getElementById('grid-container');
             
+            // 添加当前表情包的class标识
+            container.className = `grid-container ${currentFacePack}`;
+            
             // 更新学生等级
             updateStudentLevels();
             
@@ -601,10 +612,21 @@
                     status = getStatusConfig(level, student.id);
                 }
                 
-                card.innerHTML = `
+                // 根据是否有原始数字来决定显示格式
+                if (student.originalNumber !== undefined && student.originalNumber !== null) {
+                    // 有原始数字，分行显示
+                    card.innerHTML = `
+                        <div class="student-number">${student.originalNumber}</div>
+                        <div class="student-name">${student.name}</div>
+                        <img class="emoji" src="${status.image}" alt="${status.text}" onerror="this.style.display='none'" />
+                    `;
+                } else {
+                    // 没有原始数字，使用原来的显示方式
+                    card.innerHTML = `
                         <div class="student-number">${student.displayName || student.number}</div>
                         <img class="emoji" src="${status.image}" alt="${status.text}" onerror="this.style.display='none'" />
                     `;
+                }
                 card.addEventListener('click', () => toggleStudent(student.id));
                 container.appendChild(card);
             });
@@ -647,7 +669,12 @@
             if (student) {
                 // 如果学生已完成，需要确认是否要取消完成状态
                 if (student.completed) {
-                    const studentName = student.displayName || student.number;
+                    let studentName;
+                    if (student.originalNumber !== undefined && student.originalNumber !== null) {
+                        studentName = `${student.originalNumber} ${student.name}`;
+                    } else {
+                        studentName = student.displayName || student.number;
+                    }
                     if (!confirm(`确定要将 ${studentName} 标记为未完成吗？`)) {
                         return; // 用户取消操作
                     }
@@ -756,22 +783,43 @@
 
         // 清空所有配置 - 恢复到最初始状态
         function clearAllConfig() {
-            if (confirm('确定要清空所有配置吗？这将删除姓名列表、重置人数为45人，并清除所有数据。')) {
-                // 恢复到最初始状态
-                nameList = [];
-                totalStudents = 45;
-                currentFacePack = 'face1';
-                studentEmotionCache = {};
-                lastUpgradeTriggeredAt = 0;
+            if (confirm('确定要清空所有配置吗？这将删除姓名列表并清除所有数据。')) {
+                // 询问用户是否要修改总人数
+                let newTotalStudents = prompt('请输入新的总人数（留空则使用默认45人）:', totalStudents);
                 
-                // 重新初始化学生数据
-                initializeStudents();
-                
-                // 清除本地存储
-                localStorage.removeItem('homeworkStatus');
-                
-                // 重新渲染
-                renderStudents();
+                // 验证输入
+                if (newTotalStudents !== null) {
+                    // 用户点击了确定
+                    if (newTotalStudents.trim() === '') {
+                        // 留空，使用默认值
+                        newTotalStudents = 45;
+                    } else {
+                        // 转换为数字并验证
+                        const parsedNumber = parseInt(newTotalStudents);
+                        if (isNaN(parsedNumber) || parsedNumber < 1 || parsedNumber > 100) {
+                            alert('请输入1-100之间的有效数字！');
+                            return; // 取消重置操作
+                        }
+                        newTotalStudents = parsedNumber;
+                    }
+                    
+                    // 恢复到最初始状态
+                    nameList = [];
+                    totalStudents = newTotalStudents;
+                    currentFacePack = 'face1';
+                    studentEmotionCache = {};
+                    lastUpgradeTriggeredAt = 0;
+                    
+                    // 重新初始化学生数据
+                    initializeStudents();
+                    
+                    // 清除本地存储
+                    localStorage.removeItem('homeworkStatus');
+                    
+                    // 重新渲染
+                    renderStudents();
+                }
+                // 如果用户点击取消，则不执行任何操作
             }
         }
 
@@ -796,14 +844,49 @@
                 try {
                     const content = e.target.result;
                     // 按行分割，过滤空行和空白字符
-                    const names = content.split('\n')
-                        .map(name => name.trim())
-                        .filter(name => name.length > 0);
+                    const rawLines = content.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line.length > 0);
+                    
+                    if (rawLines.length === 0) {
+                        alert('文件中没有找到有效的内容！');
+                        return;
+                    }
+                    
+                    // 解析姓名，支持数字前缀格式
+                    const names = [];
+                    const numberNamePairs = [];
+                    
+                    rawLines.forEach(line => {
+                        // 匹配数字前缀的正则表达式，支持各种分隔符
+                        const match = line.match(/^(\d+)[.、，,\s]*(.+)$/);
+                        
+                        if (match) {
+                            // 提取数字和姓名
+                            const number = parseInt(match[1]);
+                            const name = match[2].trim();
+                            
+                            if (name.length > 0) {
+                                names.push({ name, number });
+                                numberNamePairs.push({ number, name });
+                            }
+                        } else {
+                            // 没有数字前缀，直接作为姓名
+                            const name = line.trim();
+                            if (name.length > 0) {
+                                names.push({ name, number: null });
+                                numberNamePairs.push({ number: null, name });
+                            }
+                        }
+                    });
                     
                     if (names.length === 0) {
                         alert('文件中没有找到有效的姓名！');
                         return;
                     }
+                    
+                    // 显示解析结果
+                    let resultMessage = `成功导入 ${names.length} 个姓名！`;
                     
                     // 更新姓名列表和总人数
                     nameList = names;
@@ -816,10 +899,10 @@
                     saveToStorage();
                     renderStudents();
                     
-                    alert(`成功导入 ${names.length} 个姓名！`);
+                    alert(resultMessage);
                 } catch (error) {
                     console.error('文件读取错误:', error);
-                    alert('文件读取失败，请检查文件格式！');
+                    alert('文件读取失败，请使用 txt 文件格式！');
                 }
             };
             
