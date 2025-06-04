@@ -102,6 +102,37 @@
             display: block;
             transition: all 0.5s ease;
             object-fit: contain;
+            animation: breathe 3s ease-in-out infinite;
+        }
+        
+        /* 呼吸感动画 */
+        @keyframes breathe {
+            0%, 100% {
+                transform: scale(1) translateY(0);
+                opacity: 0.8;
+            }
+            50% {
+                transform: scale(1.06) translateY(2px);
+                opacity: 1;
+            }
+        }
+        
+        /* 已完成状态的表情图片有更明显的动画 */
+        .student-card.completed .emoji {
+            animation: breatheCompleted 2s ease-in-out infinite;
+        }
+        
+        @keyframes breatheCompleted {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 0.9;
+                filter: brightness(1);
+            }
+            50% {
+                transform: scale(1.08);
+                opacity: 1;
+                filter: brightness(1.1);
+            }
         }
 
         .status-text {
@@ -558,6 +589,7 @@
             students.forEach(student => {
                 const card = document.createElement('div');
                 card.className = 'student-card';
+                card.id = `student-card-${student.id}`; // 添加唯一ID
                 
                 let status;
                 if (student.completed) {
@@ -579,11 +611,48 @@
             
             updateStats();
         }
+        
+        // 更新单个学生卡片
+        function updateSingleStudentCard(studentId) {
+            const student = students.find(s => s.id === studentId);
+            if (!student) return;
+            
+            const card = document.getElementById(`student-card-${studentId}`);
+            if (!card) return;
+            
+            // 清除之前的状态类
+            card.className = 'student-card';
+            
+            let status;
+            if (student.completed) {
+                status = getStatusConfig('completed');
+                card.classList.add('completed', currentFacePack);
+            } else {
+                // 使用学生的个人状态等级
+                const level = student.statusLevel || 0;
+                status = getStatusConfig(level, student.id);
+            }
+            
+            // 只更新图片和文本，不重新创建整个卡片
+            const emoji = card.querySelector('.emoji');
+            if (emoji) {
+                emoji.src = status.image;
+                emoji.alt = status.text;
+            }
+        }
 
         // 切换学生状态
         function toggleStudent(studentId) {
             const student = students.find(s => s.id === studentId);
             if (student) {
+                // 如果学生已完成，需要确认是否要取消完成状态
+                if (student.completed) {
+                    const studentName = student.displayName || student.number;
+                    if (!confirm(`确定要将 ${studentName} 标记为未完成吗？`)) {
+                        return; // 用户取消操作
+                    }
+                }
+                
                 student.completed = !student.completed;
                 completedCount += student.completed ? 1 : -1;
                 
@@ -605,7 +674,23 @@
                 
                 // 保存到本地存储
                 saveToStorage();
-                renderStudents();
+                
+                // 只更新被点击的学生卡片，而不是重新渲染所有卡片
+                updateSingleStudentCard(studentId);
+                updateStats();
+                
+                // 检查是否需要更新其他学生的等级（升级系统）
+                const oldUpgradeLevel = currentUpgradeLevel;
+                updateStudentLevels();
+                
+                // 如果升级等级发生变化，才更新其他未完成的学生卡片
+                if (currentUpgradeLevel !== oldUpgradeLevel) {
+                    students.forEach(s => {
+                        if (!s.completed && s.id !== studentId) {
+                            updateSingleStudentCard(s.id);
+                        }
+                    });
+                }
             }
         }
 
