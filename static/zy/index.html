@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>作业登记表情包</title>
+    <title>作业表情包</title>
     <style>
         * {
             margin: 0;
@@ -391,6 +391,69 @@
         // 为每个学生分配随机表情的缓存
         let studentEmotionCache = {};
 
+        // 图片预加载缓存
+        let imagePreloadCache = new Map();
+        let preloadPromises = new Map();
+
+        // 预加载指定表情包的所有图片
+        function preloadFacePackImages(packName) {
+            const pack = facePackConfigs[packName];
+            if (!pack || preloadPromises.has(packName)) {
+                return preloadPromises.get(packName) || Promise.resolve();
+            }
+
+            const imageUrls = new Set();
+            
+            // 收集所有图片URL
+            Object.values(pack.groups).forEach(group => {
+                if (Array.isArray(group)) {
+                    group.forEach(item => imageUrls.add(item.image));
+                } else {
+                    imageUrls.add(group.image);
+                }
+            });
+
+            // 创建预加载Promise
+            const loadPromises = Array.from(imageUrls).map(url => {
+                if (imagePreloadCache.has(url)) {
+                    return Promise.resolve();
+                }
+
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        imagePreloadCache.set(url, img);
+                        resolve();
+                    };
+                    img.onerror = () => {
+                        console.warn(`图片预加载失败: ${url}`);
+                        resolve(); // 即使失败也继续，不阻塞其他图片
+                    };
+                    img.src = url;
+                });
+            });
+
+            const promise = Promise.all(loadPromises).then(() => {
+                console.log(`表情包 "${pack.name}" 图片预加载完成`);
+            }).catch(error => {
+                console.error(`表情包 "${pack.name}" 图片预加载出错:`, error);
+            });
+
+            preloadPromises.set(packName, promise);
+            return promise;
+        }
+
+        // 预加载所有表情包的图片
+        function preloadAllFacePackImages() {
+            const promises = Object.keys(facePackConfigs).map(packName => 
+                preloadFacePackImages(packName)
+            );
+            
+            return Promise.all(promises).then(() => {
+                console.log('所有表情包图片预加载完成');
+            });
+        }
+
         // 动态计算升级阈值
         function getUpgradeThresholds() {
             return [
@@ -747,11 +810,14 @@
         // 切换表情包功能
         function switchFacePack(packName) {
             if (facePackConfigs[packName]) {
-                currentFacePack = packName;
-                studentEmotionCache = {}; // 清空表情缓存，重新分配
-                saveToStorage(); // 保存当前表情包选择
-                renderStudents();
-                console.log(`已切换到表情包: ${facePackConfigs[packName].name}`);
+                // 先预加载目标表情包的图片
+                preloadFacePackImages(packName).then(() => {
+                    currentFacePack = packName;
+                    studentEmotionCache = {}; // 清空表情缓存，重新分配
+                    saveToStorage(); // 保存当前表情包选择
+                    renderStudents();
+                    console.log(`已切换到表情包: ${facePackConfigs[packName].name}`);
+                });
             }
         }
 
@@ -945,7 +1011,15 @@
                 // 如果没有保存的数据，则初始化
                 initializeStudents();
             }
-            renderStudents();
+            
+            // 先预加载当前表情包的图片，然后渲染
+            preloadFacePackImages(currentFacePack).then(() => {
+                renderStudents();
+                // 在后台预加载其他表情包的图片
+                setTimeout(() => {
+                    preloadAllFacePackImages();
+                }, 1000); // 延迟1秒后开始预加载其他表情包
+            });
         });
 
         // 添加一些动画效果
