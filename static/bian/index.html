@@ -34,7 +34,7 @@
         .control-area-1 {
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: 0;
         }
         
         .input-group {
@@ -70,10 +70,12 @@
         .slider-a::-webkit-slider-thumb { background: #3b82f6; }
         .slider-b::-webkit-slider-thumb { background: #10b981; }
         .slider-c::-webkit-slider-thumb { background: #ef4444; }
+        .slider-grid::-webkit-slider-thumb { background: #8b5cf6; }
         
         .slider-a { background: #93c5fd; }
         .slider-b { background: #6ee7b7; }
         .slider-c { background: #ef4444; }
+        .slider-grid { background: #c4b5fd; }
         
         .slider-value {
             width: 2rem;
@@ -156,21 +158,32 @@
         .line-handle {
             cursor: pointer;
             fill-opacity: 0.7;
-            transition: r 0.2s, fill-opacity 0.2s;
+            transition: r 0.5s, fill-opacity 0.5s;
         }
         
         .line-handle:hover {
-            r: 12;
+            r: 8;
             fill-opacity: 1;
         }
         
         /* 吸附点样式 */
         .snapped-point {
-            r: 8;
+            r: 5;
             fill-opacity: 1;
             filter: drop-shadow(0 0 2px rgba(255,255,255,0.8));
         }
+        .length-label{font-size: 2rem;}
 
+        /* 永久吸附点样式 (用于边 C) */
+        .permanently-snapped {
+            r: 5;
+            fill-opacity: 1;
+            filter: drop-shadow(0 0 2px rgba(255,255,255,0.8));
+            /* 可以添加其他样式以区分 */
+            stroke: #a0a0a0; /* 例如，添加灰色描边 */
+            stroke-width: 1;
+        }
+        .line-group text{user-select: none;}
     </style>
 </head>
 <body>
@@ -179,25 +192,29 @@
         <div class="control-area-1">
             <div class="input-group">
                 <label for="side-a-input">边A</label>
-                <input type="range" min="1" max="12" step="1" id="side-a-input" class="slider slider-a" value="3">
-                <span class="slider-value"></span>
+                <input type="range" min="1" max="12" step="1" id="side-a-input" class="slider slider-a" value="5">
+                <span class="slider-value">5</span>
             </div>
             
             <div class="input-group">
                 <label for="side-b-input">边B</label>
-                <input type="range" min="1" max="12" step="1" id="side-b-input" class="slider slider-b" value="4">
-                <span class="slider-value"></span>
+                <input type="range" min="1" max="12" step="1" id="side-b-input" class="slider slider-b" value="6">
+                <span class="slider-value">6</span>
             </div>
             
             <div class="input-group">
                 <label for="side-c-input">边C</label>
-                <input type="range" min="1" max="12" step="1" id="side-c-input" class="slider slider-c" value="5">
-                <span class="slider-value"></span>
+                <input type="range" min="1" max="10" step="1" id="side-c-input" class="slider slider-c" value="10">
+                <span class="slider-value">10</span>
             </div>
         </div>
         <div class="control-area-2">
-            <div class="button-group">
-                <button id="generate-btn" class="btn btn-primary">生成</button>
+            <div class="input-group">
+                <label for="grid-size-input">网格</label>
+                <input type="range" min="20" max="200" step="10" id="grid-size-input" class="slider slider-grid" value="70">
+                <span class="slider-value" id="grid-size-value">70px</span>
+            </div>
+            <div class="button-group" style="display:none;">
                 <button id="reset-btn" class="btn btn-secondary">重置</button>
             </div>
             <div class="instruction-text">
@@ -215,12 +232,7 @@
         </div>
     </div>
     
-    <!-- 三角形模块脚本 -->
     <script>
-/**
- * 三角形三边关系探究模块
- * 允许用户输入三条边长度，并通过交互来验证是否能构成三角形
- */
 class TriangleSidesModule {
     constructor(container) {
         this.container = container;
@@ -236,14 +248,19 @@ class TriangleSidesModule {
         this.lines = [];
         
         // 吸附设置 - 增大吸附范围
-        this.snapThreshold = 12; // 原始值
-        this.snapDistance = 12;  // 从6增加到12，增大吸附范围
-        this.thirdPointThreshold = 12; // 保持现有值
+        this.snapThreshold = 8; // 原始值
+        this.snapDistance = 8;  // 从6增加到8，增大吸附范围
+        this.thirdPointThreshold = 8; // 保持现有值
         this.snappedPoints = []; // 存储已吸附的端点对
         
         // 新增：吸附后的锁定时间
         this.lastSnapTime = 0; // 记录最后一次吸附的时间
         this.snapLockDuration = 800; // 锁定时间500ms
+        
+        // 网格参数
+        this.gridSize = 70; // 默认网格大小
+        this.isManualGridAdjustment = false; // 标记是否为手动调整网格大小
+        this.hasInitialized = false; // 标记是否已初始化完成
         
         // 视图参数
         this.viewWidth = 0;
@@ -279,20 +296,20 @@ class TriangleSidesModule {
         this.initEventListeners();
         
         // 设置默认值
-        document.getElementById('side-a-input').value = 3;
-        document.getElementById('side-b-input').value = 4;
-        document.getElementById('side-c-input').value = 5;
+        document.getElementById('side-a-input').value = 5;
+        document.getElementById('side-b-input').value = 6;
+        document.getElementById('side-c-input').value = 10;
         
         // 再次延迟确保SVG已准备好
         await new Promise(resolve => setTimeout(resolve, 50));
         
         // 生成初始三角形
         this.generateTriangle();
+        
+        // 标记初始化完成
+        this.hasInitialized = true;
     }
     
-    /**
-     * 初始化SVG画布
-     */
     initSVG() {
         const canvasContainer = document.getElementById('triangle-canvas');
         if (!canvasContainer) {
@@ -332,12 +349,17 @@ class TriangleSidesModule {
      * 创建背景网格
      */
     createGrid() {
-        const gridSize = 100; // 增大网格尺寸
+        // 移除旧的网格
+        const oldGrid = this.svg.querySelector('.grid');
+        if (oldGrid) {
+            oldGrid.remove();
+        }
+        
         const gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         gridGroup.setAttribute('class', 'grid');
         
         // 横线
-        for (let y = 0; y <= this.viewHeight; y += gridSize) {
+        for (let y = 0; y <= this.viewHeight; y += this.gridSize) {
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             line.setAttribute('x1', '0');
             line.setAttribute('y1', y.toString());
@@ -349,7 +371,7 @@ class TriangleSidesModule {
         }
         
         // 竖线
-        for (let x = 0; x <= this.viewWidth; x += gridSize) {
+        for (let x = 0; x <= this.viewWidth; x += this.gridSize) {
             const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             line.setAttribute('x1', x.toString());
             line.setAttribute('y1', '0');
@@ -369,19 +391,7 @@ class TriangleSidesModule {
      */
     initEventListeners() {
         // 移除可能已存在的事件监听器
-        const generateBtn = document.getElementById('generate-btn');
         const resetBtn = document.getElementById('reset-btn');
-        
-        if (generateBtn) {
-            const newGenerateBtn = generateBtn.cloneNode(true);
-            generateBtn.parentNode.replaceChild(newGenerateBtn, generateBtn);
-            const handleGenerate = () => this.generateTriangle();
-            newGenerateBtn.addEventListener('click', handleGenerate);
-            newGenerateBtn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                handleGenerate();
-            });
-        }
         
         if (resetBtn) {
             const newResetBtn = resetBtn.cloneNode(true);
@@ -416,8 +426,55 @@ class TriangleSidesModule {
             document.addEventListener('mouseup', this._mouseUpHandler);
             
             // 添加触摸事件监听，设置passive为false
-            document.addEventListener('touchmove', this._touchMoveHandler, { passive: false });
-            document.addEventListener('touchend', this._touchEndHandler, { passive: false });
+        document.addEventListener('touchmove', this._touchMoveHandler, { passive: false });
+        document.addEventListener('touchend', this._touchEndHandler, { passive: false });
+    }
+    
+    // 添加窗口大小变化监听
+    if (!this._resizeHandler) {
+        this._resizeHandler = () => {
+            // 更新视图尺寸
+            const canvasContainer = document.getElementById('triangle-canvas');
+            if (canvasContainer) {
+                this.viewWidth = canvasContainer.clientWidth || 800;
+                this.viewHeight = canvasContainer.clientHeight || 400;
+                this.centerX = this.viewWidth / 2;
+                this.centerY = this.viewHeight / 2;
+                
+                // 更新SVG viewBox
+                if (this.svg) {
+                    this.svg.setAttribute('viewBox', `0 0 ${this.viewWidth} ${this.viewHeight}`);
+                }
+                
+                // 重新生成三角形以适应新尺寸
+                this.generateTriangle();
+            }
+        };
+        window.addEventListener('resize', this._resizeHandler);
+    }
+        
+        // 网格大小滑块事件
+        const gridSizeInput = document.getElementById('grid-size-input');
+        if (gridSizeInput) {
+            const gridSizeValue = document.getElementById('grid-size-value');
+            
+            // 初始化显示值
+            gridSizeValue.textContent = gridSizeInput.value + 'px';
+            
+            const updateGridSize = (e) => {
+                this.gridSize = parseInt(e.target.value);
+                gridSizeValue.textContent = this.gridSize + 'px';
+                this.createGrid(); // 重新创建网格
+                // 手动调整网格大小时，跳过自动计算
+                this.isManualGridAdjustment = true;
+                this.generateTriangle(); // 重新生成三角形以适应新网格
+                this.isManualGridAdjustment = false;
+            };
+            
+            gridSizeInput.addEventListener('input', (e) => {
+                gridSizeValue.textContent = e.target.value + 'px';
+            });
+            gridSizeInput.addEventListener('change', updateGridSize);
         }
         
         // 滑块输入事件
@@ -432,23 +489,28 @@ class TriangleSidesModule {
                 // 初始化显示值
                 valueDisplay.textContent = newInput.value;
                 
-                // 实时更新显示值
-                const updateValue = (e) => {
+                // 更新显示值
+                const updateDisplayValue = (e) => {
                     valueDisplay.textContent = e.target.value;
                 };
-                
-                const validateValue = (e) => {
+
+                // 验证值并重新生成三角形
+                const validateAndRegenerate = (e) => {
                     // 确保值为正
                     if (e.target.value <= 0) {
                         e.target.value = 1;
                         valueDisplay.textContent = '1';
                     }
+                    // 仅对 A 和 B 边调用 generateTriangle
+                    //if (id === 'side-a-input' || id === 'side-b-input') {
+                        this.generateTriangle();
+                    //}
                 };
-                
+
                 // 添加鼠标事件
-                newInput.addEventListener('input', updateValue);
-                newInput.addEventListener('change', validateValue);
-                
+                newInput.addEventListener('input', updateDisplayValue); // 只更新显示值
+                newInput.addEventListener('change', validateAndRegenerate); // 验证并重新生成
+
                 // 添加触摸事件
                 newInput.addEventListener('touchstart', (e) => {
                     e.preventDefault(); // 阻止默认滚动
@@ -461,9 +523,9 @@ class TriangleSidesModule {
                     const percentage = Math.max(0, Math.min(1, offsetX / rect.width));
                     const value = Math.round(percentage * (newInput.max - newInput.min) + Number(newInput.min));
                     newInput.value = value;
-                    updateValue({ target: newInput });
+                    updateDisplayValue({ target: newInput }); // 只更新显示值
                 });
-                newInput.addEventListener('touchend', validateValue);
+                newInput.addEventListener('touchend', validateAndRegenerate); // 验证并重新生成
             }
         });
     }
@@ -482,8 +544,6 @@ class TriangleSidesModule {
         // 重置已连接计数
         this.snappedPoints = [];
         
-        const gridSize = 100; // 网格大小
-        
         // 获取用户输入的三边长度（以网格为单位）
         this.sideA = parseFloat(document.getElementById('side-a-input').value) || 3;
         this.sideB = parseFloat(document.getElementById('side-b-input').value) || 4;
@@ -494,6 +554,12 @@ class TriangleSidesModule {
         this.sideB = Math.max(0.1, this.sideB);
         this.sideC = Math.max(0.1, this.sideC);
         
+        // 自动计算合适的网格大小
+        this.calculateOptimalGridSize();
+        
+        // 使用更新后的网格大小
+        const gridSize = this.gridSize;
+        
         // 更新输入框
         document.getElementById('side-a-input').value = this.sideA;
         document.getElementById('side-b-input').value = this.sideB;
@@ -502,52 +568,70 @@ class TriangleSidesModule {
         // 清除当前线段
         this.clearLines();
         
-        // 在水平方向上创建三条线段，间隔开
-        const startY = this.centerY;
-        
+        // 计算边C的位置：底部倒数第三条网格线
+        const gridLineY = Math.floor(this.viewHeight / gridSize) * gridSize;
+        const startY_C = gridLineY - 2 * gridSize;
+        const startX_C1 = this.centerX - (this.sideC * gridSize) / 2;
+        const startX_C2 = this.centerX + (this.sideC * gridSize) / 2;
+
         try {
-            // 创建边B（绿色）- 居中显示
+            // 1. 创建边C（红色）- 水平放置在底部
+            const lineC = this.createLine(
+                startX_C1,
+                startY_C,
+                startX_C2,
+                startY_C,
+                this.sideC,
+                'C',
+                '#ef4444' // 红色
+            );
+
+            // 2. 创建边A（蓝色）- 垂直放置，左端点吸附到边C左端点
+            const startX_A = startX_C1;
+            const startY_A1 = startY_C;
+            const startY_A2 = startY_C - this.sideA * gridSize;
+            const lineA = this.createLine(
+                startX_A,
+                startY_A1,
+                startX_A,
+                startY_A2,
+                this.sideA,
+                'A',
+                '#3b82f6' // 蓝色
+            );
+
+            // 3. 创建边B（绿色）- 垂直放置，右端点吸附到边C右端点
+            const startX_B = startX_C2;
+            const startY_B1 = startY_C;
+            const startY_B2 = startY_C - this.sideB * gridSize;
             const lineB = this.createLine(
-                this.centerX - (this.sideB * gridSize) / 2,
-                startY,
-                this.centerX + (this.sideB * gridSize) / 2,
-                startY,
+                startX_B,
+                startY_B1,
+                startX_B,
+                startY_B2,
                 this.sideB,
                 'B',
                 '#10b981' // 绿色
             );
 
-            // 创建边A（蓝色）- 在边B上方显示
-            const lineA = this.createLine(
-                this.centerX - (this.sideA * gridSize) / 2,
-                startY - gridSize,
-                this.centerX + (this.sideA * gridSize) / 2,
-                startY - gridSize,
-                this.sideA,
-                'A',
-                '#3b82f6' // 蓝色
-            );
-            
-            // 创建边C（红色）- 在边B下方显示
-            const lineC = this.createLine(
-                this.centerX - (this.sideC * gridSize) / 2,
-                startY + gridSize,
-                this.centerX + (this.sideC * gridSize) / 2,
-                startY + gridSize,
-                this.sideC,
-                'C',
-                '#ef4444' // 红色
-            );
-            
-            // 存储线段
-            this.lines = [lineA, lineB, lineC];
-            
-            console.log('已创建三条线段', this.lines.length);
-            
-            // 重置反馈文本
+            // 存储线段，注意顺序
+            this.lines = [lineC, lineA, lineB];
+
+            // 初始状态下，A和B已经分别有一个端点与C连接
+            this.snappedPoints = [
+                { line1: lineC, end1: 'start', line2: lineA, end2: 'start' },
+                { line1: lineC, end1: 'end', line2: lineB, end2: 'start' }
+            ];
+
+            console.log('已创建三条线段并初始吸附', this.lines.length);
+
+            // 更新反馈文本，初始连接数为2
             if (this.feedbackText) {
-                this.feedbackText.textContent = '请将三边的端点连接在一起，已连接 0/3';
+                this.feedbackText.textContent = `请将三边的端点连接在一起，已连接 ${this.snappedPoints.length}/3`;
             }
+            
+            // 更新吸附点的视觉效果
+            this.updateSnapVisuals();
             
             // 移除可能存在的虚线
             this.removeDashedConnection();
@@ -561,19 +645,17 @@ class TriangleSidesModule {
      */
     createLine(x1, y1, x2, y2, length, label, color) {
         // 将坐标对齐到网格
-        const gridSize = 100;
+        const gridSize = this.gridSize;
         x1 = Math.round(x1 / gridSize) * gridSize;
         y1 = Math.round(y1 / gridSize) * gridSize;
         x2 = Math.round(x2 / gridSize) * gridSize;
         y2 = Math.round(y2 / gridSize) * gridSize;
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.setAttribute('class', 'line-group');
-        // 存储网格单位的长度
         group.setAttribute('data-length', length);
-        // 存储像素单位的长度
-        group.setAttribute('data-length-pixels', length * 100);
+        group.setAttribute('data-length-pixels', length * this.gridSize);
         group.setAttribute('data-label', label);
-        group.id = 'line-' + label.toLowerCase() + '-' + Date.now(); // 添加唯一ID
+        group.id = 'line-' + label.toLowerCase() + '-' + Date.now();
         
         // 创建线段
         const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -586,11 +668,21 @@ class TriangleSidesModule {
         line.setAttribute('class', 'line');
         group.appendChild(line);
         
+        // 添加长度标签
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', (x1 + x2) / 2 - 20);
+        text.setAttribute('y', (y1 + y2) / 2 - 10);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('fill', color);
+        text.setAttribute('class', 'length-label');
+        text.textContent = length;
+        group.appendChild(text);
+        
         // 创建起点手柄
         const startHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         startHandle.setAttribute('cx', x1);
         startHandle.setAttribute('cy', y1);
-        startHandle.setAttribute('r', '8');
+        startHandle.setAttribute('r', '5');
         startHandle.setAttribute('fill', color);
         startHandle.setAttribute('class', 'line-handle start-handle');
         group.appendChild(startHandle);
@@ -599,12 +691,18 @@ class TriangleSidesModule {
         const endHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         endHandle.setAttribute('cx', x2);
         endHandle.setAttribute('cy', y2);
-        endHandle.setAttribute('r', '8');
+        endHandle.setAttribute('r', '5');
         endHandle.setAttribute('fill', color);
         endHandle.setAttribute('class', 'line-handle end-handle');
         group.appendChild(endHandle);
-        
-        // 添加拖拽事件 - 直接给整个组添加事件
+
+        // 如果是边 C，给它的 handle 添加永久吸附样式
+        if (label === 'C') {
+            startHandle.classList.add('permanently-snapped');
+            endHandle.classList.add('permanently-snapped');
+        }
+
+        // 添加事件监听
         this.addDragEvents(group);
         
         // 添加到SVG
@@ -771,11 +869,11 @@ class TriangleSidesModule {
      * 拖拽中
      */
     drag(e) {
-        // 检查是否在吸附锁定时间内
-        const currentTime = Date.now();
-        if (currentTime - this.lastSnapTime < this.snapLockDuration) {
-            return; // 如果在锁定时间内，直接返回
-        }
+        // // 检查是否在吸附锁定时间内 (注释掉此检查以允许立即拖动)
+        // const currentTime = Date.now();
+        // if (currentTime - this.lastSnapTime < this.snapLockDuration) {
+        //     return; // 如果在锁定时间内，直接返回
+        // }
 
         if (!this.isDragging || !this.selectedLine) return;
         
@@ -814,11 +912,11 @@ class TriangleSidesModule {
                 const angleChange = currentAngle - initialAngle;
                 
                 // 计算线段长度（以网格单位计算）
-                const length = this.selectedLine.length * 100; // 乘以100转换为像素
+                const length = this.selectedLine.length * this.gridSize; // 转换为像素
                 
                 // 计算移动端点的新位置，并确保对齐到网格
-                const newMovingX = fixedX + Math.round(Math.cos(initialAngle + angleChange) * length / 100) * 100;
-                const newMovingY = fixedY + Math.round(Math.sin(initialAngle + angleChange) * length / 100) * 100;
+                const newMovingX = fixedX + Math.round(Math.cos(initialAngle + angleChange) * length / this.gridSize) * this.gridSize;
+                const newMovingY = fixedY + Math.round(Math.sin(initialAngle + angleChange) * length / this.gridSize) * this.gridSize;
                 
                 // 根据固定端点更新线段位置
                 if (isStartFixed) {
@@ -837,6 +935,9 @@ class TriangleSidesModule {
                     const fixedX = this.dragType === 'start' ? this.initialX2 : this.initialX1;
                     const fixedY = this.dragType === 'start' ? this.initialY2 : this.initialY1;
                     
+                    // 显示灰色虚线圆形路径
+                    this.showDragPath(fixedX, fixedY, this.selectedLine.length * this.gridSize);
+                    
                     // 计算鼠标当前位置相对于固定点的角度
                     const mouseX = this.dragType === 'start' ? this.initialX1 + dx : this.initialX2 + dx;
                     const mouseY = this.dragType === 'start' ? this.initialY1 + dy : this.initialY2 + dy;
@@ -846,8 +947,8 @@ class TriangleSidesModule {
                     const length = Math.round(this.selectedLine.length); // 强制网格对齐
                     
                     // 计算端点新位置
-                    const newX = fixedX + Math.round(Math.cos(angle) * length * 100);
-                    const newY = fixedY + Math.round(Math.sin(angle) * length * 100);
+                    const newX = fixedX + Math.round(Math.cos(angle) * length * this.gridSize);
+                    const newY = fixedY + Math.round(Math.sin(angle) * length * this.gridSize);
                     
                     // 更新线段位置
                     if (this.dragType === 'start') {
@@ -857,6 +958,11 @@ class TriangleSidesModule {
                         this.updateLinePosition(this.selectedLine, fixedX, fixedY, newX, newY);
                         this.checkSnapForPoint(this.selectedLine, 'end');
                     }
+                } else {
+                    // 如果拖动的端点没有对应的固定端点，显示以该端点为中心的圆形路径
+                    const currentEndX = this.dragType === 'start' ? this.initialX1 : this.initialX2;
+                    const currentEndY = this.dragType === 'start' ? this.initialY1 : this.initialY2;
+                    this.showDragPath(currentEndX, currentEndY, this.selectedLine.length * this.gridSize);
                 }
             }
         } else {
@@ -878,6 +984,11 @@ class TriangleSidesModule {
                 const newX1 = this.initialX1 + dx;
                 const newY1 = this.initialY1 + dy;
                 
+                // 如果起点未吸附，显示以终点为中心的圆形路径
+                if (!this.isEndPointSnapped(this.selectedLine, 'start')) {
+                    this.showDragPath(this.initialX2, this.initialY2, this.selectedLine.length * this.gridSize);
+                }
+                
                 // 确保线段长度保持不变
                 const newPos = this.constrainToLength(
                     newX1, newY1, 
@@ -894,6 +1005,11 @@ class TriangleSidesModule {
                 // 移动终点
                 const newX2 = this.initialX2 + dx;
                 const newY2 = this.initialY2 + dy;
+                
+                // 如果终点未吸附，显示以起点为中心的圆形路径
+                if (!this.isEndPointSnapped(this.selectedLine, 'end')) {
+                    this.showDragPath(this.initialX1, this.initialY1, this.selectedLine.length * this.gridSize);
+                }
                 
                 // 确保线段长度保持不变
                 const newPos = this.constrainToLength(
@@ -1020,7 +1136,7 @@ class TriangleSidesModule {
         const handle = endType === 'start' ? line.startHandle : line.endHandle;
         
         // 设置更大的半径
-        handle.setAttribute('r', '12');
+        handle.setAttribute('r', '8');
         
         // 添加闪光效果
         if (!handle.querySelector('animate')) {
@@ -1058,10 +1174,44 @@ class TriangleSidesModule {
     }
     
     /**
+     * 更新吸附点的视觉效果
+     */
+    updateSnapVisuals() {
+        // 移除所有非永久吸附点的 .snapped-point 样式
+        this.lines.forEach(line => {
+            const startHandle = line.group.querySelector('.start-handle');
+            const endHandle = line.group.querySelector('.end-handle');
+            
+            if (startHandle && !startHandle.classList.contains('permanently-snapped')) {
+                startHandle.classList.remove('snapped-point');
+            }
+            if (endHandle && !endHandle.classList.contains('permanently-snapped')) {
+                endHandle.classList.remove('snapped-point');
+            }
+        });
+
+        // 为当前逻辑吸附的点添加 .snapped-point 样式 (跳过永久吸附点)
+        this.snappedPoints.forEach(snap => {
+            const handle1 = snap.line1.group.querySelector(`.${snap.end1}-handle`);
+            const handle2 = snap.line2.group.querySelector(`.${snap.end2}-handle`);
+            
+            if (handle1 && !handle1.classList.contains('permanently-snapped')) {
+                handle1.classList.add('snapped-point');
+            }
+            if (handle2 && !handle2.classList.contains('permanently-snapped')) {
+                handle2.classList.add('snapped-point');
+            }
+        });
+    }
+    
+    /**
      * 结束拖拽
      */
     endDrag() {
         this.isDragging = false;
+        
+        // 移除拖拽路径显示
+        this.removeDragPath();
         
         // 检查是否有端点需要吸附
         if (this.selectedLine) {
@@ -1355,6 +1505,39 @@ class TriangleSidesModule {
     }
     
     /**
+     * 显示拖拽路径（灰色虚线圆）
+     */
+    showDragPath(centerX, centerY, radius) {
+        // 先移除已存在的拖拽路径
+        this.removeDragPath();
+        
+        // 创建圆形路径
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', centerX);
+        circle.setAttribute('cy', centerY);
+        circle.setAttribute('r', radius);
+        circle.setAttribute('fill', 'none');
+        circle.setAttribute('stroke', '#d1d5db'); // 淡灰色
+        circle.setAttribute('stroke-width', '1');
+        circle.setAttribute('stroke-dasharray', '8,4'); // 虚线样式
+        circle.setAttribute('class', 'drag-path');
+        
+        // 添加到线段组
+        this.linesGroup.appendChild(circle);
+    }
+    
+    /**
+     * 移除拖拽路径
+     */
+    removeDragPath() {
+        // 移除所有拖拽路径
+        const dragPaths = this.linesGroup.querySelectorAll('.drag-path');
+        dragPaths.forEach(path => {
+            this.linesGroup.removeChild(path);
+        });
+    }
+    
+    /**
      * 分析线段连接情况
      */
     analyzeConnections() {
@@ -1444,7 +1627,7 @@ class TriangleSidesModule {
      * 约束点的位置使线段保持固定长度
      */
     constrainToLength(x, y, fixedX, fixedY, length) {
-        const gridSize = 100; // 网格大小
+        const gridSize = this.gridSize; // 网格大小
         const targetLength = length * gridSize; // 目标长度（像素）
         
         // 计算当前点到固定点的向量
@@ -1466,15 +1649,19 @@ class TriangleSidesModule {
         const unitX = dirX / currentLength;
         const unitY = dirY / currentLength;
         
-        // 应用目标长度
+        // 应用目标长度，确保精确对齐到网格
+        const newX = fixedX + unitX * targetLength;
+        const newY = fixedY + unitY * targetLength;
+        
+        // 对齐到最近的网格点
         return {
-            x: fixedX + unitX * targetLength,
-            y: fixedY + unitY * targetLength
+            x: Math.round(newX / gridSize) * gridSize,
+            y: Math.round(newY / gridSize) * gridSize
         };
     }
     
     /**
-     * 更新线段位置 - 修复线段更新
+     * 更新线段位置 - 修复线段更新，保持边长一致性
      */
     updateLinePosition(lineObj, x1, y1, x2, y2) {
         // 更新线段
@@ -1482,6 +1669,27 @@ class TriangleSidesModule {
         lineObj.line.setAttribute('y1', y1);
         lineObj.line.setAttribute('x2', x2);
         lineObj.line.setAttribute('y2', y2);
+        
+        // 更新线段对象的坐标
+        lineObj.x1 = x1;
+        lineObj.y1 = y1;
+        lineObj.x2 = x2;
+        lineObj.y2 = y2;
+        
+        // 保持原有的长度值，不重新计算
+        // 这确保了边长始终与用户设定的值一致
+        const originalLength = lineObj.length;
+        
+        // 更新长度标签位置，但保持原有长度值
+        const text = lineObj.group.querySelector('.length-label');
+        if (text) {
+            text.setAttribute('x', (x1 + x2) / 2 -20);
+            text.setAttribute('y', (y1 + y2) / 2 - 10);
+            text.textContent = originalLength; // 使用原有长度值
+        }
+        
+        // 不更新滑块值，保持用户设定的值不变
+        // 这确保了网格自适应时边长保持一致
         
         // 更新手柄
         lineObj.startHandle.setAttribute('cx', x1);
@@ -1594,19 +1802,23 @@ class TriangleSidesModule {
         const fixedX = end1 === 'start' ? line1.x2 : line1.x1;
         const fixedY = end1 === 'start' ? line1.y2 : line1.y1;
         
-        // 计算当前线段长度（以网格单位计算）
-        const length = Math.round(line1.length);
+        // 使用线段对象中存储的原始长度值，确保一致性
+        const length = line1.length; // 直接使用原始长度，不进行四舍五入
         
-        // 计算新的移动端点位置，保持长度为整数网格单位
+        // 计算新的移动端点位置，保持精确的网格单位长度
         const angle = Math.atan2(targetY - fixedY, targetX - fixedX);
-        const newX = fixedX + Math.round(Math.cos(angle) * length * 100);
-        const newY = fixedY + Math.round(Math.sin(angle) * length * 100);
+        const newX = fixedX + Math.cos(angle) * length * this.gridSize;
+        const newY = fixedY + Math.sin(angle) * length * this.gridSize;
+        
+        // 对齐到网格
+        const alignedX = Math.round(newX / this.gridSize) * this.gridSize;
+        const alignedY = Math.round(newY / this.gridSize) * this.gridSize;
         
         // 更新线段位置
         if (end1 === 'start') {
-            this.updateLinePosition(line1, newX, newY, fixedX, fixedY);
+            this.updateLinePosition(line1, alignedX, alignedY, fixedX, fixedY);
         } else {
-            this.updateLinePosition(line1, fixedX, fixedY, newX, newY);
+            this.updateLinePosition(line1, fixedX, fixedY, alignedX, alignedY);
         }
         
         // 添加吸附连接
@@ -1662,6 +1874,54 @@ class TriangleSidesModule {
         if (validSnaps.length !== this.snappedPoints.length) {
             this.snappedPoints = validSnaps;
         }
+    }
+    
+    /**
+     * 自动计算合适的网格大小，确保三条边能完全显示在浏览器窗口内
+     * 网格大小以10px为单位调整，四周至少留2个网格单位的空间
+     */
+    calculateOptimalGridSize() {
+        // 如果是手动调整网格大小，则跳过自动计算（但初始加载时总是执行）
+        if (this.isManualGridAdjustment && this.hasInitialized) {
+            return;
+        }
+        
+        // 计算三角形所需的最大尺寸
+        const maxSideLength = Math.max(this.sideA, this.sideB, this.sideC);
+        
+        // 四周至少留2个网格单位的空间，所以需要额外的4个网格单位宽度和高度
+        const marginGridUnits = 3;
+        const requiredWidth = this.sideC + 2 * marginGridUnits; // 底边长度 + 左右各2个网格单位
+        const requiredHeight = Math.max(this.sideA, this.sideB) + 2 * marginGridUnits; // 最高边的高度 + 上下各2个网格单位
+        
+        // 根据宽度和高度约束计算网格大小
+        const gridSizeByWidth = this.viewWidth / requiredWidth;
+        const gridSizeByHeight = this.viewHeight / requiredHeight;
+        
+        // 取较小值确保完全显示
+        const rawOptimalGridSize = Math.min(gridSizeByWidth, gridSizeByHeight);
+        
+        // 以10px为单位调整（向下取整到最近的10的倍数）
+        const optimalGridSize = Math.floor(rawOptimalGridSize / 10) * 10;
+        
+        // 限制在合理范围内
+        const minGridSize = 20; // 最小网格大小（20px，符合10px单位）
+        const maxGridSize = 200; // 最大网格大小（200px，符合10px单位）
+        
+        this.gridSize = Math.max(minGridSize, Math.min(maxGridSize, optimalGridSize));
+        
+        // 更新网格大小滑块的值
+        const gridSizeInput = document.getElementById('grid-size-input');
+        const gridSizeValue = document.getElementById('grid-size-value');
+        if (gridSizeInput && gridSizeValue) {
+            gridSizeInput.value = this.gridSize;
+            gridSizeValue.textContent = this.gridSize + 'px';
+        }
+        
+        // 重新创建网格
+        this.createGrid();
+        
+        console.log(`自动调整网格大小: ${this.gridSize}px (边长: A=${this.sideA}, B=${this.sideB}, C=${this.sideC})`);
     }
 }
 
