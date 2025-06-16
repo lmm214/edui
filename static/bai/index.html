@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>百数表，猜一猜，拼一拼</title>
+    <title>百数表，猜一猜，拼一拼，数一数</title>
     <style>
         body {
             display: flex;
@@ -28,7 +28,7 @@
         .grid {
             display: grid;
             grid-template-columns: repeat(10, calc((90vh - min(3vh, 20px)) / 10));
-            gap: 0;
+            gap: 2px;
             background-image: linear-gradient(to top, #feada6 0%, #f5efef 100%);
             padding: min(1.5vh, 10px);
             border-radius: min(1.5vh, 10px);
@@ -40,17 +40,25 @@
         .cell {
             width: 100%;
             aspect-ratio: 1;
-            border: 1px solid #bfc4ca;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             background-image: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%);
-            transition: all 0.3s ease;
             font-size: calc((90vh - min(3vh, 20px)) / 20);
             color: #2d4059;
         }
 
+        .cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            background-image: linear-gradient(to top, #3361b7 0%, #4069b7 32%, #4775c6 100%);
+            color: #fff;
+        }
+
+        .cell.masked:hover,.cell.revealed:hover {
+            background-image: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%);
+        }
         .clear-btn {
             width: min(15vw, 120px);
             height: min(15vw, 120px);
@@ -76,11 +84,6 @@
             overflow: hidden;
         }
 
-        .cell:hover {
-            transform: scale(1.05);
-            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
-        }
-
         .controls {
             display: flex;
             gap: 20px;
@@ -89,7 +92,7 @@
             align-items: center;
         }
 
-        .clear-btn, .split-btn {
+        .clear-btn, .split-btn, .hight-btn {
             width: min(15vw, 120px);
             height: min(15vw, 120px);
             border: none;
@@ -110,7 +113,9 @@
         .split-btn {
             background-color: #4CAF50;
         }
-
+        .hight-btn {
+            background-color: #2a5298;
+        }
         .selected {
             border-color: #ffd93d;
             transform: scale(1.1);
@@ -168,6 +173,64 @@
             from { transform: scale(0.8) rotate(-6deg); opacity: 0; }
             to { transform: scale(1) rotate(0deg); opacity: 1; }
         }
+
+        /* 数字键盘样式 */
+        .number-pad-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: right;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .number-pad {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            width: 200px;
+        }
+
+        .number-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: min(15vw, 80px);
+            height: min(15vw, 80px);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+            color: white;
+            font-size: 45px;
+            font-weight: bold;
+            text-transform: none;
+        }
+        .number-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .number-btn:active {
+            transform: scale(0.95);
+        }
+
+        .highlighted,.number-btn {
+            background-image: linear-gradient(to top, #3361b7 0%, #4069b7 32%, #4775c6 100%);
+            color: #ebedee;
+        }
+
+        @keyframes highlight {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
     </style>
 </head>
 <body>
@@ -176,9 +239,26 @@
         <div class="controls">
             <button class="clear-btn" onclick="startGuessing()">猜</button>
             <button class="split-btn" onclick="startSplitting()">拼</button>
+            <button class="hight-btn" onclick="showNumberPad()">数</button>
         </div>
     </div>
     <div class="pieces-container" id="piecesContainer"></div>
+    
+    <!-- 数字键盘 -->
+    <div class="number-pad-overlay" id="numberPadOverlay" style="display: none;">
+        <div class="number-pad">
+            <button class="number-btn" onclick="highlightMultiples(2)">2</button>
+            <button class="number-btn" onclick="highlightMultiples(5)">5</button>
+            <button class="number-btn" onclick="highlightMultiples(4)">4</button>
+            <button class="number-btn" onclick="highlightMultiples(8)">8</button>
+            <button class="number-btn" onclick="highlightMultiples(3)">3</button>
+            <button class="number-btn" onclick="highlightMultiples(6)">6</button>
+            <button class="number-btn" onclick="highlightMultiples(9)">9</button>
+            <button class="number-btn" onclick="highlightMultiples(7)">7</button>
+            <button class="number-btn" onclick="highlightMultiples(0)">0</button>
+            <button class="number-btn" onclick="hideAllNumbers()">隐</button>
+        </div>
+    </div>
 
     <script>
         // 全局变量
@@ -188,6 +268,7 @@
         let currentPiece = null;
         let offsetX, offsetY;
         let cellSize;
+        let isHiddenMode = false; // 是否处于隐藏模式
         
         // 页面加载完成后创建网格
         document.addEventListener('DOMContentLoaded', function() {
@@ -509,6 +590,80 @@
             currentPiece.element.style.top = `${clientY - offsetY}px`;
         }
         
+        // 显示数字键盘
+        function showNumberPad() {
+            const overlay = document.getElementById('numberPadOverlay');
+            overlay.style.display = 'flex';
+            
+            // 点击遮罩层关闭
+            overlay.onclick = (e) => {
+                if (e.target === overlay) {
+                    hideNumberPad();
+                }
+            };
+        }
+        
+        // 隐藏数字键盘
+        function hideNumberPad() {
+            const overlay = document.getElementById('numberPadOverlay');
+            overlay.style.display = 'none';
+        }
+        
+        // 隐藏所有数字
+        function hideAllNumbers() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                cell.classList.add('masked');
+                cell.classList.remove('revealed');
+                cell.classList.remove('highlighted');
+            });
+            isHiddenMode = true;
+        }
+        
+        // 高亮倍数
+        function highlightMultiples(number) {
+            const cells = document.querySelectorAll('.cell');
+            
+            if (isHiddenMode) {
+                // 隐藏模式下，逐一按顺序显示倍数
+                const multiples = [];
+                for (let i = number; i <= 100; i += number) {
+                    multiples.push(i - 1); // 转换为数组索引
+                }
+                
+                let currentIndex = 0;
+                function showNextMultiple() {
+                    if (currentIndex < multiples.length) {
+                        const cellIndex = multiples[currentIndex];
+                        const cell = cells[cellIndex];
+                        if (cell) {
+                            cell.classList.remove('masked'); // 显示数字
+                            cell.classList.add('highlighted');
+                        }
+                        currentIndex++;
+                        setTimeout(showNextMultiple, 600); // 每800毫秒显示下一个
+                    }
+                }
+                showNextMultiple();
+            } else {
+                // 正常模式下，先清除之前的高亮
+                cells.forEach(cell => {
+                    cell.classList.remove('highlighted');
+                });
+                if(number !== 0){
+                    for (let i = number; i <= 100; i += number) {
+                        const cell = cells[i - 1]; // 数组索引从0开始，数字从1开始
+                        if (cell) {
+                            cell.classList.add('highlighted');
+                        }
+                    }
+                }
+            }
+            
+            // 关闭数字键盘
+            hideNumberPad();
+        }
+
         // 停止拖拽
         function stopDrag() {
             if (!isDragging || !currentPiece) return;
