@@ -223,7 +223,7 @@
 
         .highlighted,.number-btn {
             background-image: linear-gradient(to top, #3361b7 0%, #4069b7 32%, #4775c6 100%);
-            color: #ebedee;
+            color: #fff;
         }
 
         @keyframes highlight {
@@ -248,15 +248,15 @@
     <div class="number-pad-overlay" id="numberPadOverlay" style="display: none;">
         <div class="number-pad">
             <button class="number-btn" onclick="highlightMultiples(2)">2</button>
-            <button class="number-btn" onclick="highlightMultiples(5)">5</button>
-            <button class="number-btn" onclick="highlightMultiples(4)">4</button>
-            <button class="number-btn" onclick="highlightMultiples(8)">8</button>
             <button class="number-btn" onclick="highlightMultiples(3)">3</button>
+            <button class="number-btn" onclick="highlightMultiples(4)">4</button>
+            <button class="number-btn" onclick="highlightMultiples(5)">5</button>
             <button class="number-btn" onclick="highlightMultiples(6)">6</button>
-            <button class="number-btn" onclick="highlightMultiples(9)">9</button>
             <button class="number-btn" onclick="highlightMultiples(7)">7</button>
+            <button class="number-btn" onclick="highlightMultiples(8)">8</button>
+            <button class="number-btn" onclick="highlightMultiples(9)">9</button>
+            <button class="number-btn" onclick="toggleHideShow()">隐</button>
             <button class="number-btn" onclick="highlightMultiples(0)">0</button>
-            <button class="number-btn" onclick="hideAllNumbers()">隐</button>
         </div>
     </div>
 
@@ -269,6 +269,8 @@
         let offsetX, offsetY;
         let cellSize;
         let isHiddenMode = false; // 是否处于隐藏模式
+        let currentAnimation = null; // 当前动画的引用
+        let isAnimating = false; // 是否正在动画中
         
         // 页面加载完成后创建网格
         document.addEventListener('DOMContentLoaded', function() {
@@ -593,6 +595,13 @@
         // 显示数字键盘
         function showNumberPad() {
             const overlay = document.getElementById('numberPadOverlay');
+            
+            // 如果在隐藏模式下且正在动画中，加速显示完剩余数字
+            if (isHiddenMode && isAnimating) {
+                speedUpAnimation();
+                return;
+            }
+            
             overlay.style.display = 'flex';
             
             // 点击遮罩层关闭
@@ -603,48 +612,98 @@
             };
         }
         
+        // 加速动画显示完剩余数字
+        function speedUpAnimation() {
+            if (currentAnimation) {
+                clearTimeout(currentAnimation);
+                currentAnimation = null;
+            }
+            
+            const cells = document.querySelectorAll('.cell');
+            
+            // 基于当前动画进度，显示并高亮剩余的倍数
+            for (let i = currentAnimationIndex; i < currentMultiples.length; i++) {
+                const cellIndex = currentMultiples[i];
+                const cell = cells[cellIndex];
+                if (cell) {
+                    cell.classList.remove('masked');
+                    cell.classList.add('highlighted'); // 加速时也添加高亮背景
+                }
+            }
+            
+            isAnimating = false;
+        }
+        
         // 隐藏数字键盘
         function hideNumberPad() {
             const overlay = document.getElementById('numberPadOverlay');
             overlay.style.display = 'none';
         }
         
-        // 隐藏所有数字
-        function hideAllNumbers() {
+        // 切换隐藏/显示模式
+        function toggleHideShow() {
+            const hideBtn = document.querySelector('.number-btn[onclick="toggleHideShow()"]');
+            const zeroBtn = document.querySelector('.number-btn[onclick="highlightMultiples(0)"]');
             const cells = document.querySelectorAll('.cell');
-            cells.forEach(cell => {
-                cell.classList.add('masked');
-                cell.classList.remove('revealed');
-                cell.classList.remove('highlighted');
-            });
-            isHiddenMode = true;
+            
+            if (isHiddenMode) {
+                // 当前是隐藏模式，切换到显示模式
+                cells.forEach(cell => {
+                    cell.classList.remove('masked');
+                    cell.classList.remove('highlighted');
+                });
+                hideBtn.textContent = '隐';
+                zeroBtn.style.display = 'flex'; // 显示数字0按钮
+                isHiddenMode = false;
+                // 停止当前动画
+                if (currentAnimation) {
+                    clearTimeout(currentAnimation);
+                    currentAnimation = null;
+                }
+                isAnimating = false;
+            } else {
+                // 当前是显示模式，切换到隐藏模式
+                cells.forEach(cell => {
+                    cell.classList.add('masked');
+                    cell.classList.remove('revealed');
+                    cell.classList.remove('highlighted');
+                });
+                hideBtn.textContent = '显';
+                zeroBtn.style.display = 'none'; // 隐藏数字0按钮
+                isHiddenMode = true;
+            }
         }
+        
+        // 全局变量用于动画
+        let currentMultiples = [];
+        let currentAnimationIndex = 0;
         
         // 高亮倍数
         function highlightMultiples(number) {
             const cells = document.querySelectorAll('.cell');
             
             if (isHiddenMode) {
-                // 隐藏模式下，逐一按顺序显示倍数
-                const multiples = [];
-                for (let i = number; i <= 100; i += number) {
-                    multiples.push(i - 1); // 转换为数组索引
-                }
-                
-                let currentIndex = 0;
-                function showNextMultiple() {
-                    if (currentIndex < multiples.length) {
-                        const cellIndex = multiples[currentIndex];
-                        const cell = cells[cellIndex];
-                        if (cell) {
-                            cell.classList.remove('masked'); // 显示数字
-                            cell.classList.add('highlighted');
-                        }
-                        currentIndex++;
-                        setTimeout(showNextMultiple, 600); // 每800毫秒显示下一个
-                    }
-                }
-                showNextMultiple();
+                 // 先清除之前的高亮
+                 cells.forEach(cell => {
+                     cell.classList.remove('highlighted');
+                 });
+                 
+                 // 准备倍数数组（不预先添加highlighted类）
+                 currentMultiples = [];
+                 for (let i = number; i <= 100; i += number) {
+                     const cellIndex = i - 1;
+                     currentMultiples.push(cellIndex);
+                 }
+                 
+                 // 先隐藏所有数字
+                 cells.forEach(cell => {
+                     cell.classList.add('masked');
+                 });
+                 
+                 // 隐藏模式下，逐一按顺序显示倍数
+                 currentAnimationIndex = 0;
+                 isAnimating = true;
+                 showNextMultiple();
             } else {
                 // 正常模式下，先清除之前的高亮
                 cells.forEach(cell => {
@@ -652,7 +711,7 @@
                 });
                 if(number !== 0){
                     for (let i = number; i <= 100; i += number) {
-                        const cell = cells[i - 1]; // 数组索引从0开始，数字从1开始
+                        const cell = cells[i - 1];
                         if (cell) {
                             cell.classList.add('highlighted');
                         }
@@ -663,7 +722,26 @@
             // 关闭数字键盘
             hideNumberPad();
         }
-
+                 
+        function showNextMultiple() {
+            if (currentAnimationIndex < currentMultiples.length && isAnimating) {
+                const cells = document.querySelectorAll('.cell');
+                const cellIndex = currentMultiples[currentAnimationIndex];
+                const cell = cells[cellIndex];
+                if (cell) {
+                    cell.classList.remove('masked'); // 显示数字
+                    cell.classList.add('highlighted'); // 添加高亮背景
+                }
+                currentAnimationIndex++;
+                if (currentAnimationIndex < currentMultiples.length) {
+                    currentAnimation = setTimeout(showNextMultiple, 700); // 每800毫秒显示下一个
+                } else {
+                    isAnimating = false;
+                    currentAnimation = null;
+                }
+            }
+        }
+        
         // 停止拖拽
         function stopDrag() {
             if (!isDragging || !currentPiece) return;
