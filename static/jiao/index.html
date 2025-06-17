@@ -149,6 +149,8 @@
                 <input id='nearest' type='number' value='10' min='0' max='360'>
                 <label for='horizontal'>水平起始:</label>
                 <input type='checkbox' onclick='createAngle()' id='horizontal' checked>
+                <label for='showAngle'>显示角度:</label>
+                <input type='checkbox' onclick='createAngle()' id='showAngle'>
             </div>
         </section>
         <div id="content" class='questionBox border'>
@@ -161,8 +163,8 @@
                 </div>
                 <input id='angleSlider' oninput="updateLabel(this.value)" type='range' value='0' min='0' max='180' step='1'>
                  <div>
-                    <button class="guessButton" id='guessButton' onclick="guess(document.getElementById('angleSlider').value)">猜一下</button>
-                    <button class="guessButton" onclick='createAngle()'>新角度</button>
+                    <button class="guessButton" id='guessButton' onclick="guess(document.getElementById('angleSlider').value)">估一下</button>
+                    <button class="guessButton" onclick='createAngle()'>换一个</button>
                 </div>
             </div>
             </div>
@@ -240,7 +242,7 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
             this.type = "whole turn";
         }
         this.display = function () {
-            var svgData = "<div>";
+            var svgData = "";
             if (!this.size) {
                 var size = 300;
             } else {
@@ -262,11 +264,26 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
                 shift = (centre / 5);
             }
             svgData += "<path d=' M " + (centre + leg1x / 4) + " " + (centre + leg1y / 4) + " A " + shift + " " + shift + " 0 " + sweep + " 0 " + (centre + leg2x / 4) + " " + (centre + leg2y / 4) + "' fill='none' stroke='black' stroke-width='2' />";
-            svgData += "</svg></div>";
+            
+            // 检查是否显示角度标记
+            if (document.getElementById('showAngle') && document.getElementById('showAngle').checked) {
+                // 计算角度标记的位置（在弧线中间）
+                var midAngle = this.initial + this.angle / 2;
+                var labelRadius = length * 0.4;
+                var labelX = centre + labelRadius * Math.sin(toRadians(midAngle));
+                var labelY = centre + labelRadius * Math.cos(toRadians(midAngle));
+                
+                // 添加角度文本
+                svgData += "<text x='" + labelX + "' y='" + labelY + "' text-anchor='middle' dominant-baseline='middle' font-size='32' font-weight='bold' fill='#2b2b2b'>" + this.angle + "°</text>";
+            }
+            
+            svgData += "</svg>";
             return svgData;
         };
     }
     var angle;
+    var recentAngles = []; // 记录最近生成的角度
+    var maxRecentAngles = 5; // 最多记录5个最近的角度
     
     function updateLabel(x) {
         document.getElementById('angleLabel').innerHTML = parseInt(x) + '&deg;'
@@ -280,6 +297,54 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
         } else {
             document.getElementById('status').innerHTML = "您的答案偏差了 " + diff + "&deg;";
         }
+    }
+    
+    function generateUniqueAngle(min, max, acc) {
+        var attempts = 0;
+        var maxAttempts = 50; // 最多尝试50次
+        var newAngle;
+        
+        do {
+            newAngle = Math.round(getRandom(min, max) / acc) * acc;
+            attempts++;
+        } while ((recentAngles.includes(newAngle) || newAngle === 0) && attempts < maxAttempts);
+        
+        // 如果尝试次数过多仍然重复或生成0度，清空历史记录重新开始
+        if (attempts >= maxAttempts && (recentAngles.includes(newAngle) || newAngle === 0)) {
+            recentAngles = [];
+            do {
+                newAngle = Math.round(getRandom(min, max) / acc) * acc;
+            } while (newAngle === 0);
+        }
+        
+        // 添加到最近角度记录中
+        recentAngles.push(newAngle);
+        
+        // 保持记录数组长度不超过限制
+        if (recentAngles.length > maxRecentAngles) {
+            recentAngles.shift(); // 移除最旧的记录
+        }
+        
+        return newAngle;
+    }
+    
+    function generateWeightedAngle(min, max, acc) {
+        var angle;
+        var attempts = 0;
+        var maxAttempts = 20;
+        
+        do {
+            angle = Math.round(getRandom(min, max) / acc) * acc;
+            attempts++;
+            
+            // 如果生成的角度等于最大值，有80%的概率重新生成
+            if (angle === max && Math.random() < 0.9 && attempts < maxAttempts) {
+                continue;
+            }
+            break;
+        } while (attempts < maxAttempts);
+        
+        return angle;
     }
     
     function createAngle() {
@@ -303,7 +368,10 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
         document.getElementById('angleSlider').step = acc;
         document.getElementById('angleSlider').max = max;
         document.getElementById('status').innerHTML = "请估算角度...";
-        angle = new Angle(init, Math.round(getRandom(min, max) / acc) * acc, 600);
+        
+        // 使用新的函数生成不重复的角度
+        var uniqueAngle = generateUniqueAngle(min, max, acc);
+        angle = new Angle(init, uniqueAngle, 600);
         document.getElementById('angleDiv').innerHTML = angle.display();
     }
     
