@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang='zh-CN'>
+    <head>
+        <meta charset='utf-8'>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>质数流水线</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background-color: #515;
+                margin: 0;
+                overflow: hidden;
+            }
+            h2 {
+                font-weight: normal;
+                margin: 0.3em;
+            }
+            p{margin: 0;padding:0;}
+            input, button {
+                background-color: #fff;
+                color: #515;
+                border-radius: 0.4em;
+                border: 1px solid #515;
+                padding: 0.3em;
+            }
+            input:hover, button:hover {
+                background-color: #515;
+                color: #fff;
+                transition: 0.2s;
+            }
+            .border {
+                margin: 0.5%;
+                padding: 0.5%;
+                border: 1px solid black;
+                border-radius: 0.5em;
+                box-shadow: 4px 4px 4px #303;
+                text-align: center;
+            }
+            .controls {
+                background-color: #959;
+                color: #fff;
+            }
+            .controls h1 {
+                font-size: 1.4em;
+                margin: 0.2em;
+            }
+            .controls label, .controls input, .controls button {
+                font-size: 1.2em;
+                margin: 0.3em;
+            }
+            .questionBox {
+                color: #000;
+                background-color: #fff;
+                min-height: 60vh;
+            }
+            #status {
+                font-size: 1.2em;
+                margin: 1em auto 2em;
+            }
+            .primeTile {
+                font-size: 3.8em;
+                margin: 0.4em;
+                width: 2.5em;
+                height: 2.5em;
+                cursor: pointer;
+                border: 3px solid #000;
+                text-align: center;
+                padding: 0;
+                border-radius: 0;
+                touch-action: manipulation;
+            }
+            .primeTile:hover {
+                border: 3px solid #959;
+                color: #959;
+            }
+            .gameLabel {
+                width: 2.5em;
+                text-align: center;
+            }
+            #question {
+                font-size: 3em;
+                margin: 0.3em;
+                min-height: 150px;
+                color: #515;
+            }
+            #question span{font-size:0.8em;}
+            #currentProduct {
+                font-size: 5rem;
+                margin: 0.2em;
+                min-height: 6rem;
+            }
+            #start {
+                font-size: 3em;
+                margin: 0.3em 0.3em 3em;
+                padding: 0.3em;
+                border: 1px solid #000;
+            }
+            #timeSelect {
+                text-align: center;
+                width: 2.5em;
+            }
+            #showRemainder{width:18px;height:18px;}
+            @media screen and (max-width: 620px){
+                .primeTile,#start {
+                    font-size: 2.8em;
+                }
+            }
+            @media screen and (max-width: 400px){
+                .primeTile,#start {
+                    font-size: 2em;
+                }
+            }
+
+        </style>
+    </head>
+    <body>
+<section id="controls" class="controls border">
+            <h2>质数流水线</h2>
+            <p>你有 <input id='timeSelect' type='number' value='60' min='0' max='99999'> 秒时间来分解。</p>
+            <p>每次正确为你赢得一秒额外时间，但一旦出错游戏就结束了！</p>
+            <div>
+                <label for='score'>得分：</label>
+                <input class="gameLabel" readonly="readonly" name="score" id="score" value="0">
+                <label for='best'>最佳：</label>
+                <input class="gameLabel" readonly="readonly" name="best" id="best" value="0">
+                <label for='showRemainder'>同步分解:</label>
+                <input type='checkbox' id='showRemainder' checked onchange='saveShowRemainderState()'>
+            </div>
+        </section>
+        <section>
+            <div id="content" class='questionBox border'>
+                <p id='question'></p>
+                <p id='currentProduct'></p>
+                <div id="game"></div>
+
+                <button id='start' onclick='init()'>开始游戏</button>
+            </div>
+        </section>
+</body>
+    <script>
+        // 本地存储相关函数
+        function saveBestScore(score) {
+            localStorage.setItem('primeFactoryBest', score);
+        }
+        
+        function loadBestScore() {
+            var saved = localStorage.getItem('primeFactoryBest');
+            return saved ? parseInt(saved) : 0;
+        }
+        
+        // 同步分解状态的本地存储函数
+        function saveShowRemainderState() {
+            var isChecked = document.getElementById('showRemainder').checked;
+            localStorage.setItem('primeFactoryShowRemainder', isChecked);
+        }
+        
+        function loadShowRemainderState() {
+            var saved = localStorage.getItem('primeFactoryShowRemainder');
+            return saved === null ? true : saved === 'true'; // 默认为true
+        }
+        
+        // 避免重复出题的相关变量和函数
+        var usedNumbers = [];
+        
+        function isNumberUsed(number) {
+            return usedNumbers.indexOf(number) !== -1;
+        }
+        
+        function addUsedNumber(number) {
+            usedNumbers.push(number);
+            // 如果已使用的数字太多，清空一部分以避免无限循环
+            if (usedNumbers.length > 50) {
+                usedNumbers = usedNumbers.slice(-25);
+            }
+        }
+        
+        function getRandom(min, max) {
+            return Math.floor(Math.random() * (max - min + 1) + min);
+        }
+        function isPrime(n) {
+            // Returns true if n is prime.
+            var isPrime = true;
+            if (n < 2 || Math.round(n) !== n) {
+                isPrime = false;
+            }
+            for (var i = 2; i <= Math.sqrt(n); i++) {
+                if ((n % i) == 0) {
+                    isPrime = false;
+                }
+            }
+            return isPrime;
+        }
+        var composite;
+        var timeLeft = 20;
+        var playing = false;
+        var score = 0;
+        var best = loadBestScore();
+        var level = 2;
+        var uniquePrimes = 3;
+        var colour = {'2': "Tomato", '3': "Yellow", '5': "Lawngreen", '7': "CornflowerBlue", '11': "Orange", '13': "Violet", '17': "#4df799", '19': "#a062fc"};
+        var primes = [2, 3, 5, 7, 11, 13, 17, 19];
+
+        function timedCount() {
+            if (timeLeft !== 1) {
+                document.getElementById('start').innerHTML = timeLeft + " 秒剩余！";
+            } else {
+                document.getElementById('start').innerHTML = timeLeft + " 秒剩余！";
+            }
+            timeLeft -= 1;
+            t = setTimeout("timedCount()", 1000);
+            if (timeLeft === -1) {
+                gameOver();
+            }
+        }
+
+        function primeFactors(x) {
+            var integer = x;
+            var primeArray = [];
+            for (var i = 2; i <= integer; i++) {
+                if (integer % i === 0 && isPrime(i)) {
+                    integer /= i;
+                    primeArray.push(i);
+                    i--;
+                }
+            }
+            return primeArray;
+        }
+        function Composite(factors) {
+
+            this.create = function () {
+                var attempts = 0;
+                var maxAttempts = 100; // 防止无限循环
+                
+                do {
+                    this.product = 1;
+                    for (var i = 0; i < factors; i++) {
+                        this.product *= primes[getRandom(0, uniquePrimes - 1)];
+                    }
+                    attempts++;
+                } while (isNumberUsed(this.product) && attempts < maxAttempts);
+                
+                // 如果尝试次数过多，清空已使用数字列表
+                if (attempts >= maxAttempts) {
+                    usedNumbers = [];
+                }
+                
+                addUsedNumber(this.product);
+            };
+            this.create();
+            this.current = this.product;
+            this.factorisation = primeFactors(this.product);
+            this.display = "";
+            for (i = 0; i < this.factorisation.length - 1; i++) {
+                this.display += this.factorisation[i] + " &times; ";
+            }
+            this.display += this.factorisation[i];
+        }
+
+        function newq() {
+            if (playing) {
+                if (score > 0 && score % 5 === 0) {
+                    level += 1;
+                    if (level % 5 === 0) {
+                        if (uniquePrimes < 7) {
+                            uniquePrimes++;
+                            level = 2;
+                        }
+                    }
+                    createGame();
+                }
+                composite = new Composite(level);
+                document.getElementById('question').innerHTML = "分解 " + composite.product;
+                document.getElementById('currentProduct').innerHTML = "";
+            }
+        }
+        function checkTile(i) {
+            if (playing) {
+                var x = parseInt(document.getElementById(i).value);
+                if (parseInt(composite.current) % x === 0) {
+                    score += 1;
+                    document.getElementById('score').value = score;
+                    composite.current /= x;
+                    if (document.getElementById('currentProduct').innerHTML === "") {
+                        document.getElementById('currentProduct').innerHTML = x;
+                    } else {
+                        document.getElementById('currentProduct').innerHTML += " &times " + x;
+                    }
+                    
+                    // 如果勾选了同步分解，显示剩余乘积
+                    if (document.getElementById('showRemainder').checked) {
+                        if (composite.current === 1) {
+                            document.getElementById('question').innerHTML = "分解 " + composite.product + "<br><span>余 1</span>";
+                        } else {
+                            document.getElementById('question').innerHTML = "分解 " + composite.product + "<br><span>余 " + composite.current + "</span>";
+                        }
+                    }
+                    
+                    timeLeft += 1;
+                    if (composite.current === 1) {
+                        document.getElementById('question').innerHTML = "正确！";
+                        setTimeout("newq()", 200);
+
+                    }
+                } else {
+                    gameOver();
+                }
+            }
+
+        }
+
+        function init() {
+            if (!playing) {
+                playing = true;
+                timeLeft = parseInt(timeSelect.value);
+                score = 0;
+                level = 2;
+                uniquePrimes = 3;
+                usedNumbers = []; // 重置已使用数字列表
+                createGame();
+                document.getElementById('score').value = score;
+                timedCount();
+                newq();
+            }
+        }
+        function gameOver() {
+            playing = false;
+            clearTimeout(t);
+            if (timeLeft === -1) {
+                document.getElementById('question').innerHTML = "时间到！ " + composite.product + " = " + composite.display;
+            } else {
+                document.getElementById('question').innerHTML = "游戏结束！ " + composite.product + " = " + composite.display;
+            }
+            document.getElementById('score').value = score;
+            if (score > best) {
+                best = score;
+                saveBestScore(best);
+            }
+            score = 0;
+            document.getElementById('best').value = best;
+            document.getElementById('start').innerHTML = "开始游戏";
+        }
+        function createGame() {
+            document.getElementById('game').innerHTML = "";
+            for (var i = 0; i < uniquePrimes; i++) {
+                document.getElementById('game').innerHTML += "<input style='background: " + colour[primes[i]] + " ' class='primeTile' id='" + i + "' value ='" + primes[i] + "' onclick='checkTile(" + i + ")' type='button'>";
+            }
+        }
+        
+        // 初始化最佳成绩显示和复选框状态
+        document.getElementById('best').value = best;
+        document.getElementById('showRemainder').checked = loadShowRemainderState();
+        createGame();
+    </script>
+</html>
