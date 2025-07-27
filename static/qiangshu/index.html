@@ -41,9 +41,10 @@
             color: #666;
             font-size: 18px;
         }
-        #targetDisplay,#maxSelectDisplay{
+        #loseOnWinDisplay,#targetDisplay,#maxSelectDisplay{
             color: #1a1a1a;
             font-weight: 600;
+            font-size: 28px;
         }
         .settings-icon {
             position: absolute;
@@ -877,7 +878,7 @@
     <div class="game-container">
         <div class="header">
             <h1 class="title">抢数游戏</h1>
-            <p class="subtitle" id="gameSubtitle">点击数字开始，当前目标是抢 <span id="targetDisplay">10</span>，每次 1～<span id="maxSelectDisplay">3</span> 个数</p>
+            <p class="subtitle" id="gameSubtitle">点击数字开始，当前目标是<span id="loseOnWinDisplay"></span>抢<span id="targetDisplay">10</span>，每次1～<span id="maxSelectDisplay">3</span>个数</p>
         </div>
 
         <div class="settings-icon" onclick="toggleSettingsPanel()">
@@ -932,6 +933,13 @@
             </div>
             
             <div class="setting-item">
+                <label class="setting-label">抢到为输</label>
+                <div class="setting-control">
+                    <div class="toggle" id="loseOnWinToggle" onclick="toggleLoseOnWin()"></div>
+                </div>
+            </div>
+            
+            <div class="setting-item">
                 <label class="setting-label">显示关键</label>
                 <div class="setting-control">
                     <div class="toggle" id="keyNumberToggle" onclick="toggleKeyNumbers()"></div>
@@ -943,11 +951,11 @@
               <div class="color-legend">
                   <div class="legend-item">
                       <div class="legend-color player1"></div>
-                      <span>选手A</span>
+                      <span>蓝方</span>
                   </div>
                   <div class="legend-item">
                       <div class="legend-color player2"></div>
-                      <span>选手B</span>
+                      <span>红方</span>
                   </div>
                   <div class="legend-item">
                       <div class="legend-color computer"></div>
@@ -1001,6 +1009,7 @@
              gameMode: 'human-first', // 'human', 'computer-first', 'human-first'
              difficulty: 'easy', // 'easy', 'hard'
              showKeyNumbers: false,
+             loseOnWin: false, // 抢到为输模式
              selectedNumbers: [],
              gameHistory: [], // 记录每局游戏结果
              currentGameMoves: [], // 当前游戏的移动记录
@@ -1032,6 +1041,7 @@
                   gameState.gameMode = settings.gameMode || 'human-first';
                   gameState.difficulty = settings.difficulty || 'easy';
                   gameState.showKeyNumbers = settings.showKeyNumbers || false;
+                  gameState.loseOnWin = settings.loseOnWin || false;
                   
                   // 更新UI控件
                   document.getElementById('targetSelect').value = gameState.targetNumber;
@@ -1039,6 +1049,7 @@
                   document.getElementById('gameModeSelect').value = gameState.gameMode;
                   document.getElementById('difficultySelect').value = gameState.difficulty;
                   document.getElementById('keyNumberToggle').classList.toggle('active', gameState.showKeyNumbers);
+                  document.getElementById('loseOnWinToggle').classList.toggle('active', gameState.loseOnWin);
               }
               
               // 更新动态副标题
@@ -1064,7 +1075,8 @@
                  maxSelect: gameState.maxSelect,
                  gameMode: gameState.gameMode,
                  difficulty: gameState.difficulty,
-                 showKeyNumbers: gameState.showKeyNumbers
+                 showKeyNumbers: gameState.showKeyNumbers,
+                 loseOnWin: gameState.loseOnWin
              };
              localStorage.setItem('qiangshu-settings', JSON.stringify(settings));
          }
@@ -1102,12 +1114,12 @@
             
             // 根据游戏模式设置参与者边框
             if (gameState.gameMode === 'human') {
-                // 人人对战：选手A和选手B参与
-                legendItems[0].classList.add('participant'); // 选手A
-                legendItems[1].classList.add('participant'); // 选手B
+                // 人人对战：蓝方和红方参与
+                legendItems[0].classList.add('participant'); // 蓝方
+                legendItems[1].classList.add('participant'); // 红方
             } else if (gameState.gameMode === 'computer-first' || gameState.gameMode === 'human-first') {
-                // 人机对战：选手A和电脑参与
-                legendItems[0].classList.add('participant'); // 选手A
+                // 人机对战：蓝方和电脑参与
+                legendItems[0].classList.add('participant'); // 蓝方
                 legendItems[2].classList.add('participant'); // 电脑
             }
             
@@ -1257,8 +1269,22 @@
              // 检查游戏是否结束
              if (gameState.currentNumber >= gameState.targetNumber) {
                  gameState.isGameOver = true;
-                 recordGameResult(player);
-                 showWinner(player);
+                 let winner;
+                 
+                 if (gameState.loseOnWin) {
+                     // 抢到为输模式：抢到目标数的人输，对方获胜
+                     if (gameState.gameMode === 'human') {
+                         winner = player === 'player1' ? 'player2' : 'player1';
+                     } else {
+                         winner = player === 'computer' ? 'player1' : 'computer';
+                     }
+                 } else {
+                     // 正常模式：抢到目标数的人获胜
+                     winner = player;
+                 }
+                 
+                 recordGameResult(winner);
+                 showWinner(winner);
                  updateDisplay();
                  return;
              }
@@ -1291,6 +1317,7 @@
                  targetNumber: gameState.targetNumber,
                  maxSelect: gameState.maxSelect,
                  gameMode: gameState.gameMode,
+                 loseOnWin: gameState.loseOnWin,
                  moves: [...gameState.currentGameMoves],
                  timestamp: new Date().toISOString(),
                  totalMoves: gameState.currentGameMoves.length
@@ -1318,22 +1345,47 @@
             const keyNumbers = getKeyNumbers();
             const remaining = gameState.targetNumber - gameState.currentNumber;
             
-            // 寻找下一个关键数
-            for (let keyNum of keyNumbers) {
-                if (keyNum > gameState.currentNumber) {
-                    const numbersToKey = keyNum - gameState.currentNumber;
-                    if (numbersToKey <= gameState.maxSelect) {
-                        const numbers = [];
-                        for (let i = gameState.currentNumber + 1; i <= keyNum; i++) {
-                            numbers.push(i);
+            if (gameState.loseOnWin) {
+                // 抢到为输模式：抢占安全数，把最后一个数留给对方
+                // 寻找下一个安全数（关键数）
+                for (let keyNum of keyNumbers) {
+                    if (keyNum > gameState.currentNumber) {
+                        const numbersToKey = keyNum - gameState.currentNumber;
+                        if (numbersToKey <= gameState.maxSelect) {
+                            const numbers = [];
+                            for (let i = gameState.currentNumber + 1; i <= keyNum; i++) {
+                                numbers.push(i);
+                            }
+                            return numbers;
                         }
-                        return numbers;
+                        break;
                     }
-                    break;
+                }
+                
+                // 如果无法抢到安全数，检查是否会被迫抢到目标数
+                if (remaining <= gameState.maxSelect) {
+                    // 如果剩余数字少于等于最大选择数，尽量选择最少的数字
+                    const numbers = [gameState.currentNumber + 1];
+                    return numbers;
+                }
+            } else {
+                // 正常模式：寻找下一个关键数
+                for (let keyNum of keyNumbers) {
+                    if (keyNum > gameState.currentNumber) {
+                        const numbersToKey = keyNum - gameState.currentNumber;
+                        if (numbersToKey <= gameState.maxSelect) {
+                            const numbers = [];
+                            for (let i = gameState.currentNumber + 1; i <= keyNum; i++) {
+                                numbers.push(i);
+                            }
+                            return numbers;
+                        }
+                        break;
+                    }
                 }
             }
             
-            // 如果无法抢到关键数，随机选择
+            // 如果无法执行最优策略，随机选择
             return getRandomMove();
         }
 
@@ -1351,10 +1403,19 @@
 
         function getKeyNumbers() {
             const keyNumbers = [];
-            const step = gameState.maxSelect + 1;
+            const step = gameState.maxSelect + 1; // 一轮固定和
             
-            for (let i = gameState.targetNumber; i > 0; i -= step) {
-                keyNumbers.unshift(i);
+            if (gameState.loseOnWin) {
+                // 抢到为输模式：计算安全数（要抢占的位置）
+                // 从"最后一个数 - 1"开始，每次减"一轮固定和"
+                for (let i = gameState.targetNumber - 1; i > 0; i -= step) {
+                    keyNumbers.unshift(i);
+                }
+            } else {
+                // 正常模式：关键数字是要抢占的位置
+                for (let i = gameState.targetNumber; i > 0; i -= step) {
+                    keyNumbers.unshift(i);
+                }
             }
             
             return keyNumbers;
@@ -1415,8 +1476,8 @@
               log.innerHTML = recentGames.map(game => {
                    const isCurrentPlayerWin = (gameState.gameMode === 'human' && game.winner === 'player1') || 
                                               (gameState.gameMode !== 'human' && game.winner === 'player1');
-                   const winnerText = game.winner === 'player1' ? '选手A' : 
-                                     game.winner === 'player2' ? '选手B' : '电脑';
+                   const winnerText = game.winner === 'player1' ? '蓝方' : 
+                                     game.winner === 'player2' ? '红方' : '电脑';
                    
                    // 根据获胜者确定背景色系
                    let entryClass = '';
@@ -1459,16 +1520,18 @@
                    if (game.gameMode === 'human') {
                        // 人人对战模式，根据第一步移动确定先手
                        const firstMove = game.moves[0];
-                       firstPlayerText = firstMove && firstMove.player === 'player2' ? '选手B先' : '选手A先';
+                       firstPlayerText = firstMove && firstMove.player === 'player2' ? '红方先' : '蓝方先';
                    } else if (game.gameMode === 'computer-first') {
                        firstPlayerText = '电脑先';
                    } else {
                        firstPlayerText = '玩家先';
                    }
                    
+                   const gameTypeText = game.loseOnWin ? '不抢' : '抢';
+                   
                    return `<div class="log-entry ${entryClass}">
                        <div class="log-title">
-                           <span>第${game.gameNumber}局 (抢${game.targetNumber}, ${firstPlayerText})</span>
+                           <span>第${game.gameNumber}局 (${gameTypeText}${game.targetNumber}, ${firstPlayerText})</span>
                            <span>${winnerText}获胜</span>
                        </div>
                        <div class="log-replay">${replayNumbers.join('')}</div>
@@ -1485,10 +1548,10 @@
              
              if (player === 'player1') {
                  title.textContent = '🎉';
-                 text.textContent = gameState.gameMode === 'human' ? '选手A，获胜！' : '你赢了！';
+                 text.textContent = gameState.gameMode === 'human' ? '蓝方，获胜！' : '你赢了！';
              } else if (player === 'player2') {
                  title.textContent = '🎉';
-                 text.textContent = '选手B，获胜！';
+                 text.textContent = '红方，获胜！';
              } else {
                  title.textContent = '🤖';
                  text.textContent = '电脑获胜！';
@@ -1513,8 +1576,8 @@
             const allGames = gameState.gameHistory.slice().reverse();
             
             modalBody.innerHTML = allGames.map(game => {
-                 const winnerText = game.winner === 'player1' ? '选手A' : 
-                                   game.winner === 'player2' ? '选手B' : '电脑';
+                 const winnerText = game.winner === 'player1' ? '蓝方' : 
+                                   game.winner === 'player2' ? '红方' : '电脑';
                  
                  // 根据获胜者确定背景色系
                  let entryClass = '';
@@ -1552,16 +1615,18 @@
                    if (game.gameMode === 'human') {
                        // 人人对战模式，根据第一步移动确定先手
                        const firstMove = game.moves[0];
-                       firstPlayerText = firstMove && firstMove.player === 'player2' ? '选手B先' : '选手A先';
+                       firstPlayerText = firstMove && firstMove.player === 'player2' ? '红方先' : '蓝方先';
                    } else if (game.gameMode === 'computer-first') {
                        firstPlayerText = '电脑先';
                    } else {
                        firstPlayerText = '玩家先';
                    }
                   
+                  const gameTypeText = game.loseOnWin ? '不抢' : '抢';
+                  
                   return `<div class="log-entry ${entryClass}">
                       <div class="log-title">
-                          <span>第${game.gameNumber}局 (抢${game.targetNumber}, ${firstPlayerText})</span>
+                          <span>第${game.gameNumber}局 (${gameTypeText}${game.targetNumber}, ${firstPlayerText})</span>
                           <span>${winnerText}获胜</span>
                       </div>
                       <div class="log-replay">${replayNumbers.join('')}</div>
@@ -1590,6 +1655,7 @@
                 gameState.gameMode = 'human-first';
                 gameState.difficulty = 'easy';
                 gameState.showKeyNumbers = false;
+                gameState.loseOnWin = false;
                 
                 // 更新UI控件为默认值
                  document.getElementById('targetSelect').value = 10;
@@ -1598,6 +1664,7 @@
                  document.getElementById('gameModeSelect').value = 'human-first';
                  document.getElementById('difficultySelect').value = 'easy';
                  document.getElementById('keyNumberToggle').classList.remove('active');
+                 document.getElementById('loseOnWinToggle').classList.remove('active');
                 
                 updateGameLog();
                 closeGameLogModal();
@@ -1635,6 +1702,7 @@
         function updateGameSubtitle() {
             document.getElementById('targetDisplay').textContent = gameState.targetNumber;
             document.getElementById('maxSelectDisplay').textContent = gameState.maxSelect;
+            document.getElementById('loseOnWinDisplay').textContent = gameState.loseOnWin ? '不' : '';
         }
 
         function toggleKeyNumbers() {
@@ -1644,6 +1712,15 @@
             saveGameSettings();
             updateDisplay();
         }
+        
+        function toggleLoseOnWin() {
+             gameState.loseOnWin = !gameState.loseOnWin;
+             const toggle = document.getElementById('loseOnWinToggle');
+             toggle.classList.toggle('active', gameState.loseOnWin);
+             updateGameSubtitle();
+             saveGameSettings();
+             updateDisplay();
+         }
 
         function toggleSettingsPanel() {
             const panel = document.getElementById('settingsPanel');
