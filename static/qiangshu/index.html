@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>抢数游戏</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: white;
+            padding: 20px;
+        }
+
+        .game-container {
+            margin: 0 auto;
+            max-width: 1200px;
+            width: 100%;
+            position: relative;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .settings-icon {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 50;
+        }
+
+        .settings-icon:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: rotate(90deg);
+        }
+
+        .settings-icon svg {
+            width: 20px;
+            height: 20px;
+            fill: #666;
+        }
+
+        .settings-panel {
+            position: absolute;
+            top: 70px;
+            right: 1rem;
+            width: 240px;
+            font-size: 18px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            display: none;
+            z-index: 100;
+        }
+
+        .settings-panel.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+
+        .setting-label {
+            font-weight: 500;
+            color: #333;
+            flex: 1;
+        }
+
+        .setting-control {
+            flex-shrink: 0;
+        }
+
+        .setting-control select {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            min-width: 80px;
+        }
+
+        .setting-control input[type="number"] {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 18px;
+            background: white;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        .setting-control input[type="number"]:focus {
+            outline: none;
+            border-color: #007AFF;
+            box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+        }
+
+        .setting-control input[type="number"].invalid {
+            border-color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+        }
+
+        select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 18px;
+            background: white;
+        }
+
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: #ddd;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle.active {
+            background: #007AFF;
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+
+        .toggle.active::after {
+            transform: translateX(20px);
+        }
+
+        .game-status {
+             text-align: center;
+             margin-bottom: 24px;
+         }
+
+         .target-display {
+             font-size: 18px;
+             color: #666;
+             margin-bottom: 12px;
+         }
+
+         .current-player {
+             font-size: 16px;
+             font-weight: 500;
+             padding: 8px 16px;
+             border-radius: 20px;
+             display: inline-block;
+         }
+
+         .color-legend {
+             display: flex;
+             justify-content: center;
+             gap: 20px;
+             margin-bottom: 20px;
+             flex-wrap: wrap;
+         }
+
+         .legend-item {
+             display: flex;
+             align-items: center;
+             gap: 8px;
+             padding: 8px 12px;
+             background: rgba(255, 255, 255, 0.1);
+             backdrop-filter: blur(10px);
+             border-radius: 20px;
+             border: 2px solid rgba(255, 255, 255, 0.2);
+             font-size: 14px;
+             color: #333;
+             transition: all 0.3s ease;
+         }
+
+         .legend-item.participant {
+             border: 2px solid rgba(200, 200, 200, 0.2);
+             background: rgba(255, 255, 255, 0.15);
+         }
+
+         .legend-item.active {
+             transform: scale(1.05);
+         }
+
+         .legend-item.active.player1 {
+             border-color: #007AFF;
+             background: rgba(0, 122, 255, 0.1);
+             box-shadow: 0 0 20px rgba(0, 122, 255, 0.3);
+         }
+
+         .legend-item.active.player2 {
+             border-color: #ff6b6b;
+             background: rgba(255, 107, 107, 0.1);
+             box-shadow: 0 0 20px rgba(255, 107, 107, 0.3);
+         }
+
+         .legend-item.active.computer {
+             border-color: #6c757d;
+             background: rgba(108, 117, 125, 0.1);
+             box-shadow: 0 0 20px rgba(108, 117, 125, 0.3);
+         }
+
+         .legend-color {
+             width: 20px;
+             height: 20px;
+             border-radius: 6px;
+             border: 1px solid rgba(255, 255, 255, 0.3);
+         }
+
+         .legend-color.player1 {
+             background: linear-gradient(135deg, #007AFF, #0056b3);
+         }
+
+         .legend-color.player2 {
+             background: linear-gradient(135deg, #ff6b6b, #e55353);
+         }
+
+         .legend-color.computer {
+             background: linear-gradient(135deg, #6c757d, #495057);
+         }
+
+        .player-human {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .player-computer {
+            background: #fce4ec;
+            color: #c2185b;
+        }
+
+        .numbers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 12px;
+            margin: 60px auto 24px;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 12px;
+        }
+
+        .number-cell {
+             width: 80px;
+             height: 80px;
+             border: 1px solid rgba(255, 255, 255, 0.2);
+             border-radius: 16px;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             font-size: 28px;
+             font-weight: 600;
+             cursor: pointer;
+             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+             background: rgba(255, 255, 255, 0.1);
+             backdrop-filter: blur(20px);
+             -webkit-backdrop-filter: blur(20px);
+             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+             position: relative;
+             overflow: hidden;
+         }
+
+         .number-cell::before {
+             content: '';
+             position: absolute;
+             top: 0;
+             left: -100%;
+             width: 100%;
+             height: 100%;
+             background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+             transition: left 0.5s;
+         }
+
+         .number-cell:hover {
+             transform: translateY(-4px) scale(1.05);
+             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+             border-color: rgba(255, 255, 255, 0.4);
+         }
+
+         .number-cell:hover::before {
+             left: 100%;
+         }
+         .number-cell.selectable {
+            background:#fff;
+         }
+        .number-cell.selected-player1 {
+              background: linear-gradient(135deg, rgba(0, 122, 255, 0.9), rgba(0, 122, 255, 0.7));
+              color: white;
+              border-color: rgba(0, 122, 255, 0.5);
+              backdrop-filter: blur(20px);
+              box-shadow: 0 8px 32px rgba(0, 122, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+          }
+
+          .number-cell.selected-player2 {
+              background: linear-gradient(135deg, rgba(255, 107, 107, 0.9), rgba(255, 107, 107, 0.7));
+              color: white;
+              border-color: rgba(255, 107, 107, 0.5);
+              backdrop-filter: blur(20px);
+              box-shadow: 0 8px 32px rgba(255, 107, 107, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+          }
+
+          .number-cell.selected-computer {
+              background: linear-gradient(135deg, rgba(108, 117, 125, 0.9), rgba(108, 117, 125, 0.7));
+              color: white;
+              border-color: rgba(108, 117, 125, 0.5);
+              backdrop-filter: blur(20px);
+              box-shadow: 0 8px 32px rgba(108, 117, 125, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+          }
+
+          .number-cell.current-selection.player1 {
+              background: linear-gradient(135deg, rgba(0, 122, 255, 0.9), rgba(0, 122, 255, 0.7));
+              color: white;
+              border-color: rgba(0, 122, 255, 0.8);
+              backdrop-filter: blur(20px);
+              box-shadow: 0 8px 32px rgba(0, 122, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+              animation: pulse 2s infinite;
+          }
+
+          .number-cell.current-selection.player2 {
+              background: linear-gradient(135deg, rgba(255, 107, 107, 0.9), rgba(255, 107, 107, 0.7));
+              color: white;
+              border-color: rgba(255, 107, 107, 0.8);
+              backdrop-filter: blur(20px);
+              box-shadow: 0 8px 32px rgba(255, 107, 107, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+              animation: pulse 2s infinite;
+          }
+
+          .number-cell.current-selection.computer {
+              background: linear-gradient(135deg, rgba(108, 117, 125, 0.9), rgba(108, 117, 125, 0.7));
+              color: white;
+              border-color: rgba(108, 117, 125, 0.8);
+              backdrop-filter: blur(20px);
+              box-shadow: 0 8px 32px rgba(108, 117, 125, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+              animation: pulse 2s infinite;
+          }
+
+          @keyframes pulse {
+              0%, 100% { transform: scale(1); }
+              50% { transform: scale(1.05); }
+          }
+
+
+           .number-cell.selectable.player1:hover {
+               background: linear-gradient(135deg, rgba(0, 122, 255, 0.6), rgba(0, 122, 255, 0.4));
+               color: white;
+               border-color: rgba(0, 122, 255, 0.8);
+           }
+
+
+           .number-cell.selectable.player2:hover {
+               background: linear-gradient(135deg, rgba(255, 107, 107, 0.6), rgba(255, 107, 107, 0.4));
+               color: white;
+               border-color: rgba(255, 107, 107, 0.8);
+           }
+
+           .number-cell.selectable.computer:hover {
+               background: linear-gradient(135deg, rgba(108, 117, 125, 0.6), rgba(108, 117, 125, 0.4));
+               color: white;
+               border-color: rgba(108, 117, 125, 0.8);
+           }
+
+         .number-cell.key-number {
+             border-color: #ff6b6b;
+             background: #fff5f5;
+         }
+
+         .number-cell.key-number::after {
+             content: '★';
+             position: absolute;
+             top: 5px;
+             right: 5px;
+             background: #ff6b6b;
+             color: white;
+             width: 20px;
+             height: 20px;
+             border-radius: 50%;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             font-size: 12px;
+         }
+
+         .number-cell.disabled {
+             opacity: 0.3;
+             cursor: not-allowed;
+             border-color: #fff;
+         }
+
+         .number-cell.disabled:hover {
+             transform: none;
+         }
+
+        .floating-confirm {
+            position: absolute;
+            z-index: 100;
+            pointer-events: none;
+        }
+        
+        .confirm-bubble {
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            pointer-events: auto;
+            position: relative;
+        }
+        
+        .confirm-bubble.player1 {
+            background: linear-gradient(135deg, #007AFF, #0056b3);
+            box-shadow: 0 4px 20px rgba(0, 122, 255, 0.4);
+        }
+        
+        .confirm-bubble.player1::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 6px solid #007AFF;
+        }
+        
+        .confirm-bubble.player1:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(0, 122, 255, 0.5);
+        }
+        
+        .confirm-bubble.player2 {
+            background: linear-gradient(135deg, #ff6b6b, #e55353);
+            box-shadow: 0 4px 20px rgba(255, 107, 107, 0.4);
+        }
+        
+        .confirm-bubble.player2::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 6px solid #ff6b6b;
+        }
+        
+        .confirm-bubble.player2:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(255, 107, 107, 0.5);
+        }
+        
+        .confirm-bubble.computer {
+            background: linear-gradient(135deg, #6c757d, #495057);
+            box-shadow: 0 4px 20px rgba(108, 117, 125, 0.4);
+        }
+        
+        .confirm-bubble.computer::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 6px solid #6c757d;
+        }
+        
+        .confirm-bubble.computer:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(108, 117, 125, 0.5);
+        }
+        
+        .confirm-bubble:disabled {
+            background: linear-gradient(135deg, #ccc, #999) !important;
+            cursor: not-allowed;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1) !important;
+        }
+        
+        .confirm-bubble:disabled::after {
+            border-top-color: #ccc !important;
+        }
+        
+        .reset-button-container {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #333;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-secondary:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .game-log {
+              background: rgba(255, 255, 255, 0.05);
+              backdrop-filter: blur(20px);
+              border-radius: 16px;
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              font-size: 14px;
+              line-height: 1.5;
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 12px;
+          }
+
+          .log-entry {
+                padding: 12px;
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.1);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            }
+
+           .log-entry.win-player1 {
+               border-color: rgba(0, 122, 255, 0.4);
+               background: linear-gradient(135deg, rgba(0, 122, 255, 0.15), rgba(0, 122, 255, 0.05));
+           }
+
+           .log-entry.win-player2 {
+               border-color: rgba(255, 107, 107, 0.4);
+               background: linear-gradient(135deg, rgba(255, 107, 107, 0.15), rgba(255, 107, 107, 0.05));
+           }
+
+           .log-entry.win-computer {
+               border-color: rgba(108, 117, 125, 0.4);
+               background: linear-gradient(135deg, rgba(108, 117, 125, 0.15), rgba(108, 117, 125, 0.05));
+           }
+
+           .log-entry.lose {
+               border-color: rgba(220, 53, 69, 0.3);
+               background: rgba(220, 53, 69, 0.08);
+           }
+
+          .log-title {
+              font-weight: 600;
+              color: #333;
+              margin-bottom: 8px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+          }
+
+          .log-details {
+              font-size: 12px;
+              color: #666;
+              margin-bottom: 8px;
+          }
+
+          .log-replay {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 4px;
+              margin-top: 8px;
+          }
+
+          .replay-number {
+              width: 32px;
+              height: 32px;
+              border-radius: 6px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 18px;
+              color: white;
+              border: 1px solid rgba(255, 255, 255, 0.2);
+          }
+
+          .replay-number.player1 {
+              background: linear-gradient(135deg, #007AFF, #0056b3);
+          }
+
+          .replay-number.player2 {
+              background: linear-gradient(135deg, #ff6b6b, #e55353);
+          }
+
+          .replay-number.computer {
+              background: linear-gradient(135deg, #6c757d, #495057);
+          }
+
+        .winner-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .winner-content {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .winner-title {
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+
+        .winner-text {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 24px;
+        }
+
+        .game-log-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .game-log-modal-content {
+            background: white;
+            border-radius: 16px;
+            width: 95vw;
+            height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .game-log-modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .game-log-modal-header h3 {
+            margin: 0;
+            color: #333;
+        }
+
+        .game-log-modal-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .game-log-modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: 1px solid #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            border-color: #bd2130;
+        }
+
+        @media (max-width: 600px) {
+            .settings {
+                grid-template-columns: 1fr;
+            }
+            
+            .numbers-grid {
+                grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+                margin: 30px auto 24px;
+            }
+            
+            .number-cell {
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="header">
+            <h1 class="title">抢数游戏</h1>
+            <p class="subtitle" id="gameSubtitle">点击数字开始游戏，当前目标是抢 <span id="targetDisplay">10</span>，每次 1～<span id="maxSelectDisplay">3</span> 个数</p>
+        </div>
+
+        <div class="settings-icon" onclick="toggleSettingsPanel()">
+            <svg viewBox="0 0 24 24">
+                <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11.03L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11.03C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+            </svg>
+        </div>
+
+        <div class="settings-panel" id="settingsPanel">
+            <div class="setting-item">
+                <label class="setting-label">目标数字</label>
+                <div class="setting-control">
+                    <input type="number" id="targetSelect" min="5" max="200" value="10" onchange="updateSettings()" oninput="validateTargetInput()">
+                </div>
+            </div>
+            
+            <div class="setting-item">
+                <label class="setting-label">最多选择</label>
+                <div class="setting-control">
+                    <select id="maxSelectSelect" onchange="updateSettings()">
+                        <option value="2">2个数</option>
+                        <option value="3" selected>3个数</option>
+                        <option value="4">4个数</option>
+                        <option value="5">5个数</option>
+                        <option value="6">6个数</option>
+                        <option value="7">7个数</option>
+                        <option value="8">8个数</option>
+                        <option value="9">9个数</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="setting-item">
+                <label class="setting-label">游戏模式</label>
+                <div class="setting-control">
+                    <select id="gameModeSelect" onchange="updateSettings()">
+                        <option value="human">人人对战</option>
+                        <option value="computer-first">电脑先手</option>
+                        <option value="human-first" selected>玩家先手</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="setting-item">
+                <label class="setting-label">电脑难度</label>
+                <div class="setting-control">
+                    <select id="difficultySelect" onchange="updateSettings()">
+                        <option value="easy">新手</option>
+                        <option value="hard">困难</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="setting-item">
+                <label class="setting-label">显示关键</label>
+                <div class="setting-control">
+                    <div class="toggle" id="keyNumberToggle" onclick="toggleKeyNumbers()"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="game-status">
+              <div class="color-legend">
+                  <div class="legend-item">
+                      <div class="legend-color player1"></div>
+                      <span>选手A</span>
+                  </div>
+                  <div class="legend-item">
+                      <div class="legend-color player2"></div>
+                      <span>选手B</span>
+                  </div>
+                  <div class="legend-item">
+                      <div class="legend-color computer"></div>
+                      <span>电脑</span>
+                  </div>
+              </div>
+
+          </div>
+
+        <div class="numbers-grid" id="numbersGrid"></div>
+
+        <div class="floating-confirm" id="floatingConfirm" style="display: none;">
+            <button class="confirm-bubble" id="confirmBtn" onclick="confirmSelection()" disabled>确认选择</button>
+        </div>
+        
+        <div class="reset-button-container">
+            <button class="btn btn-secondary" onclick="resetGame()">重新开始</button>
+            <button class="btn btn-secondary" onclick="showGameLogModal()">完整记录</button>
+        </div>
+
+        <div class="game-log" id="gameLog"></div>
+    </div>
+
+    <div class="winner-modal" id="winnerModal">
+        <div class="winner-content">
+            <div class="winner-title" id="winnerTitle">🎉</div>
+            <div class="winner-text" id="winnerText">获胜了！</div>
+            <button class="btn btn-primary" onclick="closeWinnerModal()">再来一局</button>
+        </div>
+    </div>
+
+    <div class="game-log-modal" id="gameLogModal">
+        <div class="game-log-modal-content">
+            <div class="game-log-modal-header">
+                <h3>游戏记录</h3>
+                <div class="game-log-modal-buttons">
+                    <button class="btn btn-danger" onclick="clearGameHistory()">清空记录</button>
+                    <button class="btn btn-secondary" onclick="closeGameLogModal()">关闭</button>
+                </div>
+            </div>
+            <div class="game-log-modal-body" id="gameLogModalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        let gameState = {
+             targetNumber: 10,
+             maxSelect: 3,
+             currentNumber: 0,
+             currentPlayer: 'player1', // 'player1', 'player2', 'computer'
+             gameMode: 'human-first', // 'human', 'computer-first', 'human-first'
+             difficulty: 'easy', // 'easy', 'hard'
+             showKeyNumbers: false,
+             selectedNumbers: [],
+             gameHistory: [], // 记录每局游戏结果
+             currentGameMoves: [], // 当前游戏的移动记录
+             isGameOver: false,
+             gameCount: 0
+         };
+
+         // 从localStorage加载游戏历史
+         function loadGameHistory() {
+             const saved = localStorage.getItem('qiangshu-history');
+             if (saved) {
+                 gameState.gameHistory = JSON.parse(saved);
+                 gameState.gameCount = gameState.gameHistory.length;
+             }
+         }
+
+         // 保存游戏历史到localStorage
+         function saveGameHistory() {
+             localStorage.setItem('qiangshu-history', JSON.stringify(gameState.gameHistory));
+         }
+
+         // 从localStorage加载游戏设置
+          function loadGameSettings() {
+              const saved = localStorage.getItem('qiangshu-settings');
+              if (saved) {
+                  const settings = JSON.parse(saved);
+                  gameState.targetNumber = settings.targetNumber || 10;
+                  gameState.maxSelect = settings.maxSelect || 3;
+                  gameState.gameMode = settings.gameMode || 'human-first';
+                  gameState.difficulty = settings.difficulty || 'easy';
+                  gameState.showKeyNumbers = settings.showKeyNumbers || false;
+                  
+                  // 更新UI控件
+                  document.getElementById('targetSelect').value = gameState.targetNumber;
+                  document.getElementById('maxSelectSelect').value = gameState.maxSelect;
+                  document.getElementById('gameModeSelect').value = gameState.gameMode;
+                  document.getElementById('difficultySelect').value = gameState.difficulty;
+                  document.getElementById('keyNumberToggle').classList.toggle('active', gameState.showKeyNumbers);
+              }
+              
+              // 更新动态副标题
+              updateGameSubtitle();
+          }
+
+          // 验证目标数字输入
+          function validateTargetInput() {
+              const input = document.getElementById('targetSelect');
+              const value = parseInt(input.value);
+              
+              if (isNaN(value) || value < 5 || value > 200) {
+                  input.classList.add('invalid');
+              } else {
+                  input.classList.remove('invalid');
+              }
+          }
+
+         // 保存游戏设置到localStorage
+         function saveGameSettings() {
+             const settings = {
+                 targetNumber: gameState.targetNumber,
+                 maxSelect: gameState.maxSelect,
+                 gameMode: gameState.gameMode,
+                 difficulty: gameState.difficulty,
+                 showKeyNumbers: gameState.showKeyNumbers
+             };
+             localStorage.setItem('qiangshu-settings', JSON.stringify(settings));
+         }
+
+        function initGame() {
+             gameState.currentNumber = 0;
+             gameState.selectedNumbers = [];
+             gameState.currentGameMoves = [];
+             gameState.isGameOver = false;
+             
+             // 设置初始玩家
+             if (gameState.gameMode === 'human') {
+                 gameState.currentPlayer = 'player1';
+             } else if (gameState.gameMode === 'computer-first') {
+                 gameState.currentPlayer = 'computer';
+             } else {
+                 gameState.currentPlayer = 'player1';
+             }
+             
+             updateDisplay();
+             updateGameLog();
+             
+             // 如果是电脑先手，立即执行电脑回合
+             if (gameState.currentPlayer === 'computer') {
+                 setTimeout(computerMove, 1000);
+             }
+         }
+
+        function updateDisplay() {
+            // 更新图例项的活跃状态和参与状态
+            const legendItems = document.querySelectorAll('.legend-item');
+            legendItems.forEach(item => {
+                item.classList.remove('active', 'participant', 'player1', 'player2', 'computer');
+            });
+            
+            // 根据游戏模式设置参与者边框
+            if (gameState.gameMode === 'human') {
+                // 人人对战：选手A和选手B参与
+                legendItems[0].classList.add('participant'); // 选手A
+                legendItems[1].classList.add('participant'); // 选手B
+            } else if (gameState.gameMode === 'computer-first' || gameState.gameMode === 'human-first') {
+                // 人机对战：选手A和电脑参与
+                legendItems[0].classList.add('participant'); // 选手A
+                legendItems[2].classList.add('participant'); // 电脑
+            }
+            
+            // 设置当前玩家的活跃状态
+            if (!gameState.isGameOver) {
+                const activeIndex = gameState.currentPlayer === 'player1' ? 0 : 
+                                   gameState.currentPlayer === 'player2' ? 1 : 2;
+                const activeItem = legendItems[activeIndex];
+                if (activeItem) {
+                    activeItem.classList.add('active', gameState.currentPlayer);
+                }
+            }
+            
+            updateNumbersGrid();
+            updateConfirmButton();
+        }
+
+        function updateNumbersGrid() {
+             const grid = document.getElementById('numbersGrid');
+             grid.innerHTML = '';
+             
+             const keyNumbers = getKeyNumbers();
+             
+             for (let i = 1; i <= gameState.targetNumber; i++) {
+                 const cell = document.createElement('div');
+                 cell.className = 'number-cell';
+                 cell.textContent = i;
+                 
+                 if (i <= gameState.currentNumber) {
+                     // 显示已选择的数字，区分不同玩家
+                     const lastMove = gameState.currentGameMoves[gameState.currentGameMoves.length - 1];
+                     if (lastMove && lastMove.numbers.includes(i)) {
+                         if (lastMove.player === 'player1') {
+                             cell.classList.add('selected-player1');
+                         } else if (lastMove.player === 'player2') {
+                             cell.classList.add('selected-player2');
+                         } else {
+                             cell.classList.add('selected-computer'); // 电脑用灰色
+                         }
+                     } else {
+                         // 查找这个数字属于哪个玩家
+                         for (let move of gameState.currentGameMoves) {
+                             if (move.numbers.includes(i)) {
+                                 if (move.player === 'player1') {
+                                     cell.classList.add('selected-player1');
+                                 } else if (move.player === 'player2') {
+                                     cell.classList.add('selected-player2');
+                                 } else {
+                                     cell.classList.add('selected-computer');
+                                 }
+                                 break;
+                             }
+                         }
+                     }
+                     cell.style.pointerEvents = 'none';
+                 } else {
+                     // 检查是否可以选择
+                      const canSelect = canSelectNumber(i);
+                      if (canSelect) {
+                          cell.classList.add('selectable');
+                          // 添加当前玩家的颜色类
+                          if (gameState.currentPlayer === 'player1') {
+                              cell.classList.add('player1');
+                          } else if (gameState.currentPlayer === 'player2') {
+                              cell.classList.add('player2');
+                          } else {
+                              cell.classList.add('computer');
+                          }
+                          cell.onclick = () => selectNumber(i);
+                      } else {
+                          cell.classList.add('disabled');
+                      }
+                     
+                     // 显示关键数
+                     if (gameState.showKeyNumbers && keyNumbers.includes(i)) {
+                         cell.classList.add('key-number');
+                     }
+                     
+                     // 显示当前选择
+                     if (gameState.selectedNumbers.includes(i)) {
+                         cell.classList.add('current-selection');
+                         // 添加当前玩家的颜色类
+                         if (gameState.currentPlayer === 'player1') {
+                             cell.classList.add('player1');
+                         } else if (gameState.currentPlayer === 'player2') {
+                             cell.classList.add('player2');
+                         } else {
+                             cell.classList.add('computer');
+                         }
+                     }
+                 }
+                 
+                 grid.appendChild(cell);
+             }
+         }
+
+        function canSelectNumber(number) {
+             if (gameState.isGameOver || gameState.currentPlayer === 'computer') {
+                 return false;
+             }
+             
+             if (number <= gameState.currentNumber) {
+                 return false;
+             }
+             
+             // 支持直接选择目标数字
+             const numbersToSelect = number - gameState.currentNumber;
+             if (numbersToSelect <= gameState.maxSelect) {
+                 return true;
+             }
+             
+             return false;
+         }
+
+        function selectNumber(number) {
+             if (!canSelectNumber(number)) return;
+             
+             // 直接选择从当前数字到目标数字的所有数字
+             gameState.selectedNumbers = [];
+             for (let i = gameState.currentNumber + 1; i <= number; i++) {
+                 gameState.selectedNumbers.push(i);
+             }
+             
+             updateDisplay();
+         }
+
+        function confirmSelection() {
+            if (gameState.selectedNumbers.length === 0) return;
+            
+            makeMove(gameState.selectedNumbers);
+        }
+
+        function makeMove(numbers) {
+             const player = gameState.currentPlayer;
+             gameState.currentNumber = Math.max(...numbers);
+             
+             // 记录移动到当前游戏
+             gameState.currentGameMoves.push({
+                 player: player,
+                 numbers: [...numbers],
+                 timestamp: new Date().toISOString()
+             });
+             
+             // 清空选择
+             gameState.selectedNumbers = [];
+             
+             // 检查游戏是否结束
+             if (gameState.currentNumber >= gameState.targetNumber) {
+                 gameState.isGameOver = true;
+                 recordGameResult(player);
+                 showWinner(player);
+                 updateDisplay();
+                 return;
+             }
+             
+             // 切换玩家
+             if (gameState.gameMode === 'human') {
+                 gameState.currentPlayer = gameState.currentPlayer === 'player1' ? 'player2' : 'player1';
+             } else {
+                 if (gameState.currentPlayer === 'computer') {
+                     gameState.currentPlayer = 'player1';
+                 } else {
+                     gameState.currentPlayer = 'computer';
+                 }
+             }
+             
+             updateDisplay();
+             updateGameLog();
+             
+             // 如果轮到电脑，执行电脑移动
+             if (gameState.currentPlayer === 'computer' && !gameState.isGameOver) {
+                 setTimeout(computerMove, 1000);
+             }
+         }
+
+         function recordGameResult(winner) {
+             gameState.gameCount++;
+             const gameResult = {
+                 gameNumber: gameState.gameCount,
+                 winner: winner,
+                 targetNumber: gameState.targetNumber,
+                 maxSelect: gameState.maxSelect,
+                 gameMode: gameState.gameMode,
+                 moves: [...gameState.currentGameMoves],
+                 timestamp: new Date().toISOString(),
+                 totalMoves: gameState.currentGameMoves.length
+             };
+             
+             gameState.gameHistory.push(gameResult);
+             saveGameHistory();
+         }
+
+        function computerMove() {
+            if (gameState.isGameOver) return;
+            
+            let selectedNumbers;
+            
+            if (gameState.difficulty === 'hard') {
+                selectedNumbers = getOptimalMove();
+            } else {
+                selectedNumbers = getRandomMove();
+            }
+            
+            makeMove(selectedNumbers);
+        }
+
+        function getOptimalMove() {
+            const keyNumbers = getKeyNumbers();
+            const remaining = gameState.targetNumber - gameState.currentNumber;
+            
+            // 寻找下一个关键数
+            for (let keyNum of keyNumbers) {
+                if (keyNum > gameState.currentNumber) {
+                    const numbersToKey = keyNum - gameState.currentNumber;
+                    if (numbersToKey <= gameState.maxSelect) {
+                        const numbers = [];
+                        for (let i = gameState.currentNumber + 1; i <= keyNum; i++) {
+                            numbers.push(i);
+                        }
+                        return numbers;
+                    }
+                    break;
+                }
+            }
+            
+            // 如果无法抢到关键数，随机选择
+            return getRandomMove();
+        }
+
+        function getRandomMove() {
+            const maxPossible = Math.min(gameState.maxSelect, gameState.targetNumber - gameState.currentNumber);
+            const count = Math.floor(Math.random() * maxPossible) + 1;
+            
+            const numbers = [];
+            for (let i = gameState.currentNumber + 1; i <= gameState.currentNumber + count; i++) {
+                numbers.push(i);
+            }
+            
+            return numbers;
+        }
+
+        function getKeyNumbers() {
+            const keyNumbers = [];
+            const step = gameState.maxSelect + 1;
+            
+            for (let i = gameState.targetNumber; i > 0; i -= step) {
+                keyNumbers.unshift(i);
+            }
+            
+            return keyNumbers;
+        }
+
+        function updateConfirmButton() {
+             const btn = document.getElementById('confirmBtn');
+             const floatingConfirm = document.getElementById('floatingConfirm');
+             
+             const shouldShow = gameState.selectedNumbers.length > 0 && 
+                               gameState.currentPlayer !== 'computer' && 
+                               !gameState.isGameOver;
+             
+             if (shouldShow) {
+                 // 更新按钮颜色类
+                 btn.className = 'confirm-bubble ' + gameState.currentPlayer;
+                 
+                 // 显示气泡并定位到选中数字的上方
+                 const selectedNumber = Math.max(...gameState.selectedNumbers);
+                 const numberCells = document.querySelectorAll('.number-cell');
+                 const targetCell = Array.from(numberCells).find(cell => 
+                     parseInt(cell.textContent) === selectedNumber
+                 );
+                 
+                 if (targetCell) {
+                     const rect = targetCell.getBoundingClientRect();
+                     const container = document.querySelector('.game-container');
+                     const containerRect = container.getBoundingClientRect();
+                     
+                     // 计算相对于game-container的位置
+                     const left = rect.left - containerRect.left + rect.width / 2;
+                     const top = rect.top - containerRect.top - 50;
+                     
+                     floatingConfirm.style.display = 'block';
+                     floatingConfirm.style.left = left + 'px';
+                     floatingConfirm.style.top = top + 'px';
+                     floatingConfirm.style.transform = 'translateX(-50%)';
+                 }
+                 
+                 btn.disabled = false;
+             } else {
+                 floatingConfirm.style.display = 'none';
+                 btn.disabled = true;
+             }
+         }
+
+        function updateGameLog() {
+              const log = document.getElementById('gameLog');
+              
+              if (gameState.gameHistory.length === 0) {
+                  log.innerHTML = '<div class="log-entry"><div class="log-title">暂无游戏记录</div><div class="log-details">开始游戏后将显示历史战绩和对战实录</div></div>';
+                  return;
+              }
+              
+              // 显示最近的4局游戏
+              const recentGames = gameState.gameHistory.slice(-4).reverse();
+              
+              log.innerHTML = recentGames.map(game => {
+                   const isCurrentPlayerWin = (gameState.gameMode === 'human' && game.winner === 'player1') || 
+                                              (gameState.gameMode !== 'human' && game.winner === 'player1');
+                   const winnerText = game.winner === 'player1' ? '选手A' : 
+                                     game.winner === 'player2' ? '选手B' : '电脑';
+                   
+                   // 根据获胜者确定背景色系
+                   let entryClass = '';
+                   if (game.winner === 'player1') {
+                       entryClass = 'win-player1';
+                   } else if (game.winner === 'player2') {
+                       entryClass = 'win-player2';
+                   } else {
+                       entryClass = 'win-computer';
+                   }
+                   
+                   // 如果当前玩家输了，使用失败样式
+                   if (!isCurrentPlayerWin && gameState.gameMode !== 'human') {
+                       entryClass = 'lose';
+                   }
+                   
+                   // 生成对战实录
+                   const replayNumbers = [];
+                   for (let i = 1; i <= game.targetNumber; i++) {
+                       let playerClass = '';
+                       for (let move of game.moves) {
+                           if (move.numbers.includes(i)) {
+                               if (move.player === 'player1') {
+                                   playerClass = 'player1';
+                               } else if (move.player === 'player2') {
+                                   playerClass = 'player2';
+                               } else {
+                                   playerClass = 'computer';
+                               }
+                               break;
+                           }
+                       }
+                       if (playerClass) {
+                           replayNumbers.push(`<div class="replay-number ${playerClass}">${i}</div>`);
+                       }
+                   }
+                   
+                   return `<div class="log-entry ${entryClass}">
+                       <div class="log-title">
+                           <span>第${game.gameNumber}局</span>
+                           <span>${winnerText}获胜</span>
+                       </div>
+                       <div class="log-replay">${replayNumbers.join('')}</div>
+                   </div>`;
+               }).join('');
+              
+              log.scrollTop = log.scrollHeight;
+          }
+
+        function showWinner(player) {
+             const modal = document.getElementById('winnerModal');
+             const title = document.getElementById('winnerTitle');
+             const text = document.getElementById('winnerText');
+             
+             if (player === 'player1') {
+                 title.textContent = '🎉';
+                 text.textContent = gameState.gameMode === 'human' ? '选手A，获胜！' : '你赢了！';
+             } else if (player === 'player2') {
+                 title.textContent = '🎉';
+                 text.textContent = '选手B，获胜！';
+             } else {
+                 title.textContent = '🤖';
+                 text.textContent = '电脑获胜！';
+             }
+             
+             modal.style.display = 'flex';
+         }
+
+        function closeWinnerModal() {
+            document.getElementById('winnerModal').style.display = 'none';
+            // 不自动开始新游戏，让用户手动点击重新开始
+        }
+
+        function showGameLogModal() {
+            const modal = document.getElementById('gameLogModal');
+            const modalBody = document.getElementById('gameLogModalBody');
+            
+            // 显示所有游戏记录
+            modalBody.innerHTML = '';
+            
+            const allGames = gameState.gameHistory.slice().reverse();
+            
+            modalBody.innerHTML = allGames.map(game => {
+                 const winnerText = game.winner === 'player1' ? '选手A' : 
+                                   game.winner === 'player2' ? '选手B' : '电脑';
+                 
+                 // 根据获胜者确定背景色系
+                 let entryClass = '';
+                 if (game.winner === 'player1') {
+                     entryClass = 'win-player1';
+                 } else if (game.winner === 'player2') {
+                     entryClass = 'win-player2';
+                 } else {
+                     entryClass = 'win-computer';
+                 }
+                 
+                 // 生成对战实录
+                 const replayNumbers = [];
+                 for (let i = 1; i <= game.targetNumber; i++) {
+                     let playerClass = '';
+                     for (let move of game.moves) {
+                         if (move.numbers.includes(i)) {
+                             if (move.player === 'player1') {
+                                 playerClass = 'player1';
+                             } else if (move.player === 'player2') {
+                                 playerClass = 'player2';
+                             } else {
+                                 playerClass = 'computer';
+                             }
+                             break;
+                         }
+                     }
+                     if (playerClass) {
+                         replayNumbers.push(`<div class="replay-number ${playerClass}">${i}</div>`);
+                     }
+                 }
+                 
+                 return `<div class="log-entry ${entryClass}">
+                     <div class="log-title">
+                         <span>第${game.gameNumber}局</span>
+                         <span>${winnerText}获胜</span>
+                     </div>
+                     <div class="log-replay">${replayNumbers.join('')}</div>
+                 </div>`;
+             }).join('');
+            
+            modal.style.display = 'flex';
+        }
+
+        function closeGameLogModal() {
+            document.getElementById('gameLogModal').style.display = 'none';
+        }
+
+        function clearGameHistory() {
+            if (confirm('确定要清空所有本地数据吗？包括游戏记录和设置选项，此操作不可撤销。')) {
+                gameState.gameHistory = [];
+                gameState.gameCount = 0;
+                
+                // 清除所有本地存储数据
+                localStorage.removeItem('qiangshu-history');
+                localStorage.removeItem('qiangshu-settings');
+                
+                // 重置为默认设置
+                gameState.targetNumber = 10;
+                gameState.maxSelect = 3;
+                gameState.gameMode = 'human-first';
+                gameState.difficulty = 'easy';
+                gameState.showKeyNumbers = false;
+                
+                // 更新UI控件为默认值
+                 document.getElementById('targetSelect').value = 10;
+                 document.getElementById('targetSelect').classList.remove('invalid');
+                 document.getElementById('maxSelectSelect').value = 3;
+                 document.getElementById('gameModeSelect').value = 'human-first';
+                 document.getElementById('difficultySelect').value = 'easy';
+                 document.getElementById('keyNumberToggle').classList.remove('active');
+                
+                updateGameLog();
+                closeGameLogModal();
+                resetGame();
+            }
+        }
+
+        function resetGame() {
+            initGame();
+        }
+
+        function updateSettings() {
+            const targetValue = parseInt(document.getElementById('targetSelect').value);
+            
+            // 验证目标数字范围
+            if (isNaN(targetValue) || targetValue < 5 || targetValue > 200) {
+                alert('目标数字必须在5到200之间');
+                document.getElementById('targetSelect').value = gameState.targetNumber;
+                return;
+            }
+            
+            gameState.targetNumber = targetValue;
+            gameState.maxSelect = parseInt(document.getElementById('maxSelectSelect').value);
+            gameState.gameMode = document.getElementById('gameModeSelect').value;
+            gameState.difficulty = document.getElementById('difficultySelect').value;
+            
+            // 更新动态副标题
+            updateGameSubtitle();
+            
+            saveGameSettings();
+            resetGame();
+        }
+
+        // 更新游戏副标题显示
+        function updateGameSubtitle() {
+            document.getElementById('targetDisplay').textContent = gameState.targetNumber;
+            document.getElementById('maxSelectDisplay').textContent = gameState.maxSelect;
+        }
+
+        function toggleKeyNumbers() {
+            gameState.showKeyNumbers = !gameState.showKeyNumbers;
+            const toggle = document.getElementById('keyNumberToggle');
+            toggle.classList.toggle('active', gameState.showKeyNumbers);
+            saveGameSettings();
+            updateDisplay();
+        }
+
+        function toggleSettingsPanel() {
+            const panel = document.getElementById('settingsPanel');
+            panel.classList.toggle('show');
+        }
+
+        // 点击其他地方关闭设置面板
+        document.addEventListener('click', function(event) {
+            const panel = document.getElementById('settingsPanel');
+            const icon = document.querySelector('.settings-icon');
+            
+            if (!panel.contains(event.target) && !icon.contains(event.target)) {
+                panel.classList.remove('show');
+            }
+        });
+
+        // 初始化游戏
+         loadGameHistory();
+         loadGameSettings();
+         initGame();
+    </script>
+</body>
+</html>
