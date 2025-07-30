@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>可拖拽日历</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-image: linear-gradient(120deg, #fdfbfb 0%, #ebedee 100%);
+            height: 100vh;
+        }
+
+        .calendar-container {
+            background-color: #e8c5a0;
+            padding: 30px;
+            border-radius: 25px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+            width: 600px;
+            margin: 2rem auto;
+        }
+
+        .month-selector {
+            background-color: #b8d4d1;
+            border: 3px solid #666;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            display: inline-block;
+            border-radius: 5px;
+            font-size: 24px;
+            font-weight: bold;
+            position: relative;
+        }
+
+        .month-selector::after {
+            content: "▼";
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #2d8b85;
+            font-size: 18px;
+        }
+
+        .calendar {
+            background-color: #b8d4d1;
+            border: 2px solid #666;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            background-color: #b8d4d1;
+            border-bottom: 2px solid #666;
+        }
+
+        .weekday {
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+            color: #333;
+            font-size: 20px;
+        }
+
+        .weekday:last-child {
+            border-right: none;
+        }
+
+        .days-container {
+            background-color: #b8d4d1;
+            position: relative;
+            height: 380px;
+            overflow: hidden;
+        }
+
+        .days-container.show-sixth-row {
+            height: 460px;
+            grid-template-rows: repeat(6, 1fr);
+        }
+
+        .days-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            grid-template-rows: repeat(5, 1fr);
+            width: 100%;
+            height: 100%;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .show-sixth-row .days-grid {
+            grid-template-rows: repeat(6, 1fr);
+        }
+
+        .day {
+            text-align: center;
+            font-size: 1.8rem;
+            color: #333;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .day:nth-child(7n) {
+            border-right: none;
+        }
+
+        .day.draggable {
+            cursor: grab;
+            transform: scale(1);
+        }
+
+        .day.dragging {
+            cursor: grabbing;
+            opacity: 0.8;
+            transform: scale(1.1) rotate(2deg);
+            z-index: 10;
+            position: relative;
+        }
+
+        .day.number {
+            background-color: #b8d4d1;
+            transform: scale(1);
+        }
+
+        .day.number:hover {
+            background-color: #a8c4c1;
+            transform: scale(1.02);
+        }
+
+        /* 使用CSS选择器实现每行第1个和第7个位置的粗体 */
+        .day.number:nth-child(7n+1),
+        .day.number:nth-child(7n) {
+            font-weight: bold;
+        }
+
+        .day.sixth-row {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.4s ease;
+        }
+
+        .show-sixth-row .day.sixth-row {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .empty-day {
+            background-color: transparent;
+        }
+    </style>
+</head>
+<body>
+    <div class="calendar-container">
+        <div class="month-selector">6 月</div>
+        <div class="calendar">
+            <div class="weekdays">
+                <div class="weekday">日</div>
+                <div class="weekday">一</div>
+                <div class="weekday">二</div>
+                <div class="weekday">三</div>
+                <div class="weekday">四</div>
+                <div class="weekday">五</div>
+                <div class="weekday">六</div>
+            </div>
+            <div class="days-container">
+                <div class="days-grid" id="daysGrid">
+                    <!-- 日期将通过JavaScript生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class DraggableCalendar {
+            constructor() {
+                this.daysGrid = document.getElementById('daysGrid');
+                this.startOffset = 1; // 1号从第一行第2个位置开始 (1=第2个位置)
+                this.totalDays = 30;
+                this.isDragging = false;
+                this.startX = 0;
+                this.initialOffset = 1;
+                
+                this.init();
+            }
+
+            init() {
+                this.renderCalendar();
+                this.bindEvents();
+            }
+
+            renderCalendar() {
+                this.daysGrid.innerHTML = '';
+                const container = document.querySelector('.days-container');
+                
+                // 判断是否需要显示第6行
+                const needSixthRow = this.startOffset === 6;
+                
+                if (needSixthRow) {
+                    container.classList.add('show-sixth-row');
+                } else {
+                    container.classList.remove('show-sixth-row');
+                }
+                
+                // 创建35个格子 (5行 x 7列) + 根据需要添加第6行
+                const totalCells = needSixthRow ? 42 : 35;
+                
+                for (let i = 0; i < totalCells; i++) {
+                    const dayElement = document.createElement('div');
+                    dayElement.className = 'day empty-day';
+                    
+                    // 只有在需要第6行且在第6行位置时才添加sixth-row类
+                    if (needSixthRow && i >= 35) {
+                        dayElement.classList.add('sixth-row');
+                    }
+                    
+                    // 计算当前格子应该显示的数字
+                    const dayNumber = i - this.startOffset + 1;
+                    
+                    if (dayNumber >= 1 && dayNumber <= this.totalDays) {
+                        dayElement.textContent = dayNumber;
+                        dayElement.classList.remove('empty-day');
+                        dayElement.classList.add('number');
+                        
+                        // 只有数字1可拖拽
+                        if (dayNumber === 1) {
+                            dayElement.classList.add('draggable');
+                        }
+                    }
+                    
+                    this.daysGrid.appendChild(dayElement);
+                }
+            }
+
+            bindEvents() {
+                let startX = 0;
+                let startOffset = 0;
+                let isDragging = false;
+                let currentTouchId = null;
+
+                this.daysGrid.addEventListener('mousedown', (e) => {
+                    if (e.target.classList.contains('draggable')) {
+                        isDragging = true;
+                        startX = e.clientX;
+                        startOffset = this.startOffset;
+                        e.target.classList.add('dragging');
+                        e.preventDefault();
+                    }
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (isDragging) {
+                        const deltaX = e.clientX - startX;
+                        const dayWidth = this.daysGrid.offsetWidth / 7;
+                        const positionOffset = deltaX / dayWidth;
+                        
+                        let newOffset = startOffset + positionOffset;
+                        
+                        // 限制在第一行的1-7位置 (0-6)
+                        newOffset = Math.max(0, Math.min(6, newOffset));
+                        
+                        // 更敏感的位置检测，使用0.3的阈值
+                        const roundedOffset = Math.round(newOffset);
+                        if (Math.abs(newOffset - roundedOffset) < 0.3 && roundedOffset !== this.startOffset) {
+                            this.startOffset = roundedOffset;
+                            this.renderCalendar();
+                        }
+                    }
+                });
+
+                document.addEventListener('mouseup', (e) => {
+                    if (isDragging) {
+                        isDragging = false;
+                        const draggingElement = document.querySelector('.dragging');
+                        if (draggingElement) {
+                            draggingElement.classList.remove('dragging');
+                        }
+                    }
+                });
+
+                // 优化的触摸事件支持
+                this.daysGrid.addEventListener('touchstart', (e) => {
+                    if (e.target.classList.contains('draggable')) {
+                        isDragging = true;
+                        currentTouchId = e.touches[0].identifier;
+                        startX = e.touches[0].clientX;
+                        startOffset = this.startOffset;
+                        e.target.classList.add('dragging');
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }, { passive: false });
+
+                document.addEventListener('touchmove', (e) => {
+                    if (isDragging && currentTouchId !== null) {
+                        // 找到对应的触摸点
+                        let touch = null;
+                        for (let i = 0; i < e.touches.length; i++) {
+                            if (e.touches[i].identifier === currentTouchId) {
+                                touch = e.touches[i];
+                                break;
+                            }
+                        }
+                        
+                        if (touch) {
+                             const deltaX = touch.clientX - startX;
+                              const dayWidth = this.daysGrid.offsetWidth / 7;
+                              const positionOffset = deltaX / dayWidth;
+                              
+                              let newOffset = startOffset + positionOffset;
+                              
+                              // 限制在第一行的1-7位置 (0-6)
+                              newOffset = Math.max(0, Math.min(6, newOffset));
+                              
+                              // 更敏感的位置检测，使用0.3的阈值
+                              const roundedOffset = Math.round(newOffset);
+                              if (Math.abs(newOffset - roundedOffset) < 0.3 && roundedOffset !== this.startOffset) {
+                                  this.startOffset = roundedOffset;
+                                  this.renderCalendar();
+                              }
+                         }
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }, { passive: false });
+
+                document.addEventListener('touchend', (e) => {
+                    if (isDragging) {
+                        // 检查是否是我们跟踪的触摸点结束了
+                        let touchEnded = true;
+                        if (currentTouchId !== null) {
+                            for (let i = 0; i < e.touches.length; i++) {
+                                if (e.touches[i].identifier === currentTouchId) {
+                                    touchEnded = false;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (touchEnded) {
+                            isDragging = false;
+                            currentTouchId = null;
+                            const draggingElement = document.querySelector('.dragging');
+                            if (draggingElement) {
+                                draggingElement.classList.remove('dragging');
+                            }
+                        }
+                    }
+                }, { passive: false });
+
+                document.addEventListener('touchcancel', (e) => {
+                    if (isDragging) {
+                        isDragging = false;
+                        currentTouchId = null;
+                        const draggingElement = document.querySelector('.dragging');
+                        if (draggingElement) {
+                            draggingElement.classList.remove('dragging');
+                        }
+                    }
+                }, { passive: false });
+            }
+        }
+
+        // 初始化日历
+        new DraggableCalendar();
+    </script>
+</body>
+</html>
