@@ -498,6 +498,70 @@
             updateResetButton();
         }
         
+        // 根据交换状态应用变换到数字数组
+        function applySwapToNumbers(numbers, swapState) {
+            if (swapState === 'none' || !numbers || numbers.length !== 100) {
+                return [...numbers];
+            }
+            
+            let result = [...numbers];
+            const gridSize = 10;
+            
+            // 根据交换状态应用相应的变换
+            switch (swapState) {
+                case 'vertical':
+                    for (let row = 0; row < 5; row++) {
+                        for (let col = 0; col < gridSize; col++) {
+                            const topIndex = row * gridSize + col;
+                            const bottomIndex = (9 - row) * gridSize + col;
+                            [result[topIndex], result[bottomIndex]] = [result[bottomIndex], result[topIndex]];
+                        }
+                    }
+                    break;
+                    
+                case 'horizontal':
+                    for (let row = 0; row < gridSize; row++) {
+                        for (let col = 0; col < 5; col++) {
+                            const leftIndex = row * gridSize + col;
+                            const rightIndex = row * gridSize + (9 - col);
+                            [result[leftIndex], result[rightIndex]] = [result[rightIndex], result[leftIndex]];
+                        }
+                    }
+                    break;
+                    
+                case 'diagonal':
+                    // 主对角线翻转：以左上到右下对角线为轴翻转
+                    for (let i = 0; i < gridSize; i++) {
+                        for (let j = i + 1; j < gridSize; j++) {
+                            const index1 = i * gridSize + j;
+                            const index2 = j * gridSize + i;
+                            [result[index1], result[index2]] = [result[index2], result[index1]];
+                        }
+                    }
+                    break;
+                    
+                case 'anti-diagonal':
+                    // 副对角线翻转：以右上到左下对角线为轴翻转
+                    for (let i = 0; i < gridSize; i++) {
+                        for (let j = 0; j < gridSize - 1 - i; j++) {
+                            const index1 = i * gridSize + j;
+                            const index2 = (gridSize - 1 - j) * gridSize + (gridSize - 1 - i);
+                            [result[index1], result[index2]] = [result[index2], result[index1]];
+                        }
+                    }
+                    break;
+                    
+                case 'mixed':
+                    // 对于混合状态，需要按历史记录依次应用
+                    for (const historyItem of swapHistory) {
+                        result = applySwapToNumbers(result, historyItem.type);
+                    }
+                    break;
+            }
+            
+            return result;
+        }
+        
         // 保存交换状态到本地存储
         function saveSwapState() {
             const state = {
@@ -551,18 +615,28 @@
                 saveSwapState();
             }
             
+            // 应用当前的交换状态
+            let displayNumbers = [...numbers];
+            if (currentSwapState !== 'none') {
+                displayNumbers = applySwapToNumbers(numbers, currentSwapState);
+            }
+            
             // 创建单元格
             for (let i = 0; i < 100; i++) {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
-                cell.textContent = numbers[i];
+                cell.textContent = displayNumbers[i];
                 cell.dataset.index = i;
-                cell.dataset.value = numbers[i];
+                cell.dataset.value = displayNumbers[i];
                 cell.dataset.originalValue = numbers[i]; // 保存原始值用于功能匹配
                 cell.addEventListener('click', () => {
                     if (cell.classList.contains('masked')) {
+                        // 猜数字模式：显示被遮罩的数字
                         cell.classList.remove('masked');
                         cell.classList.add('revealed');
+                    } else if (currentMode === 'none') {
+                        // 默认状态：切换高亮
+                        cell.classList.toggle('highlighted');
                     }
                 });
                 grid.appendChild(cell);
@@ -1140,6 +1214,11 @@
     
     // 交换面板相关函数
     function showSwapPanel() {
+        // 清除其他模式
+        clearCurrentMode();
+        currentMode = 'swap';
+        updateResetButton();
+        
         const overlay = document.getElementById('swapOverlay');
         overlay.style.display = 'flex';
         
@@ -1156,6 +1235,12 @@
     function hideSwapPanel() {
         const overlay = document.getElementById('swapOverlay');
         overlay.style.display = 'none';
+        
+        // 如果当前是swap模式且没有交换状态，重置模式
+        if (currentMode === 'swap' && currentSwapState === 'none') {
+            currentMode = 'none';
+            updateResetButton();
+        }
     }
     
     // 应用交换效果（带3D动画）- 基于当前显示的数字
@@ -1269,6 +1354,10 @@
                 
                 // 保存交换状态到本地存储
                 saveSwapState();
+                // 交换完成后，如果有交换状态则保持模式，否则重置
+                if (currentSwapState !== 'none') {
+                    currentMode = 'none'; // 交换完成后重置模式但保持交换状态
+                }
                 // 更新重置按钮显示状态
                 updateResetButton();
             }, 1300); // 动画总时长
@@ -1334,6 +1423,7 @@
           console.log('已重置到初始状态');
       }
     
+
     </script>
 </body>
 </html>
