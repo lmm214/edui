@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>《用数对确定位置》互动教学平台</title>
+    <link href="https://lf9-cdn-tos.bytecdntp.com/cdn/expire-1-M/tailwindcss/2.2.19/tailwind.css" type="text/css" rel="stylesheet" />
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        }
+        .tab-btn.active {
+            border-color: #0d9488; /* teal-600 */
+            color: #0d9488;
+            background-color: #f0fdfa; /* teal-50 */
+        }
+        .content-pane {
+            display: none;
+        }
+        .content-pane.active {
+            display: block;
+            animation: fadeIn 0.5s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .grid-cell {
+            transition: all 0.3s ease-in-out;
+            background-color: white;
+            cursor: pointer;
+            font-size: 1.5rem;
+            font-weight: bold;
+            min-height: 4rem;
+        }
+        #cinema-grid{gap: 0.25rem 1.25rem;}
+        #cinema-grid .grid-cell{border-radius: 15px;}
+        .grid-cell.selected {
+            background-color: #0d9488;
+            border: 3px solid #042f2e;
+            color: white;
+            transform: scale(1.1);
+        }
+        .grid-cell.highlight {
+            background-color: #f59e0b;
+            transform: scale(1.15);
+            border: 3px solid #b45309;
+            z-index: 10;
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.6);
+            animation: pulse 1s infinite;
+        }
+        .grid-cell.path {
+            background-color: #a7f3d0;
+            animation: pathGlow 0.5s ease-in-out;
+        }
+        .grid-cell.treasure {
+            background-color: #facc15;
+            font-size: 2rem;
+            line-height: 1;
+            animation: treasureFound 1s ease-in-out;
+        }
+        .grid-cell.cinema-seat {
+            background-color: #a6afbc;
+            color: white;
+            font-size: 0.8rem;
+        }
+        .grid-cell.cinema-available {
+            background-color: #22c55e;
+            color: white;
+        }
+        .grid-cell.grid-style {
+            border: 1px solid #ccc;
+            background: transparent;
+            position: relative;
+        }
+        .grid-cell.grid-style.selected {
+            background-color: #e0f2fe;
+            border-color: #0891b2;
+        }
+        .grid-intersection {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: transparent;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 10;
+            transform: translate(-50%, -50%);
+            transition: all 0.2s ease;
+        }
+        .grid-intersection:hover {
+            background: #3b82f6;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+        }
+        .grid-intersection.selected {
+            background: #ef4444;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.7);
+        }
+        .grid-intersection.animal-point {
+            background: #ef4444;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+        }
+        .grid-intersection.treasure-point {
+            background: #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+        }
+        .grid-intersection.treasure-final {
+            background: #f59e0b;
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.8);
+            width: 16px;
+            height: 16px;
+        }
+        .grid-cell.animal-cell {
+            position: relative;
+        }
+        .grid-cell.animal-cell::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            background: #ef4444;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+            z-index: 2;
+        }
+        .grid-cell.animal-cell .animal-icon {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-40%, -40%);
+            font-size: 1.2rem;
+            z-index: 1;
+        }
+        .grid-cell.origin-cell {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #1f2937;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .animal-icon {
+            position: absolute;
+            left: 15px;
+            top: 15px;
+            font-size: 1.8rem;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .treasure-label-style {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #10b981;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: bold;
+            z-index: 3;
+        }
+        .treasure-label-style.final {
+            background: #f59e0b;
+        }
+        .treasure-path-line {
+            position: absolute;
+            background: #10b981;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .treasure-path-point {
+            position: relative;
+        }
+        .treasure-path-point::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 12px;
+            height: 12px;
+            background: #10b981;
+            border-radius: 50%;
+            z-index: 2;
+        }
+        .treasure-path-point.treasure-final::after {
+            background: #f59e0b;
+            width: 16px;
+            height: 16px;
+        }
+        .treasure-label {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #10b981;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: bold;
+            z-index: 3;
+        }
+        .treasure-label.final {
+            background: #f59e0b;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        @keyframes pathGlow {
+            0% { box-shadow: none; }
+            50% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.8); }
+            100% { box-shadow: none; }
+        }
+        @keyframes treasureFound {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3) rotate(180deg); }
+            100% { transform: scale(1) rotate(360deg); }
+        }
+        @keyframes slideIn {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .slide-in {
+            animation: slideIn 0.5s ease-out;
+        }
+        #shape-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-stone-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        
+        <header class="text-center">
+            <h2 class="text-2xl md:text-4xl font-bold text-teal-700 mb-4">《用数对确定位置》互动教学平台</h2>
+        </header>
+
+        <div class="w-full p-3 sticky top-0 z-20">
+            <nav id="tab-nav" class="flex flex-wrap justify-center space-x-2 md:space-x-6">
+                <button data-tab="mystery" class="tab-btn active text-base md:text-xl font-medium p-3 px-6 rounded-md border-2 border-transparent transition-colors duration-300">🎭 神秘嘉宾</button>
+                <button data-tab="cinema" class="tab-btn text-base md:text-xl font-medium p-3 px-6 rounded-md border-2 border-transparent transition-colors duration-300">🎬 电影院</button>
+                <button data-tab="practice" class="tab-btn text-base md:text-xl font-medium p-3 px-6 rounded-md border-2 border-transparent transition-colors duration-300">🦁 动物园</button>
+                <button data-tab="treasure" class="tab-btn text-base md:text-xl font-medium p-3 px-6 rounded-md border-2 border-transparent transition-colors duration-300">💎 寻宝奇兵</button>
+
+            </nav>
+        </div>
+
+        <main id="tab-content">
+            <!-- 神秘嘉宾 -->
+            <section id="mystery" class="content-pane active">
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <p class="mb-6 text-xl text-center md:text-2xl">班级里来了一位神秘嘉宾！老师只给一个提示，你能找到他吗？</p>
+                    <div class="flex flex-col lg:flex-row gap-8 items-start">
+                        <div class="flex-grow">
+                            <div class="max-w-4xl mx-auto">
+                                <div class="flex">
+                                    <!-- 行标签 -->
+                                    <div id="mystery-row-labels" class="flex flex-col gap-2 pr-2 mt-4">
+                                        <!-- Row labels will be generated by JS -->
+                                    </div>
+                                    <!-- 网格 -->
+                                    <div class="flex-1">
+                                        <div id="mystery-grid" class="grid grid-cols-6 gap-2 bg-slate-200 p-4 rounded-md">
+                                            <!-- Grid cells will be generated by JS -->
+                                        </div>
+                                        <!-- 列标签 -->
+                                        <div id="mystery-col-labels" class="grid grid-cols-6 gap-2 px-4 mt-1">
+                                            <!-- Column labels will be generated by JS -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="w-full lg:w-80 bg-slate-50 p-6 rounded-lg border">
+                            <h5 class="font-bold mb-4 text-center text-lg md:text-xl">🔍 探索区域</h5>
+                            <div id="mystery-clue" class="w-full p-4 bg-white rounded-md text-center text-lg md:text-xl h-24 flex items-center justify-center mb-4 border-2 border-dashed border-teal-300">
+                                点击"开始探索"获取线索
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-lg md:text-xl font-medium mb-2">你的猜测:</label>
+                                <div id="mystery-guess" class="w-full p-3 bg-white rounded-md text-center font-mono text-2xl md:text-3xl h-12 flex items-center justify-center border-2">--</div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button id="mystery-start-btn" class="w-full bg-teal-600 text-white px-4 py-3 rounded-md hover:bg-teal-700 transition-colors text-lg md:text-xl font-medium">开始探索</button>
+                                <button id="mystery-reset-btn" class="w-full bg-amber-500 text-white px-4 py-3 rounded-md hover:bg-amber-600 transition-colors text-lg md:text-xl font-medium">重新开始</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 电影院座位 -->
+            <section id="cinema" class="content-pane">
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <p class="mb-6 text-xl text-center md:text-2xl">欢迎来到星光电影院！请根据电影票上的数对找到你的座位。</p>
+                    <div class="flex flex-col lg:flex-row gap-8 items-start">
+                        <div class="flex-grow">
+                            <div class="max-w-4xl mx-auto">
+                                <div class="flex">
+                                    <!-- 行标签 -->
+                                    <div id="cinema-row-labels" class="flex flex-col gap-1 pr-2 mt-4">
+                                        <!-- Row labels will be generated by JS -->
+                                    </div>
+                                    <!-- 网格 -->
+                                    <div class="flex-1">
+                                        <div id="cinema-grid" class="grid grid-cols-8 gap-1 bg-slate-200 p-4 rounded-md">
+                                            <!-- Grid cells will be generated by JS -->
+                                        </div>
+                                        <!-- 列标签 -->
+                                        <div id="cinema-col-labels" class="grid grid-cols-8 gap-1 px-4 mt-1">
+                                            <!-- Column labels will be generated by JS -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex justify-center gap-6 mt-4 text-xl md:text-2xl">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-4 h-4 bg-green-500 rounded"></div>
+                                    <span>可选座位</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-4 h-4 bg-slate-500 rounded"></div>
+                                    <span>已售座位</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="w-full lg:w-80 bg-slate-50 p-6 rounded-lg border">
+                            <h5 class="font-bold mb-4 text-center text-lg md:text-xl">🎫 电影票</h5>
+                            <div id="cinema-ticket" class="w-full p-4 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-md text-center mb-4">
+                                <div class="text-xl md:text-2xl font-bold mb-2">《数学奇幻之旅》</div>
+                                <div class="text-lg md:text-xl">座位号: <span id="ticket-seat" class="font-mono text-2xl md:text-3xl">--</span></div>
+                                <div class="text-base md:text-lg mt-2">票价: ¥35</div>
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-lg md:text-xl font-medium mb-2">点击的座位:</label>
+                                <div id="cinema-clicked" class="w-full p-3 bg-white rounded-md text-center font-mono text-2xl md:text-3xl h-12 flex items-center justify-center border-2">--</div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button id="cinema-new-ticket" class="w-full bg-teal-600 text-white px-4 py-3 rounded-md hover:bg-teal-700 transition-colors text-lg md:text-xl font-medium">新电影票</button>
+                                <button id="cinema-find-seat" class="w-full bg-amber-500 text-white px-4 py-3 rounded-md hover:bg-amber-600 transition-colors text-lg md:text-xl font-medium">找座位</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 动物园导览 -->
+            <section id="practice" class="content-pane">
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <p class="mb-6 text-xl text-center md:text-2xl">欢迎来到奇幻动物园！点击格子查看动物位置，或输入数对寻找你最喜欢的动物朋友。</p>
+                    <div class="flex flex-col lg:flex-row gap-8 items-start">
+                        <div class="flex-grow">
+                            <div class="max-w-4xl mx-auto">
+                                <div class="flex">
+                                    <!-- 行标签 -->
+                                    <div id="zoo-row-labels" class="flex flex-col pr-2" style="justify-content: space-between;margin-top:-20px;padding-bottom: 20px;">
+                                        <!-- Row labels will be generated by JS -->
+                                    </div>
+                                    <!-- 网格 -->
+                                    <div class="flex-1">
+                                        <div id="zoo-grid" class="grid grid-cols-6 gap-0 bg-white border border-slate-400 relative" style="grid-template-rows: repeat(6, 3rem);">
+                                            <!-- Grid cells will be generated by JS -->
+                                        </div>
+                                        <!-- 列标签 -->
+                                        <div id="zoo-col-labels" class="flex justify-between mt-1">
+                                            <!-- Column labels will be generated by JS -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-4 text-center">
+                                <div class="inline-flex flex-wrap gap-2 text-xl md:text-2xl">
+                                    <span class="bg-blue-100 px-2 py-1 rounded">🐘 大象馆</span>
+                                    <span class="bg-green-100 px-2 py-1 rounded">🐵 猴山</span>
+                                    <span class="bg-yellow-100 px-2 py-1 rounded">🦁 狮子园</span>
+                                    <span class="bg-purple-100 px-2 py-1 rounded">🐧 企鹅馆</span>
+                                    <span class="bg-pink-100 px-2 py-1 rounded">🦒 长颈鹿</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="w-full lg:w-80 bg-slate-50 p-6 rounded-lg border">
+                            <h5 class="font-bold mb-4 text-center text-lg md:text-xl">🗺️ 导览控制台</h5>
+                            <div class="mb-6">
+                                <label class="block text-lg md:text-xl font-medium mb-2">点击的位置:</label>
+                                <div id="clicked-coords" class="w-full p-3 bg-white rounded-md text-center font-mono text-2xl md:text-3xl h-12 flex items-center justify-center border-2">--</div>
+                            </div>
+                            <div class="mb-6">
+                                <label class="block text-lg md:text-xl font-medium mb-2">寻找数对:</label>
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="font-bold text-xl">(</span>
+                                    <input type="number" id="find-col" min="0" max="6" class="w-16 text-center p-2 border-2 rounded-md text-xl font-mono">
+                                    <span class="font-bold text-xl">,</span>
+                                    <input type="number" id="find-row" min="0" max="6" class="w-16 text-center p-2 border-2 rounded-md text-xl font-mono">
+                                    <span class="font-bold text-xl">)</span>
+                                </div>
+                                <button id="find-btn" class="w-full bg-teal-600 text-white px-4 py-3 rounded-md hover:bg-teal-700 transition-colors text-lg md:text-xl font-medium">🔍 寻找位置</button>
+                                <p id="find-result" class="text-base md:text-lg text-red-600 mt-2 h-6"></p>
+                            </div>
+                            <button id="zoo-random" class="w-full bg-amber-500 text-white px-4 py-3 rounded-md hover:bg-amber-600 transition-colors text-lg md:text-xl font-medium">🎲 随机探索</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 寻宝奇兵 -->
+            <section id="treasure" class="content-pane">
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <p class="mb-6 text-xl text-center md:text-2xl">跟随神秘的藏宝图，运用数对知识找到传说中的宝藏！每一步都需要精确的坐标。</p>
+                    <div class="flex flex-col lg:flex-row gap-8 items-start">
+                        <div class="flex-grow">
+                            <div class="max-w-4xl mx-auto">
+                                <div class="flex">
+                                    <!-- 行标签 -->
+                                    <div id="treasure-row-labels" class="flex flex-col gap-0 pr-6" style="margin-top:-20px;padding-bottom: 20px;">
+                                        <!-- Row labels will be generated by JS -->
+                                    </div>
+                                    <!-- 网格 -->
+                                    <div class="flex-1">
+                                        <div id="treasure-grid" class="grid grid-cols-6 gap-0 bg-white border border-slate-400 relative" style="grid-template-rows: repeat(6, 4rem);">
+                                            <!-- Grid cells will be generated by JS -->
+                                        </div>
+                                        <!-- 列标签 -->
+                                        <div id="treasure-col-labels" class="flex justify-between mt-1">
+                                            <!-- Column labels will be generated by JS -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-4 text-center">
+                                <div class="inline-flex flex-wrap gap-2 text-xl md:text-2xl">
+                                    <span class="bg-amber-100 px-2 py-1 rounded">🏛️ 神庙</span>
+                                    <span class="bg-blue-100 px-2 py-1 rounded">💧 瀑布</span>
+                                    <span class="bg-gray-100 px-2 py-1 rounded">🕳️ 洞穴</span>
+                                    <span class="bg-green-100 px-2 py-1 rounded">🌿 沼泽</span>
+                                    <span class="bg-yellow-100 px-2 py-1 rounded">🌴 椰子树</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="w-full lg:w-80 bg-slate-50 p-6 rounded-lg border">
+                            <h5 class="font-bold mb-4 text-center text-lg md:text-xl">🗺️ 藏宝图线索</h5>
+                            <div id="clue-display" class="w-full p-4 bg-white rounded-md text-center text-xl md:text-2xl h-32 flex items-center justify-center mb-4 border-2 border-dashed border-amber-300">点击"开始寻宝"获取第一条线索。</div>
+                            <div class="space-y-3">
+                                <button id="treasure-start-btn" class="w-full bg-teal-600 text-white px-4 py-3 rounded-md hover:bg-teal-700 transition-colors text-lg md:text-xl font-medium">🚀 开始寻宝</button>
+                                <button id="treasure-restart-btn" class="w-full bg-gray-500 text-white px-4 py-3 rounded-md hover:bg-gray-600 transition-colors text-lg md:text-xl font-medium" style="display: none;">🔄 重新开始</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+        </main>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // === 游戏配置数据 ===
+        const gameConfigs = {
+            mystery: {
+                gridSize: { cols: 6, rows: 5 },
+                labelPrefix: { row: '第', col: '第' },
+                labelSuffix: { row: '行', col: '列' },
+                students: [
+                    { name: '小明', pos: [3, 4], clue: '他坐在第3列' },
+                    { name: '小红', pos: [5, 2], clue: '她坐在第5列' },
+                    { name: '小李', pos: [2, 3], clue: '他坐在第2列' },
+                    { name: '小王', pos: [4, 5], clue: '她坐在第4列' },
+                    { name: '小张', pos: [1, 1], clue: '他坐在第1列' }
+                ]
+            },
+            cinema: {
+                gridSize: { cols: 8, rows: 6 },
+                labelPrefix: { row: '', col: '' },
+                labelSuffix: { row: '', col: '' },
+                bookedSeatsCount: 15
+            },
+            zoo: {
+                gridSize: { cols: 6, rows: 6 },
+                labelPrefix: { row: '', col: '' },
+                labelSuffix: { row: '', col: '' },
+                animals: {
+                    '1-5': { emoji: '🐘', name: '大象馆' },
+                    '4-3': { emoji: '🐵', name: '猴山' },
+                    '2-4': { emoji: '🦁', name: '狮子园' },
+                    '0-1': { emoji: '🐧', name: '企鹅馆' },
+                    '5-6': { emoji: '🦒', name: '长颈鹿园' }
+                }
+            },
+            treasure: {
+                gridSize: { cols: 6, rows: 6 },
+                labelPrefix: { row: '', col: '' },
+                labelSuffix: { row: '', col: '' },
+                locations: {
+                    '0-0': '起点', '1-0': '沙滩', '2-0': '宝箱', '3-0': '宝箱', '4-0': '荒地', '5-0': '荒地', '6-0': '荒地',
+                    '0-1': '企鹅馆', '1-1': '椰子树', '2-1': '椰子树', '3-1': '石桥', '4-1': '荒地', '5-1': '荒地', '6-1': '古井',
+                    '0-2': '瀑布', '1-2': '瀑布', '2-2': '瀑布', '3-2': '瀑布', '4-2': '森林', '5-2': '洞穴', '6-2': '山峰',
+                    '0-3': '沼泽', '1-3': '沼泽', '2-3': '沼泽', '3-3': '森林', '4-3': '森林', '5-3': '悬崖', '6-3': '悬崖',
+                    '0-4': '石桥', '1-4': '石桥', '2-4': '石桥', '3-4': '瀑布', '4-4': '森林', '5-4': '小岛', '6-4': '海洋',
+                    '0-5': '神庙', '1-5': '神庙', '2-5': '神庙', '3-5': '森林', '4-5': '小岛', '5-5': '海洋', '6-5': '海洋',
+                    '0-6': '高塔', '1-6': '高塔', '2-6': '灯塔', '3-6': '森林', '4-6': '海洋', '5-6': '海洋', '6-6': '海洋'
+                },
+                routes: [
+                    [
+                        { coord: [1, 5], text: "从(1, 5)的古老神庙出发。" },
+                        { coord: [3, 4], text: "向东南走到(3, 4)的瀑布。" },
+                        { coord: [5, 2], text: "接着前往(5, 2)的神秘洞穴。" },
+                        { coord: [2, 1], text: "宝藏就在(2, 1)的椰子树下！" }
+                    ],
+                    [
+                        { coord: [0, 6], text: "从(0, 6)的高塔开始探险。" },
+                        { coord: [2, 4], text: "前往(2, 4)的石桥。" },
+                        { coord: [4, 3], text: "穿过(4, 3)的迷雾森林。" },
+                        { coord: [6, 1], text: "宝藏埋在(6, 1)的古井旁！" }
+                    ],
+                    [
+                        { coord: [2, 6], text: "从(2, 6)的灯塔启程。" },
+                        { coord: [4, 5], text: "游向(4, 5)的小岛。" },
+                        { coord: [6, 3], text: "攀登(6, 3)的悬崖。" },
+                        { coord: [3, 0], text: "宝藏就在(3, 0)的宝箱里！" }
+                    ]
+                ]
+            }
+        };
+
+        const tabNav = document.getElementById('tab-nav');
+        const tabContent = document.getElementById('tab-content');
+        const tabButtons = tabNav.querySelectorAll('.tab-btn');
+        const contentPanes = tabContent.querySelectorAll('.content-pane');
+
+        // === 通用标签生成函数 ===
+        function generateLabels(gameType, containerId) {
+            const config = gameConfigs[gameType];
+            const container = document.getElementById(containerId);
+            if (!container || !config) return;
+            
+            container.innerHTML = '';
+            
+            if (containerId.includes('row')) {
+                // 生成行标签
+                const isReverse = gameType !== 'zoo' && gameType !== 'treasure';
+                const start = isReverse ? config.gridSize.rows : (gameType === 'zoo' || gameType === 'treasure' ? 6 : config.gridSize.rows);
+                const end = isReverse ? 1 : (gameType === 'zoo' || gameType === 'treasure' ? 0 : 1);
+                const step = isReverse ? -1 : -1;
+                
+                for (let i = start; isReverse ? i >= end : i >= end; i += step) {
+                    const label = document.createElement('div');
+                    label.className = gameType === 'cinema' ? 
+                        'text-center text-2xl md:text-3xl text-slate-500 font-medium h-16 flex items-center justify-center' :
+                        gameType === 'zoo' ? 
+                        'text-center text-2xl md:text-3xl text-slate-500 font-medium' :
+                        'text-center text-2xl md:text-3xl text-slate-500 font-medium h-16 flex items-center justify-center';
+                    
+                    if (gameType === 'zoo' && i === 0) {
+                        label.style.opacity = '0';
+                    }
+                    
+                    if (gameType === 'treasure' && config.locations) {
+                        // 寻宝游戏显示第一列的地址名称
+                        const locationKey = `0-${i}`;
+                        label.textContent = config.locations[locationKey] || i;
+                    } else {
+                        label.textContent = `${config.labelPrefix.row}${i}${config.labelSuffix.row}`;
+                    }
+                    container.appendChild(label);
+                }
+            } else {
+                // 生成列标签
+                const start = gameType === 'zoo' || gameType === 'treasure' ? 0 : 1;
+                const end = gameType === 'zoo' || gameType === 'treasure' ? 6 : config.gridSize.cols;
+                
+                for (let i = start; i <= end; i++) {
+                    const label = document.createElement('div');
+                    label.className = 'text-center text-2xl md:text-3xl text-slate-500 font-medium';
+                    
+                    if (gameType === 'treasure' && config.locations) {
+                        // 寻宝游戏显示第一行的地址名称
+                        const locationKey = `${i}-6`;
+                        label.textContent = config.locations[locationKey] || i;
+                    } else {
+                        label.textContent = `${config.labelPrefix.col}${i}${config.labelSuffix.col}`;
+                    }
+                    container.appendChild(label);
+                }
+            }
+        }
+
+        // 音效功能
+        function playSound(type) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            switch(type) {
+                case 'click':
+                    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                    break;
+                case 'success':
+                    oscillator.frequency.setValueAtTime(523, audioContext.currentTime);
+                    oscillator.frequency.setValueAtTime(659, audioContext.currentTime + 0.1);
+                    oscillator.frequency.setValueAtTime(784, audioContext.currentTime + 0.2);
+                    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                    break;
+                case 'treasure':
+                    oscillator.frequency.setValueAtTime(1047, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                    break;
+            }
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.5);
+        }
+
+        // Tab navigation with sound
+        tabNav.addEventListener('click', function(e) {
+            if (e.target.tagName === 'BUTTON') {
+                playSound('click');
+                const tabId = e.target.dataset.tab;
+
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active');
+
+                contentPanes.forEach(pane => {
+                    pane.classList.toggle('active', pane.id === tabId);
+                });
+            }
+        });
+
+        // --- 通用网格生成器 ---
+        function createGrid(gameType, containerId) {
+            const config = gameConfigs[gameType];
+            const gridContainer = document.getElementById(containerId);
+            if (!gridContainer || !config) return;
+            
+            gridContainer.innerHTML = ''; // 清空现有网格
+            
+            // 根据游戏类型决定坐标系统
+            const isZooOrTreasure = gameType === 'zoo' || gameType === 'treasure';
+            
+            if (isZooOrTreasure) {
+                // 动物园和寻宝游戏使用网格交点系统
+                gridContainer.style.gridTemplateColumns = `repeat(${config.gridSize.cols}, 1fr)`;
+                gridContainer.style.gridTemplateRows = `repeat(${config.gridSize.rows}, 1fr)`;
+                
+                // 创建方格网格
+                for (let row = config.gridSize.rows - 1; row >= 0; row--) {
+                    for (let col = 0; col < config.gridSize.cols; col++) {
+                        const cell = document.createElement('div');
+                        cell.classList.add('grid-cell', 'w-full', 'h-full', 'border', 'border-slate-300', 'grid-style');
+                        gridContainer.appendChild(cell);
+                    }
+                }
+                
+                // 在网格交点处添加可点击的交点
+                for (let row = 0; row <= config.gridSize.rows; row++) {
+                    for (let col = 0; col <= config.gridSize.cols; col++) {
+                        const intersection = document.createElement('div');
+                        intersection.classList.add('grid-intersection');
+                        intersection.dataset.col = col;
+                        intersection.dataset.row = row;
+                        
+                        // 计算交点位置
+                        const cellSize = 100 / config.gridSize.cols; // 每个格子的百分比大小
+                        intersection.style.left = `${col * cellSize}%`;
+                        intersection.style.top = `${(config.gridSize.rows - row) * cellSize}%`;
+                        
+                        gridContainer.appendChild(intersection);
+                    }
+                }
+            } else {
+                // 其他游戏使用1开始的坐标系统
+                gridContainer.style.gridTemplateColumns = `repeat(${config.gridSize.cols}, 1fr)`;
+                for (let row = config.gridSize.rows; row >= 1; row--) {
+                    for (let col = 1; col <= config.gridSize.cols; col++) {
+                        const cell = document.createElement('div');
+                        cell.classList.add('grid-cell', 'w-full', 'h-full', 'border', 'border-slate-300', 'flex', 'items-center', 'justify-center');
+                        cell.dataset.col = col;
+                        cell.dataset.row = row;
+                        gridContainer.appendChild(cell);
+                    }
+                }
+            }
+        }
+
+        // --- 神秘嘉宾游戏 ---
+        function initMysteryGuest() {
+            // 生成网格和标签
+            createGrid('mystery', 'mystery-grid');
+            generateLabels('mystery', 'mystery-row-labels');
+            generateLabels('mystery', 'mystery-col-labels');
+            
+            const grid = document.getElementById('mystery-grid');
+            const clueDisplay = document.getElementById('mystery-clue');
+            const guessDisplay = document.getElementById('mystery-guess');
+            const startBtn = document.getElementById('mystery-start-btn');
+            const resetBtn = document.getElementById('mystery-reset-btn');
+            
+            const config = gameConfigs.mystery;
+            let currentStudent = null;
+            let gameStarted = false;
+            
+            function startGame() {
+                currentStudent = config.students[Math.floor(Math.random() * config.students.length)];
+                clueDisplay.textContent = `${currentStudent.clue}，你能找到他/她吗？`;
+                clueDisplay.classList.add('slide-in');
+                gameStarted = true;
+                startBtn.disabled = true;
+                playSound('click');
+            }
+            
+            function resetGame() {
+                currentStudent = null;
+                gameStarted = false;
+                clueDisplay.textContent = '点击"开始探索"获取线索';
+                guessDisplay.textContent = '--';
+                startBtn.disabled = false;
+                grid.querySelectorAll('.grid-cell').forEach(cell => {
+                    cell.classList.remove('highlight', 'selected');
+                    cell.textContent = '';
+                });
+                playSound('click');
+            }
+            
+            grid.addEventListener('click', function(e) {
+                const cell = e.target.closest('.grid-cell');
+                if (cell && gameStarted) {
+                    const col = parseInt(cell.dataset.col);
+                    const row = parseInt(cell.dataset.row);
+                    guessDisplay.textContent = `(${col}, ${row})`;
+                    
+                    grid.querySelectorAll('.grid-cell').forEach(c => c.classList.remove('selected'));
+                    cell.classList.add('selected');
+                    
+                    if (currentStudent && col === currentStudent.pos[0] && row === currentStudent.pos[1]) {
+                        cell.textContent = '🎉';
+                        cell.classList.add('highlight');
+                        clueDisplay.textContent = `恭喜！你找到了${currentStudent.name}！位置是(${col}, ${row})`;
+                        playSound('success');
+                        gameStarted = false;
+                        startBtn.disabled = false;
+                    } else {
+                        playSound('click');
+                    }
+                }
+            });
+            
+            startBtn.addEventListener('click', startGame);
+            resetBtn.addEventListener('click', resetGame);
+        }
+
+        // --- 电影院座位预订 ---
+        function initCinema() {
+            // 生成网格和标签
+            createGrid('cinema', 'cinema-grid');
+            generateLabels('cinema', 'cinema-row-labels');
+            generateLabels('cinema', 'cinema-col-labels');
+            
+            const grid = document.getElementById('cinema-grid');
+            const ticketSeat = document.getElementById('ticket-seat');
+            const clickedDisplay = document.getElementById('cinema-clicked');
+            const newTicketBtn = document.getElementById('cinema-new-ticket');
+            const findSeatBtn = document.getElementById('cinema-find-seat');
+            
+            const config = gameConfigs.cinema;
+            let currentTicket = null;
+            let bookedSeats = new Set();
+            
+            function generateRandomSeats() {
+                bookedSeats.clear();
+                // 随机生成一些已售座位
+                for (let i = 0; i < config.bookedSeatsCount; i++) {
+                    const col = Math.floor(Math.random() * config.gridSize.cols) + 1;
+                    const row = Math.floor(Math.random() * config.gridSize.rows) + 1;
+                    bookedSeats.add(`${col}-${row}`);
+                }
+                updateSeatDisplay();
+            }
+            
+            function updateSeatDisplay() {
+                grid.querySelectorAll('.grid-cell').forEach(cell => {
+                    const col = cell.dataset.col;
+                    const row = cell.dataset.row;
+                    const seatKey = `${col}-${row}`;
+                    
+                    cell.classList.remove('cinema-seat', 'cinema-available', 'selected');
+                    cell.textContent = '';
+                    
+                    if (bookedSeats.has(seatKey)) {
+                        cell.classList.add('cinema-seat');
+                        cell.textContent = '✗';
+                    } else {
+                        cell.classList.add('cinema-available');
+                        cell.textContent = '✓';
+                    }
+                });
+            }
+            
+            function generateNewTicket() {
+                let col, row;
+                do {
+                    col = Math.floor(Math.random() * config.gridSize.cols) + 1;
+                    row = Math.floor(Math.random() * config.gridSize.rows) + 1;
+                } while (bookedSeats.has(`${col}-${row}`));
+                
+                currentTicket = [col, row];
+                ticketSeat.textContent = `(${col}, ${row})`;
+                playSound('click');
+            }
+            
+            function findSeat() {
+                if (!currentTicket) return;
+                
+                grid.querySelectorAll('.grid-cell').forEach(cell => {
+                    cell.classList.remove('selected');
+                });
+                
+                const targetCell = grid.querySelector(`.grid-cell[data-col='${currentTicket[0]}'][data-row='${currentTicket[1]}']`);
+                if (targetCell) {
+                    targetCell.classList.add('selected');
+                    targetCell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    playSound('success');
+                }
+            }
+            
+            grid.addEventListener('click', function(e) {
+                const cell = e.target.closest('.grid-cell');
+                if (cell) {
+                    const col = cell.dataset.col;
+                    const row = cell.dataset.row;
+                    clickedDisplay.textContent = `(${col}, ${row})`;
+                    
+                    grid.querySelectorAll('.grid-cell').forEach(c => c.classList.remove('selected'));
+                    cell.classList.add('selected');
+                    
+                    if (currentTicket && col == currentTicket[0] && row == currentTicket[1]) {
+                        playSound('success');
+                    } else {
+                        playSound('click');
+                    }
+                }
+            });
+            
+            newTicketBtn.addEventListener('click', generateNewTicket);
+            findSeatBtn.addEventListener('click', findSeat);
+            
+            // 初始化
+            generateRandomSeats();
+            generateNewTicket();
+        }
+
+        // --- 增强动物园地图 ---
+        function initZooMap() {
+            // 生成网格和标签
+            createGrid('zoo', 'zoo-grid');
+            generateLabels('zoo', 'zoo-row-labels');
+            generateLabels('zoo', 'zoo-col-labels');
+            
+            const zooGrid = document.getElementById('zoo-grid');
+            const clickedCoordsDisplay = document.getElementById('clicked-coords');
+            const findColInput = document.getElementById('find-col');
+            const findRowInput = document.getElementById('find-row');
+            const findBtn = document.getElementById('find-btn');
+            const findResult = document.getElementById('find-result');
+            const randomBtn = document.getElementById('zoo-random');
+            
+            const config = gameConfigs.zoo;
+            let currentSelectedIntersection = null;
+            let currentHighlightIntersection = null;
+
+            function setupAnimals() {
+                Object.entries(config.animals).forEach(([pos, animal]) => {
+                    const [col, row] = pos.split('-');
+                    const intersection = zooGrid.querySelector(`.grid-intersection[data-col='${col}'][data-row='${row}']`);
+                    if (intersection) {
+                        intersection.classList.add('animal-point');
+                        intersection.title = `${animal.name} ${animal.emoji}`;
+                        
+                        // 在交点旁边显示动物图标
+                        const iconSpan = document.createElement('span');
+                        iconSpan.className = 'animal-icon';
+                        iconSpan.textContent = animal.emoji;
+                        intersection.appendChild(iconSpan);
+                    }
+                });
+            }
+
+            function clearHighlights() {
+                if (currentHighlightIntersection) {
+                    currentHighlightIntersection.classList.remove('selected');
+                    currentHighlightIntersection = null;
+                }
+            }
+            
+            function clearSelections() {
+                if (currentSelectedIntersection) {
+                    currentSelectedIntersection.classList.remove('selected');
+                    currentSelectedIntersection = null;
+                }
+            }
+
+            function getAnimalInfo(col, row) {
+                const key = `${col}-${row}`;
+                return config.animals[key] || null;
+            }
+
+            zooGrid.addEventListener('click', function(e) {
+                const intersection = e.target.closest('.grid-intersection');
+                if (intersection) {
+                    clearSelections();
+                    clearHighlights();
+                    const col = intersection.dataset.col;
+                    const row = intersection.dataset.row;
+                    const animal = getAnimalInfo(col, row);
+                    
+                    if (animal) {
+                        clickedCoordsDisplay.textContent = `(${col}, ${row}) ${animal.name}`;
+                        playSound('success');
+                    } else {
+                        clickedCoordsDisplay.textContent = `(${col}, ${row})`;
+                        playSound('click');
+                    }
+                    
+                    intersection.classList.add('selected');
+                    currentSelectedIntersection = intersection;
+                }
+            });
+
+            findBtn.addEventListener('click', function() {
+                clearHighlights();
+                clearSelections();
+                findResult.textContent = '';
+                const col = parseInt(findColInput.value);
+                const row = parseInt(findRowInput.value);
+
+                if (isNaN(col) || isNaN(row) || col < 0 || col > 6 || row < 0 || row > 6) {
+                    findResult.textContent = '请输入0-6的有效数字。';
+                    return;
+                }
+
+                const targetIntersection = zooGrid.querySelector(`.grid-intersection[data-col='${col}'][data-row='${row}']`);
+                if (targetIntersection) {
+                    targetIntersection.classList.add('selected');
+                    currentHighlightIntersection = targetIntersection;
+                    
+                    const animal = getAnimalInfo(col, row);
+                    if (animal) {
+                        findResult.textContent = `找到了${animal.name}！`;
+                        findResult.className = 'text-sm md:text-base text-green-600 mt-2 h-6';
+                        playSound('success');
+                    } else if (col === 0 && row === 0) {
+                        findResult.textContent = '这里是原点(0,0)。';
+                        findResult.className = 'text-sm md:text-base text-purple-600 mt-2 h-6';
+                        playSound('click');
+                    } else {
+                        findResult.textContent = '这里是网格交点。';
+                        findResult.className = 'text-sm md:text-base text-blue-600 mt-2 h-6';
+                        playSound('click');
+                    }
+                }
+            });
+
+            randomBtn.addEventListener('click', function() {
+                const animalKeys = Object.keys(config.animals);
+                const randomKey = animalKeys[Math.floor(Math.random() * animalKeys.length)];
+                const [col, row] = randomKey.split('-');
+                const animal = config.animals[randomKey];
+                
+                findColInput.value = col;
+                findRowInput.value = row;
+                
+                clearHighlights();
+                clearSelections();
+                
+                const targetIntersection = zooGrid.querySelector(`.grid-intersection[data-col='${col}'][data-row='${row}']`);
+                if (targetIntersection) {
+                    targetIntersection.classList.add('selected');
+                    currentHighlightIntersection = targetIntersection;
+                    findResult.textContent = `随机发现：${animal.name}在(${col}, ${row})！`;
+                    findResult.className = 'text-sm md:text-base text-purple-600 mt-2 h-6';
+                    playSound('treasure');
+                }
+            });
+
+            // 初始化动物
+            setupAnimals();
+        }
+
+        // --- 寻宝奇兵 ---
+        function initTreasureHunt() {
+            // 生成网格和标签
+            createGrid('treasure', 'treasure-grid');
+            
+            const grid = document.getElementById('treasure-grid');
+            const rowLabels = document.getElementById('treasure-row-labels');
+            const colLabels = document.getElementById('treasure-col-labels');
+            const startBtn = document.getElementById('treasure-start-btn');
+            const restartBtn = document.getElementById('treasure-restart-btn');
+            const clueDisplay = document.getElementById('clue-display');
+            
+            const config = gameConfigs.treasure;
+            let currentRoute = [];
+            let currentStep = -1;
+            let waitingForClick = false;
+            let gameStarted = false;
+            let pathPoints = [];
+            
+            function initializeLabels() {
+                // 初始化时隐藏所有标签
+                rowLabels.innerHTML = '';
+                colLabels.innerHTML = '';
+                rowLabels.style.justifyContent = 'space-between';
+                
+                for (let i = 6; i >= 0; i--) {
+                    const rowLabel = document.createElement('div');
+                    rowLabel.className = 'text-center text-2xl md:text-3xl text-slate-500 font-medium';
+                    rowLabel.style.visibility = 'hidden';
+                    rowLabel.textContent = i;
+                    rowLabels.appendChild(rowLabel);
+                }
+                for (let i = 0; i <= 6; i++) {
+                    const colLabel = document.createElement('div');
+                    colLabel.className = 'text-center text-2xl md:text-3xl text-slate-500 font-medium';
+                    colLabel.style.visibility = 'hidden';
+                    colLabel.textContent = i;
+                    colLabels.appendChild(colLabel);
+                }
+            }
+            
+            function showLabel(col, row) {
+                const rowLabel = rowLabels.children[6 - row];
+                const colLabel = colLabels.children[col];
+                if (rowLabel) rowLabel.style.visibility = 'visible';
+                if (colLabel) colLabel.style.visibility = 'visible';
+            }
+            
+            function drawPathLine(fromCol, fromRow, toCol, toRow) {
+                const fromIntersection = grid.querySelector(`.grid-intersection[data-col='${fromCol}'][data-row='${fromRow}']`);
+                const toIntersection = grid.querySelector(`.grid-intersection[data-col='${toCol}'][data-row='${toRow}']`);
+                
+                if (!fromIntersection || !toIntersection) return;
+                
+                const fromRect = fromIntersection.getBoundingClientRect();
+                const toRect = toIntersection.getBoundingClientRect();
+                const gridRect = grid.getBoundingClientRect();
+                
+                const fromX = fromRect.left + fromRect.width / 2 - gridRect.left;
+                const fromY = fromRect.top + fromRect.height / 2 - gridRect.top;
+                const toX = toRect.left + toRect.width / 2 - gridRect.left;
+                const toY = toRect.top + toRect.height / 2 - gridRect.top;
+                
+                const length = Math.sqrt((toX - fromX) ** 2 + (toY - fromY) ** 2);
+                const angle = Math.atan2(toY - fromY, toX - fromX) * 180 / Math.PI;
+                
+                const line = document.createElement('div');
+                line.className = 'treasure-path-line';
+                line.style.left = fromX + 'px';
+                line.style.top = fromY + 'px';
+                line.style.width = length + 'px';
+                line.style.height = '3px';
+                line.style.transform = `rotate(${angle}deg)`;
+                line.style.transformOrigin = '0 50%';
+                
+                grid.appendChild(line);
+            }
+
+            function resetGame() {
+                currentStep = -1;
+                waitingForClick = false;
+                gameStarted = false;
+                pathPoints = [];
+                clueDisplay.textContent = '点击"开始寻宝"定位起始点。';
+                startBtn.disabled = false;
+                startBtn.style.backgroundColor = '';
+                restartBtn.style.display = 'none';
+                
+                // 清理网格交点
+                grid.querySelectorAll('.grid-intersection').forEach(intersection => {
+                    intersection.classList.remove('treasure-point', 'treasure-final');
+                    intersection.innerHTML = '';
+                });
+                
+                // 清理路径线
+                grid.querySelectorAll('.treasure-path-line').forEach(line => {
+                    line.remove();
+                });
+                
+                // 重新初始化标签
+                initializeLabels();
+            }
+
+            startBtn.addEventListener('click', function() {
+                // 随机选择一个寻宝路线
+                currentRoute = config.routes[Math.floor(Math.random() * config.routes.length)];
+                currentStep = 0;
+                gameStarted = true;
+                waitingForClick = true;
+                
+                this.disabled = true;
+                this.style.backgroundColor = '#6b7280';
+                restartBtn.style.display = 'block';
+                
+                // 直接显示第一个点
+                const firstPoint = currentRoute[0];
+                const firstIntersection = grid.querySelector(`.grid-intersection[data-col='${firstPoint.coord[0]}'][data-row='${firstPoint.coord[1]}']`);
+                if (firstIntersection) {
+                    showLabel(firstPoint.coord[0], firstPoint.coord[1]);
+                    firstIntersection.classList.add('treasure-point');
+                    
+                    const label = document.createElement('div');
+                    label.className = 'treasure-label-style';
+                    const locationKey = `${firstPoint.coord[0]}-${firstPoint.coord[1]}`;
+                    label.textContent = config.locations[locationKey] || '起点';
+                    firstIntersection.appendChild(label);
+                    
+                    pathPoints.push({ col: firstPoint.coord[0], row: firstPoint.coord[1], intersection: firstIntersection });
+                }
+                
+                // 移动到下一步
+                currentStep = 1;
+                updateClue();
+                playSound('click');
+            });
+            
+            restartBtn.addEventListener('click', function() {
+                resetGame();
+                playSound('click');
+            });
+
+            // 网格点击事件
+            grid.addEventListener('click', function(e) {
+                if (!waitingForClick || !e.target.classList.contains('grid-intersection') || !gameStarted) return;
+                
+                const clickedCol = parseInt(e.target.dataset.col);
+                const clickedRow = parseInt(e.target.dataset.row);
+                const { coord } = currentRoute[currentStep];
+                
+                if (clickedCol === coord[0] && clickedRow === coord[1]) {
+                    // 点击正确
+                    playSound('success');
+                    
+                    // 显示对应的行列标签
+                    showLabel(clickedCol, clickedRow);
+                    
+                    // 标记路径点
+                    e.target.classList.add('treasure-point');
+                    
+                    // 添加标签
+                    const label = document.createElement('div');
+                    label.className = 'treasure-label-style';
+                    const locationKey = `${clickedCol}-${clickedRow}`;
+                    label.textContent = config.locations[locationKey] || `位置${currentStep + 1}`;
+                    e.target.appendChild(label);
+                    
+                    pathPoints.push({ col: clickedCol, row: clickedRow, intersection: e.target });
+                    
+                    // 如果不是第一个点，画线连接
+                    if (pathPoints.length > 1) {
+                        const prevPoint = pathPoints[pathPoints.length - 2];
+                        drawPathLine(prevPoint.col, prevPoint.row, clickedCol, clickedRow);
+                    }
+                    
+                    if (currentStep === currentRoute.length - 1) {
+                        // 最后一步，找到宝藏
+                        e.target.classList.add('treasure-final');
+                        label.classList.add('final');
+                        label.textContent = '💎';
+                        clueDisplay.textContent = '🎉 恭喜你，找到宝藏了！点击"重新开始"尝试新的路线。';
+                        waitingForClick = false;
+                        playSound('treasure');
+                    } else {
+                        // 继续下一步
+                        currentStep++;
+                        updateClue();
+                    }
+                } else {
+                    // 点击错误
+                    playSound('click');
+                    clueDisplay.textContent = `❌ 位置不对，请找到 (${coord[0]}, ${coord[1]})！`;
+                }
+            });
+
+            function updateClue() {
+                if (currentStep >= currentRoute.length) return;
+
+                const { text } = currentRoute[currentStep];
+                clueDisplay.textContent = text;
+                waitingForClick = true;
+            }
+            
+            initializeLabels();
+            resetGame();
+        }
+
+
+
+        // Initialize all modules
+        initMysteryGuest();
+        initCinema();
+        initZooMap();
+        initTreasureHunt();
+    });
+    </script>
+</body>
+</html>
