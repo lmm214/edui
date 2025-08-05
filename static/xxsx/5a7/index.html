@@ -647,6 +647,52 @@
                             break;
                         }
                     }
+                } else {
+                    // 封闭图形的特殊处理：点击圆弧可以显示间距标注
+                    const radius = Math.min(mainCanvas.width, mainCanvas.height) / 2 - 30;
+                    const centerX = mainCanvas.width / 2;
+                    const centerY = mainCanvas.height / 2;
+                    
+                    // 计算点击位置到圆心的距离
+                    const distanceToCenter = Math.sqrt(
+                        Math.pow(clickX - centerX, 2) + Math.pow(clickY - centerY, 2)
+                    );
+                    
+                    // 检查是否点击在圆弧附近（允许一定误差范围）
+                    if (Math.abs(distanceToCenter - radius) <= 15) {
+                        // 计算点击位置对应的角度
+                        const angle = Math.atan2(clickY - centerY, clickX - centerX);
+                        let normalizedAngle = angle + Math.PI / 2; // 调整角度，使顶部为0
+                        if (normalizedAngle < 0) normalizedAngle += 2 * Math.PI;
+                        
+                        // 确定点击的是哪个弧段
+                        const segmentAngle = (2 * Math.PI) / simState.intervalCount;
+                        const segmentIndex = Math.floor(normalizedAngle / segmentAngle);
+                        
+                        // 计算该弧段的中点位置
+                        const midAngle = (segmentIndex + 0.5) * segmentAngle - Math.PI / 2;
+                        const labelX = centerX + (radius - 40) * Math.cos(midAngle);
+                        const labelY = centerY + (radius - 40) * Math.sin(midAngle);
+                        
+                        // 检查该弧段是否已有标注
+                        const existingLabel = simState.spacingLabels.find(label => label.segmentIndex === segmentIndex);
+                        
+                        if (existingLabel) {
+                            // 移除已存在的标注
+                            simState.spacingLabels = simState.spacingLabels.filter(label => label.segmentIndex !== segmentIndex);
+                        } else {
+                            // 添加新的间距标注
+                            simState.spacingLabels.push({
+                                segmentIndex: segmentIndex,
+                                x: labelX,
+                                y: labelY,
+                                spacing: simState.spacing,
+                                isClosed: true
+                            });
+                        }
+                        
+                        drawMainVisualization();
+                    }
                 }
             }
 
@@ -814,8 +860,29 @@
                     mainCtx.lineWidth = 1;
                     mainCtx.setLineDash([3, 3]);
                     mainCtx.beginPath();
-                    mainCtx.moveTo(label.x, label.y + 5);
-                    mainCtx.lineTo(label.x, label.y + 25);
+                    
+                    if (label.isClosed) {
+                         // 封闭图形的指示线：从标注位置朝外指向圆弧外侧
+                         const centerX = mainCanvas.width / 2;
+                         const centerY = mainCanvas.height / 2;
+                         const radius = Math.min(mainCanvas.width, mainCanvas.height) / 2 - 30;
+                         
+                         // 计算从圆心到标注位置的方向（朝外）
+                         const dx = label.x - centerX;
+                         const dy = label.y - centerY;
+                         const distance = Math.sqrt(dx * dx + dy * dy);
+                         const unitX = dx / distance;
+                         const unitY = dy / distance;
+                         
+                         // 绘制指示线：从标注位置朝外延伸
+                         mainCtx.moveTo(label.x + unitX * 5, label.y + unitY * 5);
+                         mainCtx.lineTo(label.x + unitX * 25, label.y + unitY * 25);
+                     } else {
+                        // 直线的指示线
+                        mainCtx.moveTo(label.x, label.y + 5);
+                        mainCtx.lineTo(label.x, label.y + 25);
+                    }
+                    
                     mainCtx.stroke();
                     mainCtx.setLineDash([]);
                 });
@@ -840,6 +907,9 @@
                     simState.scenario = e.target.dataset.scenario;
                     document.querySelectorAll('#scenario-buttons button').forEach(btn => btn.classList.remove('active'));
                     e.target.classList.add('active');
+                    
+                    // 切换情境时隐藏间距长度标注
+                    simState.spacingLabels = [];
                     
                     // 自动开始计算
                     startCalculation();
