@@ -184,7 +184,7 @@
             z-index: 10;
             opacity: 0;
             visibility: hidden;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
             margin-top: -80px;
         }
 
@@ -227,14 +227,138 @@
 
         /* 响应式设计 */
         @media (max-width: 768px) {
+            body {
+                height: 100vh;
+                overflow: hidden;
+            }
+            
+            .container {
+                height: 100vh;
+                padding: 0;
+            }
+            
+            /* 主游戏区域优化 */
             .main-area {
-                flex-direction: column;
-                height: auto;
+                flex: 1;
+                min-width: auto;
+                margin-bottom: 10px;
+                padding: 0 10px;
+            }
+            
+            .canvas-container {
+                width: 100%;
+                max-width: none;
+                height: calc(100vh - 280px);
+                min-height: 250px;
+            }
+            
+            #gameCanvas {
+                border-width: 2px;
+                border-radius: 8px;
+            }
+            
+            /* 底部控制区域优化 */
+            .bottom-controls {
+                margin: 10px auto 15px;
+                gap: 8px;
+                padding: 0 10px;
+            }
+            
+            .element-btn {
+                width: 60px;
+                height: 60px;
+                font-size: 28px;
+                border-width: 2px;
+                border-radius: 6px;
+            }
+            
+            /* 小键盘优化 */
+            .number-keypad {
+                padding: 12px;
+                border-radius: 10px;
+                margin-top: -60px;
             }
             
             .keypad-grid {
-                grid-template-columns: repeat(3, 1fr);
-                width: 180px;
+                grid-template-columns: repeat(5, 1fr);
+                width: 420px;
+                gap: 6px;
+            }
+            
+            .keypad-btn {
+                width: 54px;
+                height: 54px;
+                font-size: 28px;
+                border-radius: 6px;
+            }
+        }
+        
+        /* 小屏幕设备进一步优化 */
+        @media (max-width: 480px) {
+            .canvas-container {
+                height: calc(100vh - 400px);
+                min-height: 200px;
+            }
+            .keypad-grid {
+                grid-template-columns: repeat(5, 1fr);
+                width: 320px;
+                gap: 4px;
+            }
+            
+            .keypad-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 24px;
+            }
+        }
+        
+        /* 横屏模式优化 */
+        @media (max-width: 768px) and (orientation: landscape) {
+            .container {
+                flex-direction: row;
+            }
+            
+            .top-numbers {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                margin: 0;
+                z-index: 10;
+            }
+            
+            .main-area {
+                flex: 1;
+                margin: 0;
+                padding: 0;
+            }
+            
+            .canvas-container {
+                width: calc(100vw - 20px);
+                height: calc(100vh - 120px);
+                margin-top: 60px;
+            }
+            
+            .bottom-controls {
+                position: absolute;
+                bottom: 10px;
+                right: 10px;
+                margin: 0;
+                flex-direction: column;
+                gap: 5px;
+            }
+            
+            .element-btn {
+                width: 45px;
+                height: 45px;
+                font-size: 22px;
+            }
+            
+            /* 横屏模式连接线坐标调整 */
+            .connection-svg line:first-of-type {
+                x1: 80; y1: 30; x2: 20; y2: 120;
+            }
+            .connection-svg line:last-of-type {
+                x1: 80; y1: 30; x2: 140; y2: 120;
             }
         }
     </style>
@@ -246,9 +370,9 @@
             <div class="top-container">
                 <svg class="connection-svg" width="200" height="180" style="position: absolute; top: 0; left: 0; z-index: 1;">
                     <!-- 左侧连接线：从顶部中心到左下角 -->
-                    <line x1="100" y1="40" x2="25" y2="155" stroke="#333" stroke-width="3"/>
+                    <line x1="100" y1="40" x2="25" y2="155" stroke="#333" stroke-width="3" class="connection-line"/>
                     <!-- 右侧连接线：从顶部中心到右下角 -->
-                    <line x1="100" y1="40" x2="175" y2="155" stroke="#333" stroke-width="3"/>
+                    <line x1="100" y1="40" x2="175" y2="155" stroke="#333" stroke-width="3" class="connection-line"/>
                 </svg>
                 <div class="number-circle number-3" id="num3" onclick="toggleKeypad()">3</div>
                 <div class="number-circle number-2" id="num2" onclick="toggleLeftSide()">2</div>
@@ -291,398 +415,7 @@
     </div>
 
     <script>
-        let currentElement = '🍎';
-        let totalNumber = 6;
-        let leftCount = 0;
-        let rightCount = 0;
-        let draggedElement = null;
-        let elements = [];
-        let canvas, ctx;
-        let isDragging = false;
-        let dragOffset = { x: 0, y: 0 };
-        let leftHidden = false;
-        let rightHidden = false;
-        let keypadVisible = false;
-
-        // 元素对象类
-        class GameElement {
-            constructor(x, y, symbol) {
-                this.x = x;
-                this.y = y;
-                this.symbol = symbol;
-                this.size = 50;
-                this.isLeft = x < canvas.getBoundingClientRect().width / 2;
-            }
-
-            draw() {
-                ctx.font = '48px Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(this.symbol, this.x, this.y);
-            }
-
-            contains(x, y) {
-                const distance = Math.sqrt((x - this.x) ** 2 + (y - this.y) ** 2);
-                return distance <= this.size / 2;
-            }
-
-            updateZone() {
-                const wasLeft = this.isLeft;
-                this.isLeft = this.x < canvas.getBoundingClientRect().width / 2;
-                
-                if (wasLeft !== this.isLeft) {
-                    if (wasLeft) {
-                        leftCount--;
-                        rightCount++;
-                    } else {
-                        rightCount--;
-                        leftCount++;
-                    }
-                    updateCounts();
-                }
-            }
-        }
-
-        // 初始化Canvas尺寸
-        function resizeCanvas() {
-            const container = canvas.parentElement;
-            const containerRect = container.getBoundingClientRect();
-            
-            // 设置Canvas尺寸为容器的实际尺寸
-            const canvasWidth = containerRect.width;
-            const canvasHeight = containerRect.height;
-            
-            // 优化Canvas清晰度
-            const dpr = window.devicePixelRatio || 1;
-            canvas.width = canvasWidth * dpr;
-            canvas.height = canvasHeight * dpr;
-            ctx.scale(dpr, dpr);
-            canvas.style.width = canvasWidth + 'px';
-            canvas.style.height = canvasHeight + 'px';
-        }
-
-        // 初始化
-        function init() {
-            canvas = document.getElementById('gameCanvas');
-            ctx = canvas.getContext('2d');
-            
-            // 初始化Canvas尺寸
-            resizeCanvas();
-            
-            // 添加窗口大小变化监听器
-            window.addEventListener('resize', () => {
-                resizeCanvas();
-                draw();
-            });
-            
-            // 添加事件监听器
-            canvas.addEventListener('mousedown', handleMouseDown);
-            canvas.addEventListener('mousemove', handleMouseMove);
-            canvas.addEventListener('mouseup', handleMouseUp);
-            canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-            canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-            canvas.addEventListener('touchend', handleTouchEnd);
-            
-            refreshTopNumbers();
-            generateElements();
-        }
-
-        // 更新顶部数字显示（与左右数量保持一致）
-        function refreshTopNumbers() {
-            const num3 = leftCount + rightCount; // 总数
-            const num2Element = document.getElementById('num2');
-            const num1Element = document.getElementById('num1');
-            const num3Element = document.getElementById('num3');
-            
-            // 检查数字是否发生变化，如果变化则添加动画
-            if (num2Element.textContent !== leftCount.toString() && !leftHidden) {
-                num2Element.classList.add('updating');
-                setTimeout(() => num2Element.classList.remove('updating'), 400);
-            }
-            
-            if (num1Element.textContent !== rightCount.toString() && !rightHidden) {
-                num1Element.classList.add('updating');
-                setTimeout(() => num1Element.classList.remove('updating'), 400);
-            }
-            
-            // 更新数字内容
-            if (!leftHidden) num2Element.textContent = leftCount; // 左侧数量
-            if (!rightHidden) num1Element.textContent = rightCount; // 右侧数量
-            num3Element.textContent = num3; // 总数
-        }
-
-        // 生成元素
-        function generateElements() {
-            elements = [];
-            leftCount = 0;
-            rightCount = 0;
-
-            const rect = canvas.getBoundingClientRect();
-            // 生成新元素
-            for (let i = 0; i < totalNumber; i++) {
-                const isLeft = Math.random() < 0.5;
-                const x = isLeft ? 
-                    Math.random() * (rect.width / 2 - 80) + 40 : 
-                    Math.random() * (rect.width / 2 - 80) + rect.width / 2 + 40;
-                const y = Math.random() * (rect.height - 160) + 80;
-
-                const element = new GameElement(x, y, currentElement);
-                elements.push(element);
-                if (isLeft) leftCount++; else rightCount++;
-            }
-
-            updateCounts();
-            draw();
-        }
-
-        // Canvas绘制函数
-        function draw() {
-            const rect = canvas.getBoundingClientRect();
-            // 清除画布
-            ctx.clearRect(0, 0, rect.width, rect.height);
-            
-            // 绘制背景
-            ctx.fillStyle = '#F9FFA8'; // 左侧黄色
-            ctx.fillRect(0, 0, rect.width / 2, rect.height);
-            
-            ctx.fillStyle = '#A8D4FF'; // 右侧蓝色
-            ctx.fillRect(rect.width / 2, 0, rect.width / 2, rect.height);
-            
-            // 绘制中间虚线（移除小黑点）
-            ctx.setLineDash([8, 8]);
-            ctx.strokeStyle = '#333';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(rect.width / 2, 0);
-            ctx.lineTo(rect.width / 2, rect.height);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            
-            // 绘制所有元素
-            ctx.fillStyle = 'black';
-            elements.forEach(element => {
-                if (!element.hidden && 
-                    !(leftHidden && element.isLeft) && 
-                    !(rightHidden && !element.isLeft)) {
-                    element.draw();
-                }
-            });
-        }
-
-        // 获取鼠标在Canvas中的坐标
-        function getCanvasCoordinates(e) {
-            const rect = canvas.getBoundingClientRect();
-            return {
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top
-            };
-        }
-
-        // 获取触摸在Canvas中的坐标
-        function getTouchCoordinates(e) {
-            const rect = canvas.getBoundingClientRect();
-            return {
-                x: e.touches[0].clientX - rect.left,
-                y: e.touches[0].clientY - rect.top
-            };
-        }
-
-        // 鼠标事件处理
-        function handleMouseDown(e) {
-            const coords = getCanvasCoordinates(e);
-            
-            // 查找被点击的元素
-            for (let i = elements.length - 1; i >= 0; i--) {
-                if (elements[i].contains(coords.x, coords.y)) {
-                    draggedElement = elements[i];
-                    isDragging = true;
-                    dragOffset.x = coords.x - draggedElement.x;
-                    dragOffset.y = coords.y - draggedElement.y;
-                    canvas.classList.add('dragging');
-                    break;
-                }
-            }
-        }
-
-        function handleMouseMove(e) {
-            const coords = getCanvasCoordinates(e);
-            
-            if (isDragging && draggedElement) {
-                const rect = canvas.getBoundingClientRect();
-                draggedElement.x = coords.x - dragOffset.x;
-                draggedElement.y = coords.y - dragOffset.y;
-                
-                // 限制在画布范围内
-                draggedElement.x = Math.max(25, Math.min(rect.width - 25, draggedElement.x));
-                draggedElement.y = Math.max(25, Math.min(rect.height - 25, draggedElement.y));
-                
-                // 实时更新区域
-                draggedElement.updateZone();
-                
-                draw();
-            } else {
-                // 检查鼠标是否悬停在元素上，改变鼠标样式
-                let isOverElement = false;
-                for (let i = elements.length - 1; i >= 0; i--) {
-                    if (elements[i].contains(coords.x, coords.y) && 
-                        !elements[i].hidden && 
-                        !(leftHidden && elements[i].isLeft) && 
-                        !(rightHidden && !elements[i].isLeft)) {
-                        isOverElement = true;
-                        break;
-                    }
-                }
-                canvas.style.cursor = isOverElement ? 'pointer' : 'crosshair';
-            }
-        }
-
-        function handleMouseUp(e) {
-            isDragging = false;
-            draggedElement = null;
-            canvas.classList.remove('dragging');
-        }
-
-        // 触摸事件处理
-        function handleTouchStart(e) {
-            e.preventDefault();
-            const coords = getTouchCoordinates(e);
-            
-            // 查找被触摸的元素
-            for (let i = elements.length - 1; i >= 0; i--) {
-                if (elements[i].contains(coords.x, coords.y)) {
-                    draggedElement = elements[i];
-                    isDragging = true;
-                    dragOffset.x = coords.x - draggedElement.x;
-                    dragOffset.y = coords.y - draggedElement.y;
-                    canvas.classList.add('dragging');
-                    break;
-                }
-            }
-        }
-
-        function handleTouchMove(e) {
-            e.preventDefault();
-            if (!isDragging || !draggedElement) return;
-            
-            const coords = getTouchCoordinates(e);
-            const rect = canvas.getBoundingClientRect();
-            draggedElement.x = coords.x - dragOffset.x;
-            draggedElement.y = coords.y - dragOffset.y;
-            
-            // 限制在画布范围内
-            draggedElement.x = Math.max(25, Math.min(rect.width - 25, draggedElement.x));
-            draggedElement.y = Math.max(25, Math.min(rect.height - 25, draggedElement.y));
-            
-            // 实时更新区域
-            draggedElement.updateZone();
-            
-            draw();
-        }
-
-        function handleTouchEnd(e) {
-            isDragging = false;
-            draggedElement = null;
-            canvas.classList.remove('dragging');
-        }
-
-        // 更新计数显示（并刷新顶部数字）
-        function updateCounts() {
-            refreshTopNumbers();
-        }
-
-        // 改变数字（设置总数并重新随机摆放）
-        function changeNumber(num) {
-            totalNumber = num;
-            generateElements();
-        }
-
-        // 改变元素类型
-        function changeElement(btn, element) {
-            // 更新按钮状态
-            document.querySelectorAll('.element-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-
-            currentElement = element;
-
-            // 更新现有元素
-            elements.forEach(el => {
-                el.symbol = currentElement;
-            });
-            
-            draw();
-        }
-
-        // 切换左侧显示
-        function toggleLeftSide() {
-            leftHidden = !leftHidden;
-            const num2 = document.getElementById('num2');
-            if (leftHidden) {
-                num2.textContent = '?';
-                num2.style.backgroundColor = '#DDD';
-            } else {
-                num2.textContent = leftCount;
-                num2.style.backgroundColor = '#F0E68C';
-            }
-            draw();
-        }
-
-        // 切换右侧显示
-        function toggleRightSide() {
-            rightHidden = !rightHidden;
-            const num1 = document.getElementById('num1');
-            if (rightHidden) {
-                num1.textContent = '?';
-                num1.style.backgroundColor = '#DDD';
-            } else {
-                num1.textContent = rightCount;
-                num1.style.backgroundColor = '#87CEEB';
-            }
-            draw();
-        }
-
-        // 切换小键盘显示/隐藏
-        function toggleKeypad() {
-            const keypad = document.getElementById('numberKeypad');
-            keypadVisible = !keypadVisible;
-            
-            if (keypadVisible) {
-                keypad.classList.add('show');
-            } else {
-                keypad.classList.remove('show');
-            }
-        }
-
-        // 选择数字
-        function selectNumber(num) {
-            totalNumber = num;
-            generateElements();
-            
-            // 隐藏小键盘
-            const keypad = document.getElementById('numberKeypad');
-            keypad.classList.remove('show');
-            keypadVisible = false;
-        }
-
-        // 点击页面其他地方隐藏小键盘
-        document.addEventListener('click', function(e) {
-            const keypad = document.getElementById('numberKeypad');
-            const num3 = document.getElementById('num3');
-            
-            if (keypadVisible && !keypad.contains(e.target) && e.target !== num3) {
-                keypad.classList.remove('show');
-                keypadVisible = false;
-            }
-        });
-
-        // 页面加载完成后初始化
-        window.addEventListener('load', init);
-
-        // 防止页面滚动影响拖拽
-        document.addEventListener('touchmove', function(e) {
-            if (draggedElement) {
-                e.preventDefault();
-            }
-        }, { passive: false });
+const _0x3cf0=['textAlign','#F0E68C','click','width','num2','num3','mouseup','touches','beginPath','getElementById','size','strokeStyle','remove','top','clientY','random','devicePixelRatio','getBoundingClientRect','add','left','#DDD','moveTo','lineTo','style','max','updateZone','scale','touchmove','fillStyle','px\x20Arial','target','contains','dragging','updating','show','black','resize','isLeft','crosshair','load','fillText','setLineDash','innerWidth','symbol','hidden','draw','min','height','mousemove','addEventListener','numberKeypad','preventDefault','classList','textContent','gameCanvas','center','active','forEach','clearRect','length','querySelectorAll'];const _0x53e4=function(_0x3cf0d1,_0x53e419){_0x3cf0d1=_0x3cf0d1-0x0;let _0x471a9a=_0x3cf0[_0x3cf0d1];return _0x471a9a;};let currentElement='🍎';let totalNumber=0x6;let leftCount=0x0;let rightCount=0x0;let draggedElement=null;let elements=[];let canvas,ctx;let isDragging=![];let dragOffset={'x':0x0,'y':0x0};let leftHidden=![];let rightHidden=![];let keypadVisible=![];class GameElement{constructor(_0x81fbf9,_0xa25b40,_0x2770b4){this['x']=_0x81fbf9;this['y']=_0xa25b40;this['symbol']=_0x2770b4;this['size']=window['innerWidth']<=0x1e0?0x28:window[_0x53e4('0x2a')]<=0x300?0x2d:0x32;this['isLeft']=_0x81fbf9<canvas['getBoundingClientRect']()[_0x53e4('0x3')]/0x2;}['draw'](){const _0x11cf6a=window[_0x53e4('0x2a')]<=0x1e0?0x24:window[_0x53e4('0x2a')]<=0x300?0x2a:0x30;ctx['font']=_0x11cf6a+_0x53e4('0x1d');ctx[_0x53e4('0x0')]=_0x53e4('0x37');ctx['textBaseline']='middle';ctx[_0x53e4('0x28')](this[_0x53e4('0x2b')],this['x'],this['y']);}['contains'](_0x36bcef,_0x17d69b){const _0x15c1b6=Math['sqrt']((_0x36bcef-this['x'])**0x2+(_0x17d69b-this['y'])**0x2);return _0x15c1b6<=this['size']/0x2;}[_0x53e4('0x19')](){const _0x8d0da6=this['isLeft'];this['isLeft']=this['x']<canvas[_0x53e4('0x11')]()[_0x53e4('0x3')]/0x2;if(_0x8d0da6!==this[_0x53e4('0x25')]){if(_0x8d0da6){leftCount--;rightCount++;}else{rightCount--;leftCount++;}updateCounts();}}}function resizeCanvas(){const _0xd158b3=canvas['parentElement'];const _0x1dd060=_0xd158b3['getBoundingClientRect']();const _0x3536fd=_0x1dd060['width'];const _0x331ade=_0x1dd060['height'];const _0xcbd676=window[_0x53e4('0x10')]||0x1;canvas[_0x53e4('0x3')]=_0x3536fd*_0xcbd676;canvas['height']=_0x331ade*_0xcbd676;ctx[_0x53e4('0x1a')](_0xcbd676,_0xcbd676);canvas['style'][_0x53e4('0x3')]=_0x3536fd+'px';canvas[_0x53e4('0x17')][_0x53e4('0x2f')]=_0x331ade+'px';}function init(){canvas=document[_0x53e4('0x9')](_0x53e4('0x36'));ctx=canvas['getContext']('2d');resizeCanvas();window[_0x53e4('0x31')](_0x53e4('0x24'),()=>{resizeCanvas();const _0x16fbda=window[_0x53e4('0x2a')]<=0x1e0?0x28:window[_0x53e4('0x2a')]<=0x300?0x2d:0x32;elements['forEach'](_0x37cc13=>{_0x37cc13[_0x53e4('0xa')]=_0x16fbda;});draw();});canvas['addEventListener']('mousedown',handleMouseDown);canvas['addEventListener'](_0x53e4('0x30'),handleMouseMove);canvas[_0x53e4('0x31')](_0x53e4('0x6'),handleMouseUp);canvas['addEventListener']('touchstart',handleTouchStart,{'passive':![]});canvas[_0x53e4('0x31')]('touchmove',handleTouchMove,{'passive':![]});canvas[_0x53e4('0x31')]('touchend',handleTouchEnd);refreshTopNumbers();generateElements();}function refreshTopNumbers(){const _0x566b83=leftCount+rightCount;const _0x53a053=document['getElementById']('num2');const _0x3e6dea=document['getElementById']('num1');const _0x41772b=document[_0x53e4('0x9')](_0x53e4('0x5'));if(_0x53a053[_0x53e4('0x35')]!==leftCount['toString']()&&!leftHidden){_0x53a053[_0x53e4('0x34')]['add']('updating');setTimeout(()=>_0x53a053[_0x53e4('0x34')][_0x53e4('0xc')]('updating'),0x190);}if(_0x3e6dea[_0x53e4('0x35')]!==rightCount['toString']()&&!rightHidden){_0x3e6dea[_0x53e4('0x34')][_0x53e4('0x12')](_0x53e4('0x21'));setTimeout(()=>_0x3e6dea[_0x53e4('0x34')][_0x53e4('0xc')](_0x53e4('0x21')),0x190);}if(!leftHidden)_0x53a053[_0x53e4('0x35')]=leftCount;if(!rightHidden)_0x3e6dea['textContent']=rightCount;_0x41772b['textContent']=_0x566b83;}function generateElements(){elements=[];leftCount=0x0;rightCount=0x0;const _0x14ec5=canvas['getBoundingClientRect']();for(let _0x575f79=0x0;_0x575f79<totalNumber;_0x575f79++){const _0x422f8f=Math['random']()<0.5;const _0xbe231a=_0x422f8f?Math['random']()*(_0x14ec5['width']/0x2-0x50)+0x28:Math[_0x53e4('0xf')]()*(_0x14ec5[_0x53e4('0x3')]/0x2-0x50)+_0x14ec5[_0x53e4('0x3')]/0x2+0x28;const _0x5e3a1b=Math[_0x53e4('0xf')]()*(_0x14ec5['height']-0xa0)+0x50;const _0x1d54d5=new GameElement(_0xbe231a,_0x5e3a1b,currentElement);elements['push'](_0x1d54d5);if(_0x422f8f)leftCount++;else rightCount++;}updateCounts();draw();}function draw(){const _0x3fc2a2=canvas[_0x53e4('0x11')]();ctx[_0x53e4('0x3a')](0x0,0x0,_0x3fc2a2['width'],_0x3fc2a2[_0x53e4('0x2f')]);ctx[_0x53e4('0x1c')]='#F9FFA8';ctx['fillRect'](0x0,0x0,_0x3fc2a2['width']/0x2,_0x3fc2a2[_0x53e4('0x2f')]);ctx[_0x53e4('0x1c')]='#A8D4FF';ctx['fillRect'](_0x3fc2a2[_0x53e4('0x3')]/0x2,0x0,_0x3fc2a2[_0x53e4('0x3')]/0x2,_0x3fc2a2[_0x53e4('0x2f')]);ctx[_0x53e4('0x29')]([0x8,0x8]);ctx[_0x53e4('0xb')]='#333';ctx['lineWidth']=0x3;ctx[_0x53e4('0x8')]();ctx[_0x53e4('0x15')](_0x3fc2a2[_0x53e4('0x3')]/0x2,0x0);ctx[_0x53e4('0x16')](_0x3fc2a2[_0x53e4('0x3')]/0x2,_0x3fc2a2['height']);ctx['stroke']();ctx['setLineDash']([]);ctx['fillStyle']=_0x53e4('0x23');elements['forEach'](_0x9b9f9c=>{if(!_0x9b9f9c[_0x53e4('0x2c')]&&!(leftHidden&&_0x9b9f9c[_0x53e4('0x25')])&&!(rightHidden&&!_0x9b9f9c['isLeft'])){_0x9b9f9c[_0x53e4('0x2d')]();}});}function getCanvasCoordinates(_0x59cf09){const _0x178fa9=canvas['getBoundingClientRect']();return{'x':_0x59cf09['clientX']-_0x178fa9[_0x53e4('0x13')],'y':_0x59cf09[_0x53e4('0xe')]-_0x178fa9[_0x53e4('0xd')]};}function getTouchCoordinates(_0x16c389){const _0x17c310=canvas[_0x53e4('0x11')]();return{'x':_0x16c389[_0x53e4('0x7')][0x0]['clientX']-_0x17c310[_0x53e4('0x13')],'y':_0x16c389['touches'][0x0]['clientY']-_0x17c310[_0x53e4('0xd')]};}function handleMouseDown(_0x41b43a){const _0x203524=getCanvasCoordinates(_0x41b43a);for(let _0x188dea=elements[_0x53e4('0x3b')]-0x1;_0x188dea>=0x0;_0x188dea--){if(elements[_0x188dea]['contains'](_0x203524['x'],_0x203524['y'])){draggedElement=elements[_0x188dea];isDragging=!![];dragOffset['x']=_0x203524['x']-draggedElement['x'];dragOffset['y']=_0x203524['y']-draggedElement['y'];canvas['classList'][_0x53e4('0x12')](_0x53e4('0x20'));break;}}}function handleMouseMove(_0x4f1df2){const _0x1f6f48=getCanvasCoordinates(_0x4f1df2);if(isDragging&&draggedElement){const _0x26098c=canvas['getBoundingClientRect']();draggedElement['x']=_0x1f6f48['x']-dragOffset['x'];draggedElement['y']=_0x1f6f48['y']-dragOffset['y'];draggedElement['x']=Math[_0x53e4('0x18')](0x19,Math['min'](_0x26098c['width']-0x19,draggedElement['x']));draggedElement['y']=Math[_0x53e4('0x18')](0x19,Math['min'](_0x26098c['height']-0x19,draggedElement['y']));draggedElement['updateZone']();draw();}else{let _0x5630ee=![];for(let _0x4b6f6a=elements['length']-0x1;_0x4b6f6a>=0x0;_0x4b6f6a--){if(elements[_0x4b6f6a]['contains'](_0x1f6f48['x'],_0x1f6f48['y'])&&!elements[_0x4b6f6a][_0x53e4('0x2c')]&&!(leftHidden&&elements[_0x4b6f6a]['isLeft'])&&!(rightHidden&&!elements[_0x4b6f6a]['isLeft'])){_0x5630ee=!![];break;}}canvas['style']['cursor']=_0x5630ee?'pointer':_0x53e4('0x26');}}function handleMouseUp(_0x4bd5b0){isDragging=![];draggedElement=null;canvas[_0x53e4('0x34')]['remove']('dragging');}function handleTouchStart(_0x5ed916){_0x5ed916[_0x53e4('0x33')]();const _0x50ca20=getTouchCoordinates(_0x5ed916);for(let _0x3d9899=elements['length']-0x1;_0x3d9899>=0x0;_0x3d9899--){if(elements[_0x3d9899]['contains'](_0x50ca20['x'],_0x50ca20['y'])){draggedElement=elements[_0x3d9899];isDragging=!![];dragOffset['x']=_0x50ca20['x']-draggedElement['x'];dragOffset['y']=_0x50ca20['y']-draggedElement['y'];canvas['classList'][_0x53e4('0x12')](_0x53e4('0x20'));break;}}}function handleTouchMove(_0x57160c){_0x57160c['preventDefault']();if(!isDragging||!draggedElement)return;const _0x59d8e7=getTouchCoordinates(_0x57160c);const _0x2a7b5a=canvas[_0x53e4('0x11')]();draggedElement['x']=_0x59d8e7['x']-dragOffset['x'];draggedElement['y']=_0x59d8e7['y']-dragOffset['y'];draggedElement['x']=Math[_0x53e4('0x18')](0x19,Math['min'](_0x2a7b5a[_0x53e4('0x3')]-0x19,draggedElement['x']));draggedElement['y']=Math['max'](0x19,Math[_0x53e4('0x2e')](_0x2a7b5a[_0x53e4('0x2f')]-0x19,draggedElement['y']));draggedElement['updateZone']();draw();}function handleTouchEnd(_0x5861cb){isDragging=![];draggedElement=null;canvas[_0x53e4('0x34')]['remove'](_0x53e4('0x20'));}function updateCounts(){refreshTopNumbers();}function changeNumber(_0x47607b){totalNumber=_0x47607b;generateElements();}function changeElement(_0x5a25d1,_0x11b440){document[_0x53e4('0x3c')]('.element-btn')[_0x53e4('0x39')](_0x54f493=>_0x54f493['classList']['remove'](_0x53e4('0x38')));_0x5a25d1['classList'][_0x53e4('0x12')]('active');currentElement=_0x11b440;elements[_0x53e4('0x39')](_0x47b954=>{_0x47b954[_0x53e4('0x2b')]=currentElement;});draw();}function toggleLeftSide(){leftHidden=!leftHidden;const _0x542302=document['getElementById'](_0x53e4('0x4'));if(leftHidden){_0x542302[_0x53e4('0x35')]='?';_0x542302[_0x53e4('0x17')]['backgroundColor']=_0x53e4('0x14');}else{_0x542302['textContent']=leftCount;_0x542302['style']['backgroundColor']=_0x53e4('0x1');}draw();}function toggleRightSide(){rightHidden=!rightHidden;const _0x1c0908=document['getElementById']('num1');if(rightHidden){_0x1c0908['textContent']='?';_0x1c0908[_0x53e4('0x17')]['backgroundColor']='#DDD';}else{_0x1c0908[_0x53e4('0x35')]=rightCount;_0x1c0908['style']['backgroundColor']='#87CEEB';}draw();}function toggleKeypad(){const _0x4a5197=document['getElementById']('numberKeypad');keypadVisible=!keypadVisible;if(keypadVisible){_0x4a5197['classList']['add']('show');}else{_0x4a5197[_0x53e4('0x34')][_0x53e4('0xc')](_0x53e4('0x22'));}}function selectNumber(_0xcc7aa){totalNumber=_0xcc7aa;generateElements();const _0x418b25=document[_0x53e4('0x9')](_0x53e4('0x32'));_0x418b25[_0x53e4('0x34')]['remove'](_0x53e4('0x22'));keypadVisible=![];}document['addEventListener'](_0x53e4('0x2'),function(_0x5f2446){const _0x707eb5=document[_0x53e4('0x9')]('numberKeypad');const _0x468d42=document['getElementById'](_0x53e4('0x5'));if(keypadVisible&&!_0x707eb5[_0x53e4('0x1f')](_0x5f2446['target'])&&_0x5f2446[_0x53e4('0x1e')]!==_0x468d42){_0x707eb5[_0x53e4('0x34')][_0x53e4('0xc')](_0x53e4('0x22'));keypadVisible=![];}});window[_0x53e4('0x31')](_0x53e4('0x27'),init);document['addEventListener'](_0x53e4('0x1b'),function(_0xd786d4){if(draggedElement){_0xd786d4['preventDefault']();}},{'passive':![]});
     </script>
 </body>
 </html>
