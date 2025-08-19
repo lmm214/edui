@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分与合</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-image: linear-gradient(to top, #c1dfc4 0%, #deecdd 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+        }
+
+        .container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部数字显示 */
+        .top-numbers {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px auto;
+            position: relative;
+        }
+
+        .number-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 56px;
+            color: black;
+            border: 3px solid #333;
+            position: absolute;
+            z-index: 2;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .number-circle:hover {
+            transform: scale(1.05);
+        }
+
+        .number-circle.updating {
+            animation: numberUpdate 0.4s ease-in-out;
+        }
+
+        @keyframes numberUpdate {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); background-color: #FFE4B5; }
+            100% { transform: scale(1); }
+        }
+
+        .number-1 { background-color: #A8D4FF; }
+        .number-2 { background-color: #F9FFA8; }
+        .number-3 { background-color: #90EE90; }
+
+        .top-container {
+            background-color: transparent;
+            padding: 15px 10px 10px;
+            position: relative;
+            width: 200px;
+            height: 180px;
+        }
+
+        /* 三角形布局 */
+        .number-circle.number-3 {
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .number-circle.number-2 {
+            bottom: 0;
+            left: 0;
+        }
+
+        .number-circle.number-1 {
+            bottom: 0;
+            right: 0;
+        }
+
+        /* SVG连接线样式 */
+        .connection-svg {
+            pointer-events: none;
+        }
+
+        /* 主要游戏区域 */
+        .main-area {
+            flex: 1;
+            display: flex;
+            position: relative;
+            margin-bottom: 20px;
+            min-width: 800px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .canvas-container {
+            position: relative;
+            overflow: hidden;
+            width: 90vw;
+            max-width: calc(100vw - 300px);
+            height: calc(90vh - 300px);
+            min-height: 300px;
+        }
+
+        #gameCanvas {
+            display: block;
+            cursor: crosshair;
+            width: 100%;
+            height: auto;
+            border: 3px solid #333;
+            border-radius: 10px;
+            transition: filter 0.2s ease;
+        }
+
+        #gameCanvas.dragging {
+            filter: brightness(1.1) contrast(1.05);
+        }
+
+
+
+        /* 底部元素选择器 */
+        .bottom-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px auto;
+        }
+
+        .element-btn {
+            width: 80px;
+            height: 80px;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            font-size: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .element-btn:hover {
+            border-color: #333;
+            transform: scale(1.1);
+        }
+
+        .element-btn.active {
+            border-color: #333;
+            background-color: #e7f3ff;
+        }
+
+
+
+        /* 数字小键盘样式 */
+        .number-keypad {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-top: -80px;
+        }
+
+        .number-keypad.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .keypad-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            width: 380px;
+        }
+
+        .keypad-btn {
+            width: 60px;
+            height: 60px;
+            background-color: #B8E6B8;
+            border: 2px solid #aaa;
+            border-radius: 8px;
+            font-size: 32px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .keypad-btn:hover {
+            background-color: #A5D6A5;
+            border-color: #6B9A6B;
+            transform: scale(1.05);
+        }
+
+        .keypad-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-area {
+                flex-direction: column;
+                height: auto;
+            }
+            
+            .keypad-grid {
+                grid-template-columns: repeat(3, 1fr);
+                width: 180px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 顶部数字显示 -->
+        <div class="top-numbers">
+            <div class="top-container">
+                <svg class="connection-svg" width="200" height="180" style="position: absolute; top: 0; left: 0; z-index: 1;">
+                    <!-- 左侧连接线：从顶部中心到左下角 -->
+                    <line x1="100" y1="40" x2="25" y2="155" stroke="#333" stroke-width="3"/>
+                    <!-- 右侧连接线：从顶部中心到右下角 -->
+                    <line x1="100" y1="40" x2="175" y2="155" stroke="#333" stroke-width="3"/>
+                </svg>
+                <div class="number-circle number-3" id="num3" onclick="toggleKeypad()">3</div>
+                <div class="number-circle number-2" id="num2" onclick="toggleLeftSide()">2</div>
+                <div class="number-circle number-1" id="num1" onclick="toggleRightSide()">1</div>
+                
+                <!-- 浮动数字小键盘 -->
+                <div class="number-keypad" id="numberKeypad">
+                    <div class="keypad-grid">
+                        <button class="keypad-btn" onclick="selectNumber(1)">1</button>
+                        <button class="keypad-btn" onclick="selectNumber(2)">2</button>
+                        <button class="keypad-btn" onclick="selectNumber(3)">3</button>
+                        <button class="keypad-btn" onclick="selectNumber(4)">4</button>
+                        <button class="keypad-btn" onclick="selectNumber(5)">5</button>
+                        <button class="keypad-btn" onclick="selectNumber(6)">6</button>
+                        <button class="keypad-btn" onclick="selectNumber(7)">7</button>
+                        <button class="keypad-btn" onclick="selectNumber(8)">8</button>
+                        <button class="keypad-btn" onclick="selectNumber(9)">9</button>
+                        <button class="keypad-btn" onclick="selectNumber(10)">10</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主要游戏区域 -->
+        <div class="main-area">
+            <div class="canvas-container">
+                <canvas id="gameCanvas"></canvas>
+            </div>
+
+
+        </div>
+
+        <!-- 底部元素选择器 -->
+        <div class="bottom-controls">
+            <button class="element-btn active" onclick="changeElement(this, '🍎')" title="苹果">🍎</button>
+            <button class="element-btn" onclick="changeElement(this, '⚽️')" title="足球">⚽️</button>
+            <button class="element-btn" onclick="changeElement(this, '🦋')" title="蝴蝶">🦋</button>
+            <button class="element-btn" onclick="changeElement(this, '1')" title="数字">1</button>
+        </div>
+    </div>
+
+    <script>
+        let currentElement = '🍎';
+        let totalNumber = 6;
+        let leftCount = 0;
+        let rightCount = 0;
+        let draggedElement = null;
+        let elements = [];
+        let canvas, ctx;
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+        let leftHidden = false;
+        let rightHidden = false;
+        let keypadVisible = false;
+
+        // 元素对象类
+        class GameElement {
+            constructor(x, y, symbol) {
+                this.x = x;
+                this.y = y;
+                this.symbol = symbol;
+                this.size = 50;
+                this.isLeft = x < canvas.getBoundingClientRect().width / 2;
+            }
+
+            draw() {
+                ctx.font = '48px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.symbol, this.x, this.y);
+            }
+
+            contains(x, y) {
+                const distance = Math.sqrt((x - this.x) ** 2 + (y - this.y) ** 2);
+                return distance <= this.size / 2;
+            }
+
+            updateZone() {
+                const wasLeft = this.isLeft;
+                this.isLeft = this.x < canvas.getBoundingClientRect().width / 2;
+                
+                if (wasLeft !== this.isLeft) {
+                    if (wasLeft) {
+                        leftCount--;
+                        rightCount++;
+                    } else {
+                        rightCount--;
+                        leftCount++;
+                    }
+                    updateCounts();
+                }
+            }
+        }
+
+        // 初始化Canvas尺寸
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const containerRect = container.getBoundingClientRect();
+            
+            // 设置Canvas尺寸为容器的实际尺寸
+            const canvasWidth = containerRect.width;
+            const canvasHeight = containerRect.height;
+            
+            // 优化Canvas清晰度
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvasWidth * dpr;
+            canvas.height = canvasHeight * dpr;
+            ctx.scale(dpr, dpr);
+            canvas.style.width = canvasWidth + 'px';
+            canvas.style.height = canvasHeight + 'px';
+        }
+
+        // 初始化
+        function init() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // 初始化Canvas尺寸
+            resizeCanvas();
+            
+            // 添加窗口大小变化监听器
+            window.addEventListener('resize', () => {
+                resizeCanvas();
+                draw();
+            });
+            
+            // 添加事件监听器
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+            canvas.addEventListener('touchend', handleTouchEnd);
+            
+            refreshTopNumbers();
+            generateElements();
+        }
+
+        // 更新顶部数字显示（与左右数量保持一致）
+        function refreshTopNumbers() {
+            const num3 = leftCount + rightCount; // 总数
+            const num2Element = document.getElementById('num2');
+            const num1Element = document.getElementById('num1');
+            const num3Element = document.getElementById('num3');
+            
+            // 检查数字是否发生变化，如果变化则添加动画
+            if (num2Element.textContent !== leftCount.toString() && !leftHidden) {
+                num2Element.classList.add('updating');
+                setTimeout(() => num2Element.classList.remove('updating'), 400);
+            }
+            
+            if (num1Element.textContent !== rightCount.toString() && !rightHidden) {
+                num1Element.classList.add('updating');
+                setTimeout(() => num1Element.classList.remove('updating'), 400);
+            }
+            
+            // 更新数字内容
+            if (!leftHidden) num2Element.textContent = leftCount; // 左侧数量
+            if (!rightHidden) num1Element.textContent = rightCount; // 右侧数量
+            num3Element.textContent = num3; // 总数
+        }
+
+        // 生成元素
+        function generateElements() {
+            elements = [];
+            leftCount = 0;
+            rightCount = 0;
+
+            const rect = canvas.getBoundingClientRect();
+            // 生成新元素
+            for (let i = 0; i < totalNumber; i++) {
+                const isLeft = Math.random() < 0.5;
+                const x = isLeft ? 
+                    Math.random() * (rect.width / 2 - 80) + 40 : 
+                    Math.random() * (rect.width / 2 - 80) + rect.width / 2 + 40;
+                const y = Math.random() * (rect.height - 160) + 80;
+
+                const element = new GameElement(x, y, currentElement);
+                elements.push(element);
+                if (isLeft) leftCount++; else rightCount++;
+            }
+
+            updateCounts();
+            draw();
+        }
+
+        // Canvas绘制函数
+        function draw() {
+            const rect = canvas.getBoundingClientRect();
+            // 清除画布
+            ctx.clearRect(0, 0, rect.width, rect.height);
+            
+            // 绘制背景
+            ctx.fillStyle = '#F9FFA8'; // 左侧黄色
+            ctx.fillRect(0, 0, rect.width / 2, rect.height);
+            
+            ctx.fillStyle = '#A8D4FF'; // 右侧蓝色
+            ctx.fillRect(rect.width / 2, 0, rect.width / 2, rect.height);
+            
+            // 绘制中间虚线（移除小黑点）
+            ctx.setLineDash([8, 8]);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(rect.width / 2, 0);
+            ctx.lineTo(rect.width / 2, rect.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // 绘制所有元素
+            ctx.fillStyle = 'black';
+            elements.forEach(element => {
+                if (!element.hidden && 
+                    !(leftHidden && element.isLeft) && 
+                    !(rightHidden && !element.isLeft)) {
+                    element.draw();
+                }
+            });
+        }
+
+        // 获取鼠标在Canvas中的坐标
+        function getCanvasCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        // 获取触摸在Canvas中的坐标
+        function getTouchCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.touches[0].clientX - rect.left,
+                y: e.touches[0].clientY - rect.top
+            };
+        }
+
+        // 鼠标事件处理
+        function handleMouseDown(e) {
+            const coords = getCanvasCoordinates(e);
+            
+            // 查找被点击的元素
+            for (let i = elements.length - 1; i >= 0; i--) {
+                if (elements[i].contains(coords.x, coords.y)) {
+                    draggedElement = elements[i];
+                    isDragging = true;
+                    dragOffset.x = coords.x - draggedElement.x;
+                    dragOffset.y = coords.y - draggedElement.y;
+                    canvas.classList.add('dragging');
+                    break;
+                }
+            }
+        }
+
+        function handleMouseMove(e) {
+            const coords = getCanvasCoordinates(e);
+            
+            if (isDragging && draggedElement) {
+                const rect = canvas.getBoundingClientRect();
+                draggedElement.x = coords.x - dragOffset.x;
+                draggedElement.y = coords.y - dragOffset.y;
+                
+                // 限制在画布范围内
+                draggedElement.x = Math.max(25, Math.min(rect.width - 25, draggedElement.x));
+                draggedElement.y = Math.max(25, Math.min(rect.height - 25, draggedElement.y));
+                
+                // 实时更新区域
+                draggedElement.updateZone();
+                
+                draw();
+            } else {
+                // 检查鼠标是否悬停在元素上，改变鼠标样式
+                let isOverElement = false;
+                for (let i = elements.length - 1; i >= 0; i--) {
+                    if (elements[i].contains(coords.x, coords.y) && 
+                        !elements[i].hidden && 
+                        !(leftHidden && elements[i].isLeft) && 
+                        !(rightHidden && !elements[i].isLeft)) {
+                        isOverElement = true;
+                        break;
+                    }
+                }
+                canvas.style.cursor = isOverElement ? 'pointer' : 'crosshair';
+            }
+        }
+
+        function handleMouseUp(e) {
+            isDragging = false;
+            draggedElement = null;
+            canvas.classList.remove('dragging');
+        }
+
+        // 触摸事件处理
+        function handleTouchStart(e) {
+            e.preventDefault();
+            const coords = getTouchCoordinates(e);
+            
+            // 查找被触摸的元素
+            for (let i = elements.length - 1; i >= 0; i--) {
+                if (elements[i].contains(coords.x, coords.y)) {
+                    draggedElement = elements[i];
+                    isDragging = true;
+                    dragOffset.x = coords.x - draggedElement.x;
+                    dragOffset.y = coords.y - draggedElement.y;
+                    canvas.classList.add('dragging');
+                    break;
+                }
+            }
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if (!isDragging || !draggedElement) return;
+            
+            const coords = getTouchCoordinates(e);
+            const rect = canvas.getBoundingClientRect();
+            draggedElement.x = coords.x - dragOffset.x;
+            draggedElement.y = coords.y - dragOffset.y;
+            
+            // 限制在画布范围内
+            draggedElement.x = Math.max(25, Math.min(rect.width - 25, draggedElement.x));
+            draggedElement.y = Math.max(25, Math.min(rect.height - 25, draggedElement.y));
+            
+            // 实时更新区域
+            draggedElement.updateZone();
+            
+            draw();
+        }
+
+        function handleTouchEnd(e) {
+            isDragging = false;
+            draggedElement = null;
+            canvas.classList.remove('dragging');
+        }
+
+        // 更新计数显示（并刷新顶部数字）
+        function updateCounts() {
+            refreshTopNumbers();
+        }
+
+        // 改变数字（设置总数并重新随机摆放）
+        function changeNumber(num) {
+            totalNumber = num;
+            generateElements();
+        }
+
+        // 改变元素类型
+        function changeElement(btn, element) {
+            // 更新按钮状态
+            document.querySelectorAll('.element-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            currentElement = element;
+
+            // 更新现有元素
+            elements.forEach(el => {
+                el.symbol = currentElement;
+            });
+            
+            draw();
+        }
+
+        // 切换左侧显示
+        function toggleLeftSide() {
+            leftHidden = !leftHidden;
+            const num2 = document.getElementById('num2');
+            if (leftHidden) {
+                num2.textContent = '?';
+                num2.style.backgroundColor = '#DDD';
+            } else {
+                num2.textContent = leftCount;
+                num2.style.backgroundColor = '#F0E68C';
+            }
+            draw();
+        }
+
+        // 切换右侧显示
+        function toggleRightSide() {
+            rightHidden = !rightHidden;
+            const num1 = document.getElementById('num1');
+            if (rightHidden) {
+                num1.textContent = '?';
+                num1.style.backgroundColor = '#DDD';
+            } else {
+                num1.textContent = rightCount;
+                num1.style.backgroundColor = '#87CEEB';
+            }
+            draw();
+        }
+
+        // 切换小键盘显示/隐藏
+        function toggleKeypad() {
+            const keypad = document.getElementById('numberKeypad');
+            keypadVisible = !keypadVisible;
+            
+            if (keypadVisible) {
+                keypad.classList.add('show');
+            } else {
+                keypad.classList.remove('show');
+            }
+        }
+
+        // 选择数字
+        function selectNumber(num) {
+            totalNumber = num;
+            generateElements();
+            
+            // 隐藏小键盘
+            const keypad = document.getElementById('numberKeypad');
+            keypad.classList.remove('show');
+            keypadVisible = false;
+        }
+
+        // 点击页面其他地方隐藏小键盘
+        document.addEventListener('click', function(e) {
+            const keypad = document.getElementById('numberKeypad');
+            const num3 = document.getElementById('num3');
+            
+            if (keypadVisible && !keypad.contains(e.target) && e.target !== num3) {
+                keypad.classList.remove('show');
+                keypadVisible = false;
+            }
+        });
+
+        // 页面加载完成后初始化
+        window.addEventListener('load', init);
+
+        // 防止页面滚动影响拖拽
+        document.addEventListener('touchmove', function(e) {
+            if (draggedElement) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+    </script>
+</body>
+</html>
