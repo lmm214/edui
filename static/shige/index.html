@@ -43,6 +43,8 @@
             align-items: center;
             flex: 1;
             flex-wrap: wrap;
+            position: relative;
+            min-height: 300px;
         }
 
         .grid {
@@ -102,6 +104,14 @@
             background: #ef5350;
         }
 
+        .green-circle {
+            background: #4caf50;
+        }
+
+        .light-green-circle {
+            background: #81c784;
+        }
+
         .equation-container {
             display: flex;
             align-items: center;
@@ -121,6 +131,16 @@
             min-width: min(60px, 8vw);
             text-align: center;
             aspect-ratio: 1;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+        .number-box:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .number-box:active {
+            transform: scale(0.95);
         }
         #num1{color: #5c6bc0;}
         #num2{color: #ef5350;}
@@ -293,11 +313,119 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
         let draggedElement = null;
         let currentNum1 = 9;
         let currentNum2 = 5;
+        let hiddenNumbers = { num1: false, num2: false }; // 跟踪哪些数字被隐藏了
+        let hiddenMode = false; // 跟踪是否处于隐藏模式
 
         // 初始化
         function init() {
             generateNewProblem();
             setupDragAndDrop();
+            setupNumberClick();
+        }
+
+        // 设置数字点击功能
+        function setupNumberClick() {
+            document.getElementById('num1').addEventListener('click', function() {
+                toggleNumber('num1');
+            });
+            
+            document.getElementById('num2').addEventListener('click', function() {
+                toggleNumber('num2');
+            });
+        }
+
+        // 切换数字显示/隐藏
+        function toggleNumber(numId) {
+            const numElement = document.getElementById(numId);
+            const resultBox = document.getElementById('result');
+            const currentValue = numId === 'num1' ? currentNum1 : currentNum2;
+            
+            if (hiddenNumbers[numId]) {
+                // 如果当前是隐藏状态，恢复显示数字
+                numElement.textContent = currentValue;
+                hiddenNumbers[numId] = false;
+                showConfetti();
+                // 恢复原始圆片分布
+                restoreOriginalCircles();
+                // 保持答案显示，不隐藏
+                // 保持hiddenMode状态不变
+            } else {
+                // 如果当前是显示状态，隐藏数字
+                numElement.textContent = '?';
+                hiddenNumbers[numId] = true;
+                hiddenMode = true; // 进入隐藏模式
+                // 重新分配圆片，使两个网格总数等于答案
+                redistributeCirclesForAnswer();
+                // 显示答案
+                resultBox.textContent = currentNum1 + currentNum2;
+                resultBox.classList.remove('hidden');
+                resultBox.classList.add('show-answer');
+            }
+        }
+
+        // 重新分配圆片，使两个网格总数等于答案
+        function redistributeCirclesForAnswer() {
+            // 清除所有圆片
+            document.querySelectorAll('.circle').forEach(circle => circle.remove());
+            
+            const totalAnswer = currentNum1 + currentNum2;
+            // 优先填满第一个网格，然后填第二个网格
+            const grid1Count = Math.min(totalAnswer, 10);
+            const grid2Count = Math.min(totalAnswer - grid1Count, 10);
+            const outsideCount = totalAnswer - grid1Count - grid2Count;
+            
+            // 在网格中放置绿色圆片，与答案颜色一致
+            placeCircles('grid1', grid1Count, 'green-circle');
+            placeCircles('grid2', grid2Count, 'green-circle');
+            
+            // 如果还有剩余圆片，将其放在网格外
+            if (outsideCount > 0) {
+                placeCirclesOutsideGrid(outsideCount);
+            }
+        }
+
+        // 恢复原始圆片分布
+        function restoreOriginalCircles() {
+            // 清除所有圆片
+            document.querySelectorAll('.circle').forEach(circle => circle.remove());
+            
+            // 恢复原始分布
+            placeCircles('grid1', currentNum1, 'blue-circle');
+            placeCircles('grid2', currentNum2, 'red-circle');
+        }
+
+        // 在网格外放置圆片
+        function placeCirclesOutsideGrid(count) {
+            const container = document.querySelector('.grids-container');
+            
+            for (let i = 0; i < count; i++) {
+                const circle = document.createElement('div');
+                circle.className = 'circle green-circle';
+                circle.draggable = true;
+                circle.style.position = 'absolute';
+                circle.style.left = Math.random() * 200 + 'px';
+                circle.style.top = Math.random() * 100 + 'px';
+                circle.style.zIndex = '20';
+                container.appendChild(circle);
+            }
+        }
+
+        // 隐藏指定网格的圆片
+        function hideGridCircles(gridId) {
+            const grid = document.getElementById(gridId);
+            const circles = grid.querySelectorAll('.circle');
+            circles.forEach(circle => {
+                circle.style.display = 'none';
+            });
+        }
+
+        // 显示指定网格的圆片
+        function showGridCircles(gridId) {
+            const grid = document.getElementById(gridId);
+            const circles = grid.querySelectorAll('.circle');
+            circles.forEach(circle => {
+                circle.style.display = '';
+            });
         }
 
         // 生成新题目
@@ -309,6 +437,9 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
             currentNum1 = Math.floor(Math.random() * 9) + 1;
             currentNum2 = Math.floor(Math.random() * 9) + 1;
             
+            // 重置隐藏状态
+            hiddenNumbers = { num1: false, num2: false };
+            
             // 更新显示
             document.getElementById('num1').textContent = currentNum1;
             document.getElementById('num2').textContent = currentNum2;
@@ -319,14 +450,18 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
             resultBox.classList.remove('show-answer');
             resultBox.classList.add('hidden');
             
-            // 在第一个网格中放置蓝色圆片
-            placeCircles('grid1', currentNum1, 'blue-circle');
-            
-            // 在第二个网格中放置红色圆片
-            placeCircles('grid2', currentNum2, 'red-circle');
-            
-            // 重新检查答案以设置正确的点击事件
-            checkAnswer();
+            if (hiddenMode) {
+                // 如果处于隐藏模式，随机选择一个加数隐藏
+                const randomChoice = Math.random() < 0.5 ? 'num1' : 'num2';
+                toggleNumber(randomChoice);
+            } else {
+                // 正常模式：在网格中放置圆片
+                placeCircles('grid1', currentNum1, 'blue-circle');
+                placeCircles('grid2', currentNum2, 'red-circle');
+                
+                // 重新检查答案以设置正确的点击事件
+                checkAnswer();
+            }
         }
 
         // 在指定网格中放置圆片
@@ -372,17 +507,57 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
         function handleDrop(e) {
             e.preventDefault();
             
-            if (e.target.classList.contains('cell') && draggedElement) {
-                // 如果目标格子已有圆片，则交换位置
-                const existingCircle = e.target.querySelector('.circle');
+            if (draggedElement) {
                 const sourceCell = draggedElement.parentNode;
+                const isFromGrid1 = sourceCell && sourceCell.closest('#grid1');
                 
-                if (existingCircle && existingCircle !== draggedElement) {
-                    // 交换圆片
-                    sourceCell.appendChild(existingCircle);
+                if (e.target.classList.contains('cell')) {
+                    // 拖拽到网格内
+                    const existingCircle = e.target.querySelector('.circle');
+                    
+                    if (existingCircle && existingCircle !== draggedElement) {
+                        // 交换圆片
+                        sourceCell.appendChild(existingCircle);
+                    }
+                    
+                    // 重置圆片样式（从网格外拖回网格内时）
+                    draggedElement.style.position = 'absolute';
+                    draggedElement.style.left = '';
+                    draggedElement.style.top = '';
+                    draggedElement.style.zIndex = '10';
+                    
+                    // 在隐藏模式下，拖回网格内的圆片恢复为绿色
+                    if (hiddenMode && draggedElement.classList.contains('light-green-circle')) {
+                        draggedElement.classList.remove('light-green-circle');
+                        draggedElement.classList.add('green-circle');
+                    }
+                    
+                    e.target.appendChild(draggedElement);
+                } else {
+                    // 拖拽到网格外
+                    const container = document.querySelector('.grids-container');
+                    const containerRect = container.getBoundingClientRect();
+                    
+                    // 设置圆片在网格外的绝对位置
+                    draggedElement.style.position = 'absolute';
+                    draggedElement.style.left = (e.clientX - containerRect.left - draggedElement.offsetWidth / 2) + 'px';
+                    draggedElement.style.top = (e.clientY - containerRect.top - draggedElement.offsetHeight / 2) + 'px';
+                    draggedElement.style.zIndex = '20';
+                    
+                    // 如果圆片原来在网格内，将其移出
+                    if (sourceCell && sourceCell.classList.contains('cell')) {
+                        sourceCell.removeChild(draggedElement);
+                    }
+                    
+                    // 在隐藏模式下，移出网格的圆片改为淡绿色
+                    if (hiddenMode) {
+                        draggedElement.classList.remove('green-circle', 'blue-circle', 'red-circle');
+                        draggedElement.classList.add('light-green-circle');
+                    }
+                    
+                    container.appendChild(draggedElement);
                 }
                 
-                e.target.appendChild(draggedElement);
                 checkAnswer();
             }
             
@@ -402,9 +577,15 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
         // 检查答案
         function checkAnswer() {
             const resultBox = document.getElementById('result');
-            const grid1Circles = document.querySelectorAll('#grid1 .circle').length;
-            const grid2Circles = document.querySelectorAll('#grid2 .circle').length;
-            const totalCircles = grid1Circles + grid2Circles;
+            
+            // 如果有数字被隐藏，不需要检查答案，因为答案已经显示
+            if (hiddenNumbers.num1 || hiddenNumbers.num2) {
+                return;
+            }
+            
+            // 计算所有圆片总数（包括网格内和网格外的）
+            const allCircles = document.querySelectorAll('.circle').length;
+            const totalCircles = allCircles;
             
             // 重置答案显示状态
             resultBox.classList.remove('show-answer');
@@ -421,7 +602,8 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
                         resultBox.classList.add('show-answer');
                         showConfetti();
                     } else {
-                        // 生成新题目
+                        // 生成新题目，并退出隐藏模式
+                        hiddenMode = false;
                         generateNewProblem();
                     }
                 };
@@ -479,27 +661,62 @@ var JSConfetti=function(){"use strict";function t(t,e){if(!(t instanceof e))thro
         function handleTouchEnd(e) {
             if (touchedElement) {
                 e.preventDefault();
+                const touch = e.changedTouches[0];
+                const sourceCell = touchedElement.parentNode;
+                const isFromGrid1 = sourceCell && sourceCell.closest('#grid1');
                 
-                // 如果有有效的目标格子，先完成移动操作
                 if (currentTouchTarget && currentTouchTarget.classList.contains('cell')) {
-                    // 如果目标格子已有圆片，则交换位置
+                    // 拖拽到网格内
                     const existingCircle = currentTouchTarget.querySelector('.circle');
-                    const sourceCell = touchedElement.parentNode;
                     
                     if (existingCircle && existingCircle !== touchedElement) {
                         // 交换圆片
                         sourceCell.appendChild(existingCircle);
                     }
                     
+                    // 重置圆片样式（从网格外拖回网格内时）
+                    touchedElement.style.position = 'absolute';
+                    touchedElement.style.left = '';
+                    touchedElement.style.top = '';
+                    touchedElement.style.zIndex = '10';
+                    
+                    // 在隐藏模式下，拖回网格内的圆片恢复为绿色
+                    if (hiddenMode && touchedElement.classList.contains('light-green-circle')) {
+                        touchedElement.classList.remove('light-green-circle');
+                        touchedElement.classList.add('green-circle');
+                    }
+                    
                     currentTouchTarget.appendChild(touchedElement);
+                    
+                    checkAnswer();
+                } else {
+                    // 拖拽到网格外
+                    const container = document.querySelector('.grids-container');
+                    const containerRect = container.getBoundingClientRect();
+                    
+                    // 设置圆片在网格外的绝对位置
+                    touchedElement.style.position = 'absolute';
+                    touchedElement.style.left = (touch.clientX - containerRect.left - touchedElement.offsetWidth / 2) + 'px';
+                    touchedElement.style.top = (touch.clientY - containerRect.top - touchedElement.offsetHeight / 2) + 'px';
+                    touchedElement.style.zIndex = '20';
+                    
+                    // 如果圆片原来在网格内，将其移出
+                    if (sourceCell && sourceCell.classList.contains('cell')) {
+                        sourceCell.removeChild(touchedElement);
+                    }
+                    
+                    // 在隐藏模式下，移出网格的圆片改为淡绿色
+                    if (hiddenMode) {
+                        touchedElement.classList.remove('green-circle', 'blue-circle', 'red-circle');
+                        touchedElement.classList.add('light-green-circle');
+                    }
+                    
+                    container.appendChild(touchedElement);
                     checkAnswer();
                 }
                 
                 // 恢复样式
                 touchedElement.classList.remove('dragging');
-                touchedElement.style.position = 'absolute';
-                touchedElement.style.left = '';
-                touchedElement.style.top = '';
                 touchedElement.style.pointerEvents = '';
                 
                 // 清除高亮
