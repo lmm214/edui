@@ -192,34 +192,54 @@
 <script type="text/javascript">
 // 准备搜索数据
 var searchData = [];
+var linksData = null;
 
-{{- range .Site.Data.links.list }}
-{{- if .sub }}
-{{- range .sub }}
-{{- range .item }}
-searchData.push({
-  siteName: {{ .siteName | jsonify }},
-  description: {{ .description | jsonify }},
-  siteLink: {{ .siteLink | jsonify }},
-  siteLogo: {{ .siteLogo | jsonify }},
-  siteImage: {{ .siteImage | jsonify }},
-  siteSnip: {{ .siteSnip | jsonify }}
-});
-{{- end }}
-{{- end }}
-{{- else }}
-{{- range .item }}
-searchData.push({
-  siteName: {{ .siteName | jsonify }},
-  description: {{ .description | jsonify }},
-  siteLink: {{ .siteLink | jsonify }},
-  siteLogo: {{ .siteLogo | jsonify }},
-  siteImage: {{ .siteImage | jsonify }},
-  siteSnip: {{ .siteSnip | jsonify }}
-});
-{{- end }}
-{{- end }}
-{{- end }}
+// 从 JSON 文件加载数据
+function loadLinksData(callback) {
+    $.getJSON('/data/links.json')
+        .done(function(data) {
+            linksData = data;
+            // 构建搜索数据
+            searchData = [];
+            if (data.list) {
+                data.list.forEach(function(category) {
+                    if (category.sub) {
+                        // 有子分类的情况
+                        category.sub.forEach(function(subCategory) {
+                            if (subCategory.item) {
+                                subCategory.item.forEach(function(item) {
+                                    searchData.push({
+                                        siteName: item.siteName || '',
+                                        description: item.description || '',
+                                        siteLink: item.siteLink || '',
+                                        siteLogo: item.siteLogo || '',
+                                        siteImage: item.siteImage || '',
+                                        siteSnip: item.siteSnip || ''
+                                    });
+                                });
+                            }
+                        });
+                    } else if (category.item) {
+                        // 没有子分类的情况
+                        category.item.forEach(function(item) {
+                            searchData.push({
+                                siteName: item.siteName || '',
+                                description: item.description || '',
+                                siteLink: item.siteLink || '',
+                                siteLogo: item.siteLogo || '',
+                                siteImage: item.siteImage || '',
+                                siteSnip: item.siteSnip || ''
+                            });
+                        });
+                    }
+                });
+            }
+            if (callback) callback();
+        })
+        .fail(function() {
+            console.error('无法加载链接数据');
+        });
+}
 
 // 搜索功能
 function performSearch(query) {
@@ -251,7 +271,6 @@ function displaySearchResults(results) {
         
         // 先显示卡片样式项目
         if (cardItems.length > 0) {
-            container.append('<div class="col-sm-12"><h5 class="text-muted">卡片预览</h5></div>');
             var cardRow = $('<div class="row"></div>');
             cardItems.forEach(function(item) {
                 var cardHtml = '<div class="col-sm-3">';
@@ -352,17 +371,20 @@ function clearSearch() {
 
 // 绑定搜索事件
 $(document).ready(function() {
-    $('#searchInput').on('input', function() {
-        var query = $(this).val();
-        performSearch(query);
-    });
-    
-    $('#searchInput').on('keypress', function(e) {
-        if (e.which === 13) { // Enter键
-            e.preventDefault();
+    // 先加载链接数据，然后绑定搜索事件
+    loadLinksData(function() {
+        $('#searchInput').on('input', function() {
             var query = $(this).val();
             performSearch(query);
-        }
+        });
+        
+        $('#searchInput').on('keypress', function(e) {
+            if (e.which === 13) { // Enter键
+                e.preventDefault();
+                var query = $(this).val();
+                performSearch(query);
+            }
+        });
     });
 });
 </script>
