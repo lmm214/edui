@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全班同学生日月份统计</title>
+    <style>
+        .vote-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .vote-table th, .vote-table td {
+            border: 1px solid #e0e0e0;
+            padding: 10px;
+            text-align: center;
+            font-size: 24px;
+        }
+        .vote-table th {
+            background-color: #3498db;
+            color: white;
+        }
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0;
+            background-color: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .chart-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex: 1;
+            min-height: 300;
+        }
+        .voting-areas {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+            height: 200px;
+            padding-bottom:1rem;
+        }
+        .voting-area {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .number-buttons {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .number-button {
+            aspect-ratio: 1;
+            font-size: 22px;
+            border: none;
+            border-radius: 4px;
+            background-color: #f0f0f0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .number-button:hover {
+            background-color: #e0e0e0;
+        }
+        .number-button.selected {
+            background-color: #3498db;
+            color: white;
+        }
+        .submit-button {
+            font-size: 22px;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            background-color: #3498db;
+            color: white;
+            grid-column: span 3;
+        }
+        .submit-button:hover {
+            background-color: #2980b9;
+        }
+        h2{text-align: center;padding: 0;margin: 10px auto;}
+
+        /* 弹窗样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            max-width: 80%;
+            width: 600px;
+            position: relative;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .close-btn {
+            position: absolute;
+            right: 15px;
+            top: 15px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        .result-title {
+            font-size: 28px;
+            color: #2980b9;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .result-item {
+            font-size: 22px;
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        .highlight {
+            color: #e74c3c;
+            font-weight: bold;
+            font-size: 26px;
+        }
+        /* 添加新的强调样式 */
+        .most {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffc107;
+        }
+        .least {
+            background-color: #f8d7da;
+            border-left: 5px solid #dc3545;
+        }
+        .same {
+            background-color: #d1e7dd;
+            border-left: 5px solid #198754;
+        }
+        .total {
+            background-color: #cfe2ff;
+            border-left: 5px solid #0d6efd;
+        }
+        .keyword {
+            font-weight: bold;
+            padding: 2px 5px;
+            border-radius: 4px;
+        }
+        .keyword-most {
+            background-color: #ffc107;
+            color: #000;
+        }
+        .keyword-least {
+            background-color: #dc3545;
+            color: #fff;
+        }
+        .keyword-same {
+            background-color: #198754;
+            color: #fff;
+        }
+        .vote-table td:first-child {
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .vote-table td:first-child:hover {
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <h2 id="title" style="cursor: pointer;">全班同学生日月份统计表</h2>
+
+    <!-- 添加弹窗HTML结构 -->
+    <div id="resultModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <div class="result-title">📊 生日统计分析</div>
+            <div id="analysisResult"></div>
+        </div>
+    </div>
+
+    <table class="vote-table">
+        <tr>
+            <th>月份</th>
+            <th>1月</th>
+            <th>2月</th>
+            <th>3月</th>
+            <th>4月</th>
+            <th>5月</th>
+            <th>6月</th>
+            <th>7月</th>
+            <th>8月</th>
+            <th>9月</th>
+            <th>10月</th>
+            <th>11月</th>
+            <th>12月</th>
+        </tr>
+        <tr id="vote-count-row">
+            <td onclick="document.getElementById('fileInput').click()">人数</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+        </tr>
+    </table>
+    <div class="chart-container" id="voteChart"></div>
+    
+    <div class="voting-areas">
+        <!-- 4个投票区域 -->
+    </div>
+
+    <input type="file" id="fileInput" style="display: none" accept=".txt" onchange="handleFileSelect(event)">
+
+    <script src="https://fastly.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script>
+        // 初始化投票数据
+        const voteData = Array(12).fill(0);
+
+        // 创建图表
+        const chartDom = document.getElementById('voteChart');
+        const myChart = echarts.init(chartDom);
+        
+        // 配置图表选项
+        const option = {
+            title: {
+                text: '全班同学生日月份统计图',
+                left: 'center',
+                top: '0px',
+                textStyle: {
+                    fontSize: 24
+                }
+            },
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: {
+                    type: 'shadow'
+                }
+            },
+            grid: {
+                left: '1%',
+                top: '12%',
+                right: '7%',
+                bottom: '1%',
+                containLabel: true
+            },
+            xAxis: [
+                {
+                    type: 'category',
+                    data: Array.from({length: 12}, (_, i) => `${i + 1}月`),
+                    axisTick: {
+                        alignWithLabel: true
+                    },
+                    axisLabel: {
+                        fontSize: 24
+                    },
+                    axisLine: {
+                        show: true,
+                        lineStyle: {
+                            width: 2
+                        },
+                        symbol: ['none', 'arrow'],
+                        symbolSize: [10, 15],
+                        symbolOffset: [15, 0]
+                    },
+                    name: '月份',
+                    nameLocation: 'end',
+                    nameTextStyle: {
+                        fontSize: 24,
+                        padding: [5, 0, 0, 0]
+                    }
+                }
+            ],
+            yAxis: [
+                {
+                    type: 'value',
+                    minInterval: 1,
+                    interval: 1,
+                    max: function(value) {
+                        return value.max > 10 ? value.max : 10;
+                    },
+                    axisLabel: {
+                        fontSize: 24
+                    },
+                    axisLine: {
+                        show: true,
+                        lineStyle: {
+                            width: 2
+                        },
+                        symbol: ['none', 'arrow'],
+                        symbolSize: [10, 15],
+                        symbolOffset: [0, 15]
+                    },
+                    name: '人数',
+                    nameLocation: 'end',
+                    nameTextStyle: {
+                        fontSize: 24,
+                        padding: [0, 0, 5, 0]
+                    }
+                }
+            ],
+            series: [
+                {
+                    type: 'bar',
+                    barWidth: '40%',
+                    data: voteData,
+                    itemStyle: {
+                        color: '#3498db'
+                    }
+                }
+            ]
+        };
+        
+        // 使用配置项显示图表
+        myChart.setOption(option);
+
+        // 分析数据函数
+        function analyzeData() {
+            if (isAllZero()) return; // 如果所有数据都是0，直接返回
+            const total = voteData.reduce((sum, count) => sum + count, 0);
+            const maxCount = Math.max(...voteData);
+            const minCount = Math.min(...voteData);
+            
+            const maxMonths = voteData
+                .map((count, index) => ({ count, month: index + 1 }))
+                .filter(item => item.count === maxCount)
+                .map(item => item.month + '月')
+                .join('、');
+
+            const minMonths = voteData
+                .map((count, index) => ({ count, month: index + 1 }))
+                .filter(item => item.count === minCount)
+                .map(item => item.month + '月')
+                .join('、');
+
+            // 查找人数相同的月份
+            let sameCountMonths = [];
+            for (let i = 0; i < voteData.length; i++) {
+                for (let j = i + 1; j < voteData.length; j++) {
+                    if (voteData[i] === voteData[j] && voteData[i] !== 0) {
+                        sameCountMonths.push(` <span class="highlight">${i + 1}月</span> 和 <span class="highlight">${j + 1}月</span> 过生日的人一样多（<span class="highlight">${voteData[i]}人</span>）`);
+                    }
+                }
+            }
+
+            const sameCountText = sameCountMonths.length > 0 ? sameCountMonths.join('，<br/>') : '';
+            
+            // 使用新的弹窗显示结果
+            const resultHTML = `
+                <div class="result-item most">🎂 <span class="keyword keyword-most">最多</span> <span class="highlight">${maxMonths}</span> 过生日的同学，有 <span class="highlight">${maxCount}</span> 人</div>
+                <div class="result-item least">🎈 <span class="keyword keyword-least">最少</span> <span class="highlight">${minMonths}</span> 过生日的同学，有 <span class="highlight">${minCount}</span> 人</div>
+                ${sameCountText ? `<div class="result-item same">🤝 <span class="keyword keyword-same">一样多</span><br/> ${sameCountText}</div>` : ''}
+                <div class="result-item total">👨‍👩‍👧‍👦 参与调查的一共有 <span class="highlight">${total}</span> 人</div>
+            `;
+            
+            document.getElementById('analysisResult').innerHTML = resultHTML;
+            document.getElementById('resultModal').style.display = 'flex';
+        }
+
+        // 关闭弹窗函数
+        function closeModal() {
+            document.getElementById('resultModal').style.display = 'none';
+        }
+
+        // 点击弹窗背景关闭
+        document.getElementById('resultModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+
+        // 为标题添加点击事件
+        document.getElementById('title').addEventListener('click', analyzeData);
+
+        // 创建投票区域
+        const votingAreas = document.querySelector('.voting-areas');
+        for (let i = 0; i < 4; i++) {
+            const area = document.createElement('div');
+            area.className = 'voting-area';
+            area.innerHTML = `
+                <div class="number-buttons">
+                    ${Array.from({length: 10}, (_, j) => `
+                        <button class="number-button" data-number="${j + 1}">${j + 1}</button>
+                    `).join('')}
+                    <button class="number-button" data-number="11">11</button>
+                    <button class="number-button" data-number="12">12</button>
+                    <button class="submit-button">确认</button>
+                </div>
+            `;
+            votingAreas.appendChild(area);
+
+            // 数字按钮点击事件
+            const numberButtons = area.querySelectorAll('.number-button');
+            numberButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    button.classList.toggle('selected');
+                });
+            });
+
+            // 确认按钮点击事件
+            const submitButton = area.querySelector('.submit-button');
+            submitButton.addEventListener('click', () => {
+                const selectedButtons = area.querySelectorAll('.number-button.selected');
+
+                selectedButtons.forEach(button => {
+                    const number = parseInt(button.dataset.number) - 1;
+                    voteData[number]++;
+                    button.classList.remove('selected');
+                });
+
+                // 更新表格
+                const voteCells = document.querySelectorAll('#vote-count-row td');
+                voteData.forEach((count, index) => {
+                    voteCells[index + 1].textContent = count;
+                });
+
+                // 更新图表
+                myChart.setOption({
+                    series: [
+                        {
+                            data: [...voteData]
+                        }
+                    ]
+                });
+            });
+        }
+
+        // 处理文件选择
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const text = await file.text();
+                const lines = text.trim().split('\n');
+                
+                // 重置数据
+                voteData.fill(0);
+                
+                // 更新投票数据
+                lines.forEach((count, index) => {
+                    if (index < 12) {
+                        voteData[index] = parseInt(count) || 0;
+                    }
+                });
+
+                // 更新表格
+                updateTable();
+                
+                // 更新图表
+                updateChart();
+            }
+        }
+
+        // 更新表格函数
+        function updateTable() {
+            const voteCells = document.querySelectorAll('#vote-count-row td');
+            voteData.forEach((count, index) => {
+                voteCells[index + 1].textContent = count;
+            });
+        }
+
+        // 更新图表函数
+        function updateChart() {
+            myChart.setOption({
+                series: [{
+                    data: [...voteData]
+                }]
+            });
+        }
+
+        // 检查是否所有数据都为0
+        function isAllZero() {
+            return voteData.every(value => value === 0);
+        }
+
+        // 修改标题点击事件
+        document.querySelector('h2').addEventListener('click', function() {
+            if (isAllZero()) {
+                return; // 如果所有数据都是0，直接返回
+            }
+            analyzeData();
+        });
+    </script>
+</body>
+</html>
