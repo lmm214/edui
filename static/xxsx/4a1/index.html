@@ -37,7 +37,8 @@
         .incorrect { color: #dc2626; }
         .section-title { font-size: 2.25rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; }
         .section-subtitle { font-size: 1.125rem; color: #64748b; font-weight: 500; }
-        .num-separator { display: inline-block; border-left:2px dashed #aaa; height:3rem; margin: 0 -1px; vertical-align: middle; }
+        .num-separator { display: none; border-left:2px dashed #aaa; height:3rem; margin: 0 -1px; vertical-align: middle; }
+        .num-separator.visible { display: inline-block; }
         
 
         #numberComposer{max-width: 780px;margin: 0 auto;}
@@ -151,9 +152,12 @@
                 <h2 class="section-title mb-2">数字魔法组装机</h2>
                 <p class="section-subtitle mb-8">点击数位，在下方弹出的转盘上选数！</p>
                 <div id="numberComposer" class="grid grid-cols-5 md:grid-cols-9 gap-1 text-center mb-6"></div>
-                <div class="text-3xl md:text-4xl font-bold my-6 p-4 bg-gray-50 rounded-lg flex items-center justify-center border border-gray-200" id="composedNumberDisplay">0</div>
-                <div id="numberOutput" class="feedback text-2xl md:text-3xl text-gray-700 p-4 bg-gray-50 rounded-lg cursor-pointer border border-gray-200" title="点击可高亮/取消高亮'零'字">零</div>
-                <button id="clearComposerBtn" class="btn mt-6">全部清零</button>
+                <div class="text-3xl md:text-4xl font-bold my-6 p-4 bg-gray-50 rounded-lg flex items-center justify-center border border-gray-200 cursor-pointer" id="composedNumberDisplay" title="点击显示/隐藏数位分隔符">0</div>
+                <div id="numberOutput" class="feedback text-2xl md:text-3xl text-gray-700 p-4 bg-gray-50 rounded-lg cursor-pointer border border-gray-200" title="点击显示读音或高亮/取消高亮'零'字">零</div>
+                <div class="mt-6 space-x-4">
+                    <button id="clearComposerBtn" class="btn">全部清零</button>
+                    <button id="randomComposerBtn" class="btn">随机组数</button>
+                </div>
             </div>
         </section>
 
@@ -247,8 +251,8 @@
                 activityContents.forEach(content => {
                     content.id === targetId ? content.classList.add('active') : content.classList.remove('active');
                 });
-            });
-        });
+             });
+         });
 
         // --- Shared Utility Functions ---
         const CHINESE_CHARS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
@@ -268,37 +272,73 @@
             const units = ['', '万', '亿'];
             let result = '';
             let unitIndex = 0;
-            if (num === 0) return CHINESE_CHARS[0];
+            let hasHigherSection = false;
+            
             while (num > 0) {
                 let section = num % 10000;
                 let sectionStr = sectionToChinese(section);
-                if (result.length > 0 && section === 0) {
-                    if (!result.startsWith(CHINESE_CHARS[0])) { result = CHINESE_CHARS[0] + result; }
-                } else if (section > 0) {
-                    if (result.length > 0 && section < 1000) {
-                       if (!result.startsWith(CHINESE_CHARS[0])) { result = CHINESE_CHARS[0] + result; }
+                
+                if (section === 0) {
+                    // 如果当前节为0，但还有更高位的数字，需要添加零
+                    if (hasHigherSection && result.length > 0 && !result.startsWith('零')) {
+                        result = '零' + result;
+                    }
+                } else {
+                    // 当前节不为0
+                    if (hasHigherSection && section < 1000 && result.length > 0 && !result.startsWith('零')) {
+                        // 如果当前节小于1000且前面有更高位，需要添加零
+                        result = '零' + result;
                     }
                     result = sectionStr + units[unitIndex] + result;
+                    hasHigherSection = true;
                 }
+                
                 num = Math.floor(num / 10000);
                 unitIndex++;
             }
-            result = result.replace(/零+/g, '零').replace(/零万/g, '万').replace(/零亿/g, '亿').replace(/亿万/, '亿').replace(/零$/, '');
-            if (result.startsWith('一十')) { result = result.substring(1); }
+            
+            // 清理多余的零和错误的组合
+            result = result.replace(/零+/g, '零')
+                          .replace(/零万/g, '万')
+                          .replace(/零亿/g, '亿')
+                          .replace(/亿万/g, '亿')
+                          .replace(/零$/, '');
+            
+            // 处理"一十"开头的情况
+            if (result.startsWith('一十')) {
+                result = result.substring(1);
+            }
+            
             return result || '零';
         }
         function sectionToChinese(section) {
+            if (section === 0) return '';
+            
             let str = '';
-            let zero = false;
+            let needZero = false;
+            let hasDigit = false;
+            
             for (let i = 0; i < 4; i++) {
                 const digit = section % 10;
-                if (digit === 0) { zero = true; } 
-                else {
-                    if (zero) { str = CHINESE_CHARS[0] + str; zero = false; }
+                
+                if (digit === 0) {
+                    // 当前位是0
+                    if (hasDigit) {
+                        needZero = true;
+                    }
+                } else {
+                    // 当前位不是0
+                    if (needZero && str.length > 0) {
+                        str = '零' + str;
+                        needZero = false;
+                    }
                     str = CHINESE_CHARS[digit] + SECTION_UNITS[i] + str;
+                    hasDigit = true;
                 }
+                
                 section = Math.floor(section / 10);
             }
+            
             return str;
         }
         function highlightChineseNumber(str) {
@@ -308,6 +348,7 @@
         // --- Part 1: Number Composer & Reader ---
         const composerEl = document.getElementById('numberComposer');
         const composedNumberDisplayEl = document.getElementById('composedNumberDisplay');
+        let separatorsVisible = false;
         const numberOutputEl = document.getElementById('numberOutput');
         const clearComposerBtn = document.getElementById('clearComposerBtn');
         const digitPopover = document.getElementById('digitPopover');
@@ -351,24 +392,85 @@
         function updateComposedNumber() {
             const num = BigInt(composedDigits.join(''));
             composedNumberDisplayEl.innerHTML = formatNumberWithSeparators(num);
+            
+            // 保持虚线显示状态的记忆
+            if (separatorsVisible) {
+                const separators = composedNumberDisplayEl.querySelectorAll('.num-separator');
+                separators.forEach(separator => {
+                    separator.classList.add('visible');
+                });
+            }
+            
             const chineseStr = numberToChinese(Number(num));
             numberOutputEl.innerHTML = highlightChineseNumber(chineseStr);
             numberOutputEl.dataset.highlighted = "false";
+            // 如果不是通过随机按钮触发的更新，重置文字显示状态
+            if (!isTextHidden) {
+                numberOutputEl.style.color = '';
+            }
         }
         
         numberOutputEl.addEventListener('click', () => {
-            const isHighlighted = numberOutputEl.dataset.highlighted === "true";
-            let currentHTML = numberOutputEl.innerHTML;
-            if (isHighlighted) {
-                currentHTML = currentHTML.replace(/<span class="highlight-ling">零<\/span>/g, '零');
+            if (isTextHidden) {
+                // 如果文字被隐藏，点击显示文字
+                numberOutputEl.style.color = '';
+                isTextHidden = false;
             } else {
-                currentHTML = currentHTML.replace(/(?<!<[^>]*>)零/g, '<span class="highlight-ling">零</span>');
+                // 如果文字显示，进行零字高亮切换
+                const isHighlighted = numberOutputEl.dataset.highlighted === "true";
+                let currentHTML = numberOutputEl.innerHTML;
+                if (isHighlighted) {
+                    currentHTML = currentHTML.replace(/<span class="highlight-ling">零<\/span>/g, '零');
+                } else {
+                    currentHTML = currentHTML.replace(/(?<!<[^>]*>)零/g, '<span class="highlight-ling">零</span>');
+                }
+                numberOutputEl.innerHTML = currentHTML;
+                numberOutputEl.dataset.highlighted = !isHighlighted;
             }
-            numberOutputEl.innerHTML = currentHTML;
-            numberOutputEl.dataset.highlighted = !isHighlighted;
         });
 
-        clearComposerBtn.addEventListener('click', () => { composedDigits.fill(0); renderComposer(); });
+        let isTextHidden = false;
+        
+        clearComposerBtn.addEventListener('click', () => { 
+            composedDigits.fill(0); 
+            renderComposer(); 
+            isTextHidden = false;
+        });
+        
+        // 随机组数按钮功能
+        const randomComposerBtn = document.getElementById('randomComposerBtn');
+        randomComposerBtn.addEventListener('click', () => {
+            // 生成万以上的随机大数（5-9位数）
+            const digits = Math.floor(Math.random() * 5) + 5; // 5到9位数
+            const minValue = Math.pow(10, digits - 1);
+            const maxValue = Math.pow(10, digits) - 1;
+            const randomNum = Math.floor(Math.random() * (maxValue - minValue + 1)) + minValue;
+            
+            // 将随机数填入composedDigits数组
+            const numStr = randomNum.toString().padStart(9, '0');
+            for (let i = 0; i < 9; i++) {
+                composedDigits[i] = parseInt(numStr[i]);
+                document.getElementById(`digit-${i}`).textContent = composedDigits[i];
+            }
+            
+            updateComposedNumber();
+            // 隐藏文字内容
+            numberOutputEl.style.color = 'transparent';
+            isTextHidden = true;
+        });
+        
+        // composedNumberDisplay点击事件 - 切换虚线显示
+        composedNumberDisplayEl.addEventListener('click', () => {
+            separatorsVisible = !separatorsVisible;
+            const separators = composedNumberDisplayEl.querySelectorAll('.num-separator');
+            separators.forEach(separator => {
+                if (separatorsVisible) {
+                    separator.classList.add('visible');
+                } else {
+                    separator.classList.remove('visible');
+                }
+            });
+        });
         document.addEventListener('click', closeDigitPicker);
         digitPopover.addEventListener('click', (e) => e.stopPropagation());
 
