@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>猜数字游戏</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-image: linear-gradient(to left, #BDBBBE 0%, #9D9EA3 100%), radial-gradient(88% 271%, rgba(255, 255, 255, 0.25) 0%, rgba(254, 254, 254, 0.25) 1%, rgba(0, 0, 0, 0.25) 100%), radial-gradient(50% 100%, rgba(255, 255, 255, 0.30) 0%, rgba(0, 0, 0, 0.30) 100%); background-blend-mode: normal, lighten, soft-light;
+            font-family: 'Courier New', monospace;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .calculator-container {
+              background: rgba(255, 255, 255, 0.08);
+              backdrop-filter: blur(20px);
+              -webkit-backdrop-filter: blur(20px);
+              border: 1px solid rgba(255, 255, 255, 0.2);
+              border-radius: 20px;
+              padding: 25px;
+              box-shadow: 
+                  0 20px 40px rgba(0, 0, 0, 0.4),
+                  0 8px 16px rgba(0, 0, 0, 0.2),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.3),
+                  inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+              max-width: min(50vw, 500px);
+              width: 100%;
+              position: relative;
+              overflow: hidden;
+          }
+          
+          .calculator-container::before {
+              content: '';
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: linear-gradient(135deg, 
+                  rgba(255, 255, 255, 0.1) 0%, 
+                  rgba(255, 255, 255, 0.05) 50%, 
+                  rgba(255, 255, 255, 0.02) 100%);
+              border-radius: 20px;
+              pointer-events: none;
+              z-index: 1;
+          }
+          
+          .calculator-container > * {
+              position: relative;
+              z-index: 2;
+          }
+
+        .calculator-container::before {
+            content: '';
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 4px;
+            background: #666;
+            border-radius: 2px;
+        }
+
+        .game-title {
+             font-size: 1.2rem;
+             color: #ccc;
+             margin-bottom: 15px;
+             text-align: center;
+             font-weight: normal;
+             letter-spacing: 1px;
+         }
+
+        .display {
+              background: rgba(0, 0, 0, 0.4);
+              backdrop-filter: blur(10px);
+              -webkit-backdrop-filter: blur(10px);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 12px;
+              padding: 10px;
+              margin-bottom: 20px;
+              min-height: 200px;
+              flex-shrink: 0;
+              box-shadow: 
+                  inset 0 2px 4px rgba(0, 0, 0, 0.5),
+                  0 4px 8px rgba(0, 0, 0, 0.3);
+          }
+
+        .main-display {
+             background: rgba(0, 0, 0, 0.6);
+             backdrop-filter: blur(8px);
+             -webkit-backdrop-filter: blur(8px);
+             color: #08f808;
+             font-family: 'Courier New', monospace;
+             font-size: min(8rem, calc(100vh / 5));
+             font-weight: bold;
+             text-align: right;
+             padding: 20px;
+             border: 1px solid rgba(8, 248, 8, 0.3);
+             border-radius: 8px;
+             margin-bottom: 15px;
+             flex: 1;
+             display: flex;
+             align-items: center;
+             justify-content: flex-end;
+             box-shadow: 
+                 inset 0 2px 4px rgba(0, 0, 0, 0.5),
+                 0 0 20px rgba(8, 248, 8, 0.1);
+         }
+
+        .info-display {
+             display: flex;
+             justify-content: space-between;
+             font-size: 1.4rem;
+             color: #fff;
+             margin-bottom: 12px;
+         }
+
+        .feedback-display {
+             background: rgba(34, 34, 34, 0.4);
+             backdrop-filter: blur(6px);
+             -webkit-backdrop-filter: blur(6px);
+             color: #ff6600;
+             font-size: 2rem;
+             text-align: center;
+             padding: 15px;
+             border: 1px solid rgba(255, 255, 255, 0.1);
+             border-radius: 8px;
+             height: 4rem;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+         }
+
+        .feedback-high {
+            color: #ff4444;
+        }
+
+        .feedback-low {
+            color: #08b808;
+        }
+
+        .feedback-correct {
+            color: #ff8844;
+        }
+
+        .feedback-gameover {
+            color: #ff8844;
+        }
+
+        .keypad {
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 6px;
+              margin-bottom: 10px;
+              height: calc((100vh - 400px) * 0.6);
+              min-height: 180px;
+              max-height: 240px;
+          }
+
+        .key,.control-btn {
+              background: rgba(255, 255, 255, 0.12);
+              backdrop-filter: blur(10px);
+              -webkit-backdrop-filter: blur(10px);
+              border: 1px solid rgba(255, 255, 255, 0.2);
+              border-radius: 12px;
+              color: #fff;
+              font-family: 'Courier New', monospace;
+              font-size: min(3rem, calc(100vh / 20));
+              height: 100%;
+              cursor: pointer;
+              transition: all 0.2s ease;
+              user-select: none;
+              box-shadow: 
+                  0 4px 12px rgba(0, 0, 0, 0.3),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.2);
+              position: relative;
+              overflow: hidden;
+          }
+          
+          .key::before,.control-btn::before {
+              content: '';
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: linear-gradient(135deg, 
+                  rgba(255, 255, 255, 0.1) 0%, 
+                  rgba(255, 255, 255, 0.05) 100%);
+              border-radius: 12px;
+              pointer-events: none;
+              opacity: 0;
+              transition: opacity 0.2s ease;
+          }
+        .control-btn {font-size: min(3rem, calc(60vh / 20));}
+        .key:hover,.control-btn:hover {
+            background: rgba(255, 255, 255, 0.18);
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 
+                0 6px 16px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .key:hover::before,.control-btn:hover::before {
+            opacity: 1;
+        }
+
+        .key:active,.control-btn:active {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.4),
+                0 2px 6px rgba(0, 0, 0, 0.2);
+            transform: translateY(1px);
+        }
+
+        .key-zero {
+            grid-column: span 2;
+        }
+
+        .bottom-row {
+              display: grid;
+              grid-template-columns: 1fr 1fr 1fr;
+              gap: 6px;
+              height: calc((100vh - 400px) * 0.2);
+              min-height: 60px;
+              max-height: 80px;
+              position: relative;
+          }
+
+        .btn-submit, .btn-reset {
+            grid-column: 3;
+            grid-row: 1;
+        }
+
+        .btn-delete {
+            background: rgba(170, 68, 68, 0.3);
+            border-color: rgba(204, 102, 102, 0.5);
+            box-shadow: 
+                0 4px 12px rgba(170, 68, 68, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-delete:hover {
+            background: rgba(187, 85, 85, 0.4);
+            border-color: rgba(204, 102, 102, 0.7);
+            box-shadow: 
+                0 6px 16px rgba(170, 68, 68, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-submit {
+            background: rgba(68, 170, 68, 0.3);
+            border-color: rgba(102, 204, 102, 0.5);
+            box-shadow: 
+                0 4px 12px rgba(68, 170, 68, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-submit:hover {
+            background: rgba(85, 187, 85, 0.4);
+            border-color: rgba(102, 204, 102, 0.7);
+            box-shadow: 
+                0 6px 16px rgba(68, 170, 68, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-reset {
+            background: rgba(68, 136, 170, 0.3);
+            border-color: rgba(102, 170, 204, 0.5);
+            display: none;
+            box-shadow: 
+                0 4px 12px rgba(68, 136, 170, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-reset:hover {
+            background: rgba(85, 153, 187, 0.4);
+            border-color: rgba(102, 170, 204, 0.7);
+            box-shadow: 
+                0 6px 16px rgba(68, 136, 170, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .shake {
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-3px); }
+            75% { transform: translateX(3px); }
+        }
+
+        .flash {
+            animation: flash 0.6s ease-in-out;
+        }
+
+        @keyframes flash {
+            0%, 100% { background: #000; }
+            50% { background: #003300; }
+        }
+
+        .confetti-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .history-scroll {
+              height: 40px;
+              margin: 5px 0 -10px;
+              overflow: hidden;
+              font-size: 1.4rem;
+              color: #eee;
+              text-align: center;
+              line-height: 40px;
+          }
+        @media (max-height: 800px) {
+            .calculator-container {
+                height: calc(100vh - 200px);
+                max-height: none;
+                position: relative;
+                display: flex;
+                flex-direction: column;
+            }
+            .info-display,.feedback-display,.history-scroll{font-size: 1rem;}
+            .feedback-display,.history-scroll{height:30px;line-height: 30px}
+            .main-display{font-size: 3rem;padding: 10px;}
+        }
+        @media (max-width: 480px) {
+             .calculator-container {
+                 max-width: 95vw;
+                 padding: 15px;
+             }
+             
+             .main-display {
+                 font-size: min(5rem, calc(100vw / 4));
+                 padding: 15px;
+             }
+             
+             .info-display {
+                 font-size: 1.8rem;
+             }
+             
+             .feedback-display {
+                 font-size: 2rem;
+                 min-height: 60px;
+                 padding: 10px;
+             }
+             
+             .keypad {
+                 height: calc((100vh - 350px) * 0.6);
+                 min-height: 180px;
+             }
+             
+             .bottom-row {
+                 height: calc((100vh - 350px) * 0.2);
+                 min-height: 60px;
+             }
+             
+             .key {
+                 font-size: min(3.5rem, calc(100vw / 10));
+             }
+             
+             .control-btn {
+                 font-size: min(2rem, calc(100vw / 15));
+             }
+             
+             .history-scroll {
+                 font-size: 1.6rem;
+                 height: 30px;
+                 line-height: 30px;
+             }
+             
+             .display {
+                 min-height: 160px;
+                 padding: 5px;
+             }
+         }
+
+        /* 复古LED效果 */
+        .led-text {
+            text-shadow: 
+                0 0 5px currentColor,
+                0 0 15px currentColor;
+        }
+
+        /* 现代毛玻璃按钮按下效果 */
+        .key-pressed {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+            box-shadow: 
+                inset 0 3px 6px rgba(0, 0, 0, 0.5),
+                0 1px 3px rgba(0, 0, 0, 0.3) !important;
+            transform: translateY(2px) !important;
+        }
+        
+        .key-pressed::before {
+            opacity: 0 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="calculator-container">
+         <div class="game-title">猜数字计算器</div>
+         
+         <div class="display">
+             <div class="main-display led-text" id="mainDisplay">0</div>
+             <div class="info-display">
+                 <span id="attemptsDisplay">剩余: 10</span>
+                 <span>范围: 1-100</span>
+             </div>
+             <div class="feedback-display" id="feedbackDisplay"></div>
+             <div class="history-scroll" id="historyDisplay"></div>
+         </div>
+         
+         <div class="keypad">
+             <button class="key" ontouchstart="handleTouch(event, 1)" onclick="inputNumber(1)">1</button>
+             <button class="key" ontouchstart="handleTouch(event, 2)" onclick="inputNumber(2)">2</button>
+             <button class="key" ontouchstart="handleTouch(event, 3)" onclick="inputNumber(3)">3</button>
+             <button class="key" ontouchstart="handleTouch(event, 4)" onclick="inputNumber(4)">4</button>
+             <button class="key" ontouchstart="handleTouch(event, 5)" onclick="inputNumber(5)">5</button>
+             <button class="key" ontouchstart="handleTouch(event, 6)" onclick="inputNumber(6)">6</button>
+             <button class="key" ontouchstart="handleTouch(event, 7)" onclick="inputNumber(7)">7</button>
+             <button class="key" ontouchstart="handleTouch(event, 8)" onclick="inputNumber(8)">8</button>
+             <button class="key" ontouchstart="handleTouch(event, 9)" onclick="inputNumber(9)">9</button>
+         </div>
+         
+         <div class="bottom-row">
+             <button class="control-btn btn-delete" ontouchstart="handleControlTouch(event, 'delete')" onclick="deleteNumber()">删除</button>
+             <button class="key" ontouchstart="handleTouch(event, 0)" onclick="inputNumber(0)">0</button>
+             <button class="control-btn btn-submit" id="submitBtn" ontouchstart="handleControlTouch(event, 'submit')" onclick="submitGuess()">确认</button>
+             <button class="control-btn btn-reset" id="resetBtn" ontouchstart="handleControlTouch(event, 'reset')" onclick="resetGame()" style="display: none;">开始</button>
+         </div>
+     </div>
+
+    <canvas class="confetti-canvas" id="confettiCanvas"></canvas>
+    <script>
+!function(t,e){!function t(e,n,a,i){var o=!!(e.Worker&&e.Blob&&e.Promise&&e.OffscreenCanvas&&e.OffscreenCanvasRenderingContext2D&&e.HTMLCanvasElement&&e.HTMLCanvasElement.prototype.transferControlToOffscreen&&e.URL&&e.URL.createObjectURL);function r(){}function l(t){var a=n.exports.Promise,i=void 0!==a?a:e.Promise;return"function"==typeof i?new i(t):(t(r,r),null)}var c,s,u,d,f,h,m,g,b,v=(u=Math.floor(1e3/60),d={},f=0,"function"==typeof requestAnimationFrame&&"function"==typeof cancelAnimationFrame?(c=function(t){var e=Math.random();return d[e]=requestAnimationFrame((function n(a){f===a||f+u-1<a?(f=a,delete d[e],t()):d[e]=requestAnimationFrame(n)})),e},s=function(t){d[t]&&cancelAnimationFrame(d[t])}):(c=function(t){return setTimeout(t,u)},s=function(t){return clearTimeout(t)}),{frame:c,cancel:s}),p=(g={},function(){if(h)return h;if(!a&&o){var e=["var CONFETTI, SIZE = {}, module = {};","("+t.toString()+")(this, module, true, SIZE);","onmessage = function(msg) {","  if (msg.data.options) {","    CONFETTI(msg.data.options).then(function () {","      if (msg.data.callback) {","        postMessage({ callback: msg.data.callback });","      }","    });","  } else if (msg.data.reset) {","    CONFETTI.reset();","  } else if (msg.data.resize) {","    SIZE.width = msg.data.resize.width;","    SIZE.height = msg.data.resize.height;","  } else if (msg.data.canvas) {","    SIZE.width = msg.data.canvas.width;","    SIZE.height = msg.data.canvas.height;","    CONFETTI = module.exports.create(msg.data.canvas);","  }","}"].join("\n");try{h=new Worker(URL.createObjectURL(new Blob([e])))}catch(t){return void 0!==typeof console&&"function"==typeof console.warn&&console.warn("🎊 Could not load worker",t),null}!function(t){function e(e,n){t.postMessage({options:e||{},callback:n})}t.init=function(e){var n=e.transferControlToOffscreen();t.postMessage({canvas:n},[n])},t.fire=function(n,a,i){if(m)return e(n,null),m;var o=Math.random().toString(36).slice(2);return m=l((function(a){function r(e){e.data.callback===o&&(delete g[o],t.removeEventListener("message",r),m=null,i(),a())}t.addEventListener("message",r),e(n,o),g[o]=r.bind(null,{data:{callback:o}})}))},t.reset=function(){for(var e in t.postMessage({reset:!0}),g)g[e](),delete g[e]}}(h)}return h}),y={particleCount:50,angle:90,spread:45,startVelocity:45,decay:.9,gravity:1,drift:0,ticks:200,x:.5,y:.5,shapes:["square","circle"],zIndex:100,colors:["#26ccff","#a25afd","#ff5e7e","#88ff5a","#fcff42","#ffa62d","#ff36ff"],disableForReducedMotion:!1,scalar:1};function M(t,e,n){return function(t,e){return e?e(t):t}(t&&null!=t[e]?t[e]:y[e],n)}function w(t){return t<0?0:Math.floor(t)}function x(t){return parseInt(t,16)}function C(t){return t.map(k)}function k(t){var e=String(t).replace(/[^0-9a-f]/gi,"");return e.length<6&&(e=e[0]+e[0]+e[1]+e[1]+e[2]+e[2]),{r:x(e.substring(0,2)),g:x(e.substring(2,4)),b:x(e.substring(4,6))}}function I(t){t.width=document.documentElement.clientWidth,t.height=document.documentElement.clientHeight}function S(t){var e=t.getBoundingClientRect();t.width=e.width,t.height=e.height}function T(t,e,n,o,r){var c,s,u=e.slice(),d=t.getContext("2d"),f=l((function(e){function l(){c=s=null,d.clearRect(0,0,o.width,o.height),r(),e()}c=v.frame((function e(){!a||o.width===i.width&&o.height===i.height||(o.width=t.width=i.width,o.height=t.height=i.height),o.width||o.height||(n(t),o.width=t.width,o.height=t.height),d.clearRect(0,0,o.width,o.height),u=u.filter((function(t){return function(t,e){e.x+=Math.cos(e.angle2D)*e.velocity+e.drift,e.y+=Math.sin(e.angle2D)*e.velocity+e.gravity,e.wobble+=e.wobbleSpeed,e.velocity*=e.decay,e.tiltAngle+=.1,e.tiltSin=Math.sin(e.tiltAngle),e.tiltCos=Math.cos(e.tiltAngle),e.random=Math.random()+2,e.wobbleX=e.x+10*e.scalar*Math.cos(e.wobble),e.wobbleY=e.y+10*e.scalar*Math.sin(e.wobble);var n=e.tick++/e.totalTicks,a=e.x+e.random*e.tiltCos,i=e.y+e.random*e.tiltSin,o=e.wobbleX+e.random*e.tiltCos,r=e.wobbleY+e.random*e.tiltSin;return t.fillStyle="rgba("+e.color.r+", "+e.color.g+", "+e.color.b+", "+(1-n)+")",t.beginPath(),"circle"===e.shape?t.ellipse?t.ellipse(e.x,e.y,Math.abs(o-a)*e.ovalScalar,Math.abs(r-i)*e.ovalScalar,Math.PI/10*e.wobble,0,2*Math.PI):function(t,e,n,a,i,o,r,l,c){t.save(),t.translate(e,n),t.rotate(o),t.scale(a,i),t.arc(0,0,1,r,l,c),t.restore()}(t,e.x,e.y,Math.abs(o-a)*e.ovalScalar,Math.abs(r-i)*e.ovalScalar,Math.PI/10*e.wobble,0,2*Math.PI):(t.moveTo(Math.floor(e.x),Math.floor(e.y)),t.lineTo(Math.floor(e.wobbleX),Math.floor(i)),t.lineTo(Math.floor(o),Math.floor(r)),t.lineTo(Math.floor(a),Math.floor(e.wobbleY))),t.closePath(),t.fill(),e.tick<e.totalTicks}(d,t)})),u.length?c=v.frame(e):l()})),s=l}));return{addFettis:function(t){return u=u.concat(t),f},canvas:t,promise:f,reset:function(){c&&v.cancel(c),s&&s()}}}function E(t,n){var a,i=!t,r=!!M(n||{},"resize"),c=M(n,"disableForReducedMotion",Boolean),s=o&&!!M(n||{},"useWorker")?p():null,u=i?I:S,d=!(!t||!s)&&!!t.__confetti_initialized,f="function"==typeof matchMedia&&matchMedia("(prefers-reduced-motion)").matches;function h(e,n,i){for(var o,r,l,c,s,d=M(e,"particleCount",w),f=M(e,"angle",Number),h=M(e,"spread",Number),m=M(e,"startVelocity",Number),g=M(e,"decay",Number),b=M(e,"gravity",Number),v=M(e,"drift",Number),p=M(e,"colors",C),y=M(e,"ticks",Number),x=M(e,"shapes"),k=M(e,"scalar"),I=function(t){var e=M(t,"origin",Object);return e.x=M(e,"x",Number),e.y=M(e,"y",Number),e}(e),S=d,E=[],F=t.width*I.x,N=t.height*I.y;S--;)E.push((o={x:F,y:N,angle:f,spread:h,startVelocity:m,color:p[S%p.length],shape:x[(c=0,s=x.length,Math.floor(Math.random()*(s-c))+c)],ticks:y,decay:g,gravity:b,drift:v,scalar:k},r=void 0,l=void 0,r=o.angle*(Math.PI/180),l=o.spread*(Math.PI/180),{x:o.x,y:o.y,wobble:10*Math.random(),wobbleSpeed:Math.min(.11,.1*Math.random()+.05),velocity:.5*o.startVelocity+Math.random()*o.startVelocity,angle2D:-r+(.5*l-Math.random()*l),tiltAngle:(.5*Math.random()+.25)*Math.PI,color:o.color,shape:o.shape,tick:0,totalTicks:o.ticks,decay:o.decay,drift:o.drift,random:Math.random()+2,tiltSin:0,tiltCos:0,wobbleX:0,wobbleY:0,gravity:3*o.gravity,ovalScalar:.6,scalar:o.scalar}));return a?a.addFettis(E):(a=T(t,E,u,n,i)).promise}function m(n){var o=c||M(n,"disableForReducedMotion",Boolean),m=M(n,"zIndex",Number);if(o&&f)return l((function(t){t()}));i&&a?t=a.canvas:i&&!t&&(t=function(t){var e=document.createElement("canvas");return e.style.position="fixed",e.style.top="0px",e.style.left="0px",e.style.pointerEvents="none",e.style.zIndex=t,e}(m),document.body.appendChild(t)),r&&!d&&u(t);var g={width:t.width,height:t.height};function b(){if(s){var e={getBoundingClientRect:function(){if(!i)return t.getBoundingClientRect()}};return u(e),void s.postMessage({resize:{width:e.width,height:e.height}})}g.width=g.height=null}function v(){a=null,r&&e.removeEventListener("resize",b),i&&t&&(document.body.removeChild(t),t=null,d=!1)}return s&&!d&&s.init(t),d=!0,s&&(t.__confetti_initialized=!0),r&&e.addEventListener("resize",b,!1),s?s.fire(n,g,v):h(n,g,v)}return m.reset=function(){s&&s.reset(),a&&a.reset()},m}function F(){return b||(b=E(null,{useWorker:!0,resize:!0})),b}n.exports=function(){return F().apply(this,arguments)},n.exports.reset=function(){F().reset()},n.exports.create=E}(function(){return void 0!==t?t:"undefined"!=typeof self?self:this||{}}(),e,!1),t.confetti=e.exports}(window,{});
+    </script>
+    <script>
+      function showConfetti() {
+                        const duration = 3000;
+                const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 };
+                
+                function randomInRange(min, max) {
+                    return Math.random() * (max - min) + min;
+                }
+                
+                confettiInterval = setInterval(function() {
+                    const particleCount = 50;
+                    
+                    // 从左右两侧发射
+                    confetti(Object.assign({}, defaults, { 
+                        particleCount, 
+                        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } 
+                    }));
+                    confetti(Object.assign({}, defaults, { 
+                        particleCount, 
+                        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } 
+                    }));
+                }, 250);
+      }
+        // 游戏状态
+        let targetNumber = Math.floor(Math.random() * 100) + 1;
+        let currentGuess = '';
+        let attempts = 0;
+        let maxAttempts = 10;
+        let gameOver = false;
+        let guessHistory = [];
+        let confettiAnimation = null;
+
+        // DOM 元素
+        const mainDisplay = document.getElementById('mainDisplay');
+        const feedbackDisplay = document.getElementById('feedbackDisplay');
+        const attemptsDisplay = document.getElementById('attemptsDisplay');
+        const historyDisplay = document.getElementById('historyDisplay');
+        const submitBtn = document.getElementById('submitBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const confettiCanvas = document.getElementById('confettiCanvas');
+
+        console.log('目标数字:', targetNumber);
+
+        // 输入数字
+        function inputNumber(num) {
+            if (gameOver) return;
+            
+            // 按钮按下效果
+            const button = event.target;
+            button.classList.add('key-pressed');
+            setTimeout(() => button.classList.remove('key-pressed'), 100);
+            
+            // 限制输入长度和范围
+            const newGuess = currentGuess + num.toString();
+            const newValue = parseInt(newGuess);
+            
+            // 只允许输入1-100范围内的数字
+            if (newGuess.length <= 3 && newValue <= 100) {
+                currentGuess = newGuess;
+                updateDisplay();
+            }
+        }
+
+        // 删除数字
+        function deleteNumber() {
+            if (gameOver) return;
+            
+            currentGuess = currentGuess.slice(0, -1);
+            updateDisplay();
+        }
+
+        // 更新显示
+        function updateDisplay() {
+            if (currentGuess === '') {
+                mainDisplay.textContent = '0';
+            } else {
+                mainDisplay.textContent = currentGuess;
+            }
+        }
+
+        // 提交猜测
+        function submitGuess() {
+            if (gameOver || currentGuess === '') return;
+            
+            const guess = parseInt(currentGuess);
+            
+            // 严格限制1-100范围
+            if (guess < 1 || guess > 100 || isNaN(guess)) {
+                 showFeedback('请输入1-100之间的数字', 'feedback-high');
+                 shakeElement(feedbackDisplay);
+                 return;
+             }
+             
+             attempts++;
+             guessHistory.push(guess);
+             
+             if (guess === targetNumber) {
+                 // 猜对了
+                 showFeedback('恭喜！猜对了！', 'feedback-correct');
+                 flashElement(mainDisplay);
+                 showConfetti();
+                 endGame(true);
+             } else if (attempts >= maxAttempts) {
+                 // 游戏结束
+                 showFeedback(`游戏结束！答案是 ${targetNumber}`, 'feedback-gameover');
+                 endGame(false);
+             } else {
+                 // 继续游戏
+                 if (guess < targetNumber) {
+                     showFeedback('太小了', 'feedback-low');
+                 } else {
+                     showFeedback('太大了', 'feedback-high');
+                 }
+                 shakeElement(feedbackDisplay);
+             }
+            
+            updateAttempts();
+            updateHistory();
+            currentGuess = '';
+            updateDisplay();
+        }
+
+        // 显示反馈
+        function showFeedback(message, className) {
+            feedbackDisplay.textContent = message;
+            feedbackDisplay.className = 'feedback-display ' + className;
+        }
+
+        // 更新尝试次数
+         function updateAttempts() {
+             const remaining = maxAttempts - attempts;
+             attemptsDisplay.textContent = `剩余: ${remaining}`;
+             
+             if (remaining <= 3 && remaining > 0) {
+                 attemptsDisplay.style.color = '#ff4444';
+             }
+         }
+
+         // 更新历史记录
+         function updateHistory() {
+             if (guessHistory.length > 0) {
+                 const recent = guessHistory.slice(-5).join(' ');
+                 historyDisplay.textContent = `历史: ${recent}`;
+             }
+         }
+
+        // 结束游戏
+        function endGame(won) {
+            gameOver = true;
+            submitBtn.style.display = 'none';
+            resetBtn.style.display = 'block';
+            
+            // 禁用所有按键
+            const keys = document.querySelectorAll('.key');
+            keys.forEach(key => key.disabled = true);
+            document.querySelector('.btn-delete').disabled = true;
+        }
+
+        // 重置游戏
+        function resetGame() {
+            // 清除烟花特效
+                if (confettiInterval) {
+                    clearInterval(confettiInterval);
+                    confettiInterval = null;
+                }
+            targetNumber = Math.floor(Math.random() * 100) + 1;
+            currentGuess = '';
+            attempts = 0;
+            gameOver = false;
+            guessHistory = [];
+            
+            console.log('新的目标数字:', targetNumber);
+            
+            // 重置显示
+             updateDisplay();
+             feedbackDisplay.textContent = '';
+             feedbackDisplay.className = 'feedback-display';
+             attemptsDisplay.textContent = '剩余: 10';
+             historyDisplay.textContent = '';
+            
+            // 重置按钮
+            submitBtn.style.display = 'block';
+            resetBtn.style.display = 'none';
+            
+            // 启用所有按键
+            const keys = document.querySelectorAll('.key');
+            keys.forEach(key => key.disabled = false);
+            document.querySelector('.btn-delete').disabled = false;
+        }
+
+        // 震动动画
+        function shakeElement(element) {
+            element.classList.add('shake');
+            setTimeout(() => {
+                element.classList.remove('shake');
+            }, 500);
+        }
+
+        // 闪烁动画
+        function flashElement(element) {
+            element.classList.add('flash');
+            setTimeout(() => {
+                element.classList.remove('flash');
+            }, 600);
+        }
+
+        // 触摸事件处理 - 优化触摸屏响应
+        function handleTouch(event, num) {
+            event.preventDefault(); // 防止双击缩放等默认行为
+            event.stopPropagation();
+            
+            const button = event.target;
+            button.classList.add('key-pressed');
+            
+            // 立即执行输入，不等待click事件
+            inputNumber(num);
+            
+            // 短暂延迟后移除按下效果
+            setTimeout(() => {
+                button.classList.remove('key-pressed');
+            }, 100);
+        }
+
+        // 控制按钮触摸事件处理
+        function handleControlTouch(event, action) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            const button = event.target;
+            button.classList.add('key-pressed');
+            
+            // 立即执行对应操作
+            switch(action) {
+                case 'delete':
+                    deleteNumber();
+                    break;
+                case 'submit':
+                    submitGuess();
+                    break;
+                case 'reset':
+                    resetGame();
+                    break;
+            }
+            
+            setTimeout(() => {
+                button.classList.remove('key-pressed');
+            }, 100);
+        }
+
+        // 键盘事件
+        document.addEventListener('keydown', function(event) {
+            if (gameOver) return;
+            
+            const key = event.key;
+            
+            if (key >= '0' && key <= '9') {
+                inputNumber(parseInt(key));
+            } else if (key === 'Backspace') {
+                deleteNumber();
+            } else if (key === 'Enter') {
+                submitGuess();
+            }
+        });
+
+        // 窗口大小改变时调整canvas
+        window.addEventListener('resize', function() {
+            if (confettiCanvas) {
+                confettiCanvas.width = window.innerWidth;
+                confettiCanvas.height = window.innerHeight;
+            }
+        });
+
+        // 初始化显示
+        updateDisplay();
+    </script>
+</body>
+</html>
