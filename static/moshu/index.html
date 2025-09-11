@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数字卡片游戏</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #2c3e50;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 手绘风格装饰元素 */
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 177, 153, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(120, 219, 226, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .game-title {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            color: #2c3e50;
+            text-shadow: 2px 2px 0px rgba(255,255,255,0.8);
+            transform: rotate(-1deg);
+            position: relative;
+        }
+
+        .game-title::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 10%;
+            right: 10%;
+            height: 3px;
+            border-radius: 2px;
+            transform: rotate(1deg);
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 1000px;
+            z-index: 1;
+        }
+
+        .status-area {
+            margin-bottom: 2rem;
+            text-align: center;
+            padding: 1rem 2rem;
+            background: rgba(255,255,255,0.9);
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transform: rotate(-0.5deg);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .status-area.red-winner {
+            background: rgba(231, 76, 60, 0.15) !important;
+            border: 2px solid rgba(231, 76, 60, 0.3);
+            box-shadow: 0 4px 20px rgba(231, 76, 60, 0.2);
+        }
+
+        .status-area.blue-winner {
+            background: rgba(52, 152, 219, 0.15) !important;
+            border: 2px solid rgba(52, 152, 219, 0.3);
+            box-shadow: 0 4px 20px rgba(52, 152, 219, 0.2);
+        }
+
+        .status-area.tie {
+            background: rgba(46, 204, 113, 0.15) !important;
+            border: 2px solid rgba(46, 204, 113, 0.3);
+            box-shadow: 0 4px 20px rgba(46, 204, 113, 0.2);
+        }
+
+        .status-area::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            right: -5px;
+            bottom: -5px;
+            border: 2px dashed #fff;
+            border-radius: 25px;
+            opacity: 0.3;
+        }
+
+        .status-text {
+            font-size: 1.4rem;
+            font-weight: 400;
+            color: #2c3e50;
+        }
+
+        .round-info {
+            font-size: 1.2rem;
+            color: #7f8c8d;
+            font-weight: 300;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .round-info:hover {
+            background: rgba(52, 152, 219, 0.1);
+            color: #3498db;
+            transform: scale(1.05);
+        }
+
+        .players-area {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            margin-bottom: 3rem;
+            gap: 3rem;
+        }
+
+        .player {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1rem;
+            background: rgba(255,255,255,0.95);
+            border-radius: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            position: relative;
+            transform: rotate(0.5deg);
+            width: 45vw;
+            max-width: 450px;
+            min-width: 300px;
+        }
+
+        .player:nth-child(2) {
+            transform: rotate(-0.5deg);
+        }
+
+        .player::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            right: -8px;
+            bottom: -8px;
+            border: 2px dashed #e67e22;
+            border-radius: 30px;
+            opacity: 0.4;
+        }
+
+        .player h2 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+            position: relative;
+        }
+
+        .player:first-child {
+            background: rgba(231, 76, 60, 0.08) !important;
+            border-color: rgba(231, 76, 60, 0.3) !important;
+        }
+
+        .player:first-child h2 {
+            color: #e74c3c;
+        }
+
+        .player:first-child::before {
+            border-color: #e74c3c !important;
+        }
+
+        .player:last-child {
+            background: rgba(52, 152, 219, 0.08) !important;
+            border-color: rgba(52, 152, 219, 0.3) !important;
+        }
+
+        .player:last-child h2 {
+            color: #3498db;
+        }
+
+        .player:last-child::before {
+            border-color: #3498db !important;
+        }
+
+        .number-slots {
+            display: flex;
+            gap: clamp(8px, 1.2vw, 10px);
+            margin-bottom: 1rem;
+            justify-content: center;
+            flex-wrap: nowrap;
+        }
+
+        .slot {
+            width: 5.5vw;
+            height: 7.5vw;
+            max-width: 54px;
+            max-height: 72px;
+            min-width: 40px;
+            min-height: 54px;
+            border: 1px dashed #bdc3c7;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(1.5rem, 2.2vw, 2.2rem);
+            font-weight: 700;
+            background: rgba(255,255,255,0.8);
+            transition: all 0.15s ease-out;
+            cursor: default;
+            position: relative;
+            transform: rotate(0deg);
+        }
+
+        .slot:nth-child(odd) {
+            transform: rotate(1deg);
+        }
+
+        .slot:nth-child(even) {
+            transform: rotate(-1deg);
+        }    
+        
+        .player:first-child .slot.clickable:hover {
+            transform: scale(1.1) rotate(0deg);
+            background: rgba(231, 76, 60, 0.25);
+            border-color: #c0392b;
+        }
+
+        .player:last-child .slot.clickable:hover {
+            transform: scale(1.1) rotate(0deg);
+            background: rgba(52, 152, 219, 0.25);
+            border-color: #2980b9;
+        }
+
+        .player:first-child .slot.filled {
+            background: rgba(231, 76, 60, 0.2);
+            border: 1px solid #e74c3c;
+            color: #2c3e50;
+            transform: scale(1.05) rotate(0deg);
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+            animation: none;
+        }
+
+        .player:last-child .slot.filled {
+            background: rgba(52, 152, 219, 0.2);
+            border: 1px solid #3498db;
+            color: #2c3e50;
+            transform: scale(1.05) rotate(0deg);
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+            animation: none;
+        }
+
+        .current-card-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: -40px 0 60px;
+            z-index: 100;
+            opacity: 1;
+            transition: opacity 0.1s ease-out;
+        }
+
+        .current-card-area.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .current-card-title {
+            font-size: 1.8rem;
+            font-weight: 400;
+            margin-bottom: 1.5rem;
+            color: #2c3e50;
+            transform: rotate(-1deg);
+        }
+        
+        .current-card {
+            width: 150px;
+            height: 200px;
+            background: linear-gradient(145deg, #ffffff, #f8f9fa);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10rem;
+            font-weight: 700;
+            color: #2c3e50;
+            transition: all 0.2s ease-out;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            position: relative;
+            transform: rotate(-2deg);
+            animation: cardFloat 3s ease-in-out infinite;
+        }
+
+        @keyframes cardFloat {
+            0%, 100% { transform: rotate(-2deg) translateY(0px); }
+            50% { transform: rotate(2deg) translateY(-10px); }
+        }
+
+        .current-card::before {
+            content: '';
+            position: absolute;
+            top: -6px;
+            left: -6px;
+            right: -6px;
+            bottom: -6px;
+            border: 2px dashed #fff;
+            border-radius: 25px;
+            opacity: 0.5;
+        }
+
+
+
+
+
+
+
+        .restart-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(145deg, #3498db91, #297fb97e);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            display: block;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .restart-button:hover {
+            transform: translateY(-3px) scale(1.1);
+            box-shadow: 0 8px 25px rgba(52, 152, 219, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .players-area {
+                flex-direction: column;
+                gap: 1.5rem;
+            }
+            
+            .game-title {
+                font-size: 2.5rem;
+            }
+            
+            .player {
+                width: 100vw;
+                max-width: none;
+                min-width: 280px;
+            }
+            
+            .slot {
+                width: 10vw;
+                height: 13vw;
+                max-width: 50px;
+                max-height: 65px;
+                min-width: 42px;
+                min-height: 58px;
+                font-size: clamp(1.2rem, 3vw, 1.8rem);
+            }
+            
+            .current-card {
+                width: 100px;
+                height: 125px;
+                font-size: 3rem;
+            }
+            
+            .number-slots {
+                gap: clamp(6px, 2vw, 8px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+
+                
+        <div class="current-card-area hidden" id="currentCardArea">
+            <div class="current-card-title">当前卡片</div>
+            <div class="current-card" id="currentCard"></div>
+        </div>
+        
+        <div class="players-area">
+            <div class="player" id="player1">
+                <h2>红队</h2>
+                <div class="number-slots" id="slots1">
+                    <div class="slot" data-player="1" data-position="0"></div>
+                    <div class="slot" data-player="1" data-position="1"></div>
+                    <div class="slot" data-player="1" data-position="2"></div>
+                    <div class="slot" data-player="1" data-position="3"></div>
+                    <div class="slot" data-player="1" data-position="4"></div>
+                    <div class="slot" data-player="1" data-position="5"></div>
+                    <div class="slot" data-player="1" data-position="6"></div>
+                </div>
+            </div>
+            
+            <div class="player" id="player2">
+                <h2>蓝队</h2>
+                <div class="number-slots" id="slots2">
+                    <div class="slot" data-player="2" data-position="0"></div>
+                    <div class="slot" data-player="2" data-position="1"></div>
+                    <div class="slot" data-player="2" data-position="2"></div>
+                    <div class="slot" data-player="2" data-position="3"></div>
+                    <div class="slot" data-player="2" data-position="4"></div>
+                    <div class="slot" data-player="2" data-position="5"></div>
+                    <div class="slot" data-player="2" data-position="6"></div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="status-area" id="statusArea">
+            <div class="status-text" id="statusText">准备开始游戏...</div>
+            <div class="round-info" id="roundInfo">第1轮</div>
+        </div>
+    </div>
+
+    <button class="restart-button" id="restartButton" onclick="location.reload()">🔄</button>
+
+    <script>
+        let sharedCards = [];
+        let player1Numbers = new Array(7).fill(null);
+        let player2Numbers = new Array(7).fill(null);
+        let currentCard = null;
+        let player1Filled = false;
+        let player2Filled = false;
+        let gameRound = 0;
+
+        // 初始化游戏
+        function initGame() {
+            // 创建共享的0-9卡片池
+            sharedCards = [];
+            for (let i = 0; i <= 9; i++) {
+                sharedCards.push(i);
+            }
+            
+            // 打乱卡片顺序
+            shuffleArray(sharedCards);
+            
+            // 重置游戏状态
+            player1Numbers = new Array(7).fill(null);
+            player2Numbers = new Array(7).fill(null);
+            currentCard = null;
+            player1Filled = false;
+            player2Filled = false;
+            gameRound = 0;
+            
+            // 清空所有槽位
+            document.querySelectorAll('.slot').forEach(slot => {
+                slot.textContent = '';
+                slot.classList.remove('filled', 'winner', 'clickable');
+                slot.onclick = null;
+            });
+            
+            // 直接开始第一轮
+            drawCard();
+        }
+
+        // 打乱数组
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        // 抽卡功能
+        function drawCard() {
+            if (sharedCards.length === 0 || gameRound >= 7) {
+                return;
+            }
+            
+            // 抽取第一张卡片
+            const drawnNumber = sharedCards.shift();
+            currentCard = drawnNumber;
+            gameRound++;
+            
+            // 显示抽到的卡片
+            const currentCardElement = document.getElementById('currentCard');
+            currentCardElement.textContent = drawnNumber;
+            currentCardElement.dataset.number = drawnNumber;
+            
+            // 重置填入状态
+            player1Filled = false;
+            player2Filled = false;
+            
+            // 启用所有空槽位的点击功能
+            enableSlotClicking();
+            
+            document.getElementById('currentCardArea').classList.remove('hidden');
+            updateGameStatus();
+        }
+        
+        // 启用槽位点击功能
+        function enableSlotClicking() {
+            document.querySelectorAll('.slot').forEach(slot => {
+                if (!slot.classList.contains('filled')) {
+                    slot.classList.add('clickable');
+                    slot.onclick = function() {
+                        fillSlot(this);
+                    };
+                }
+            });
+        }
+        
+        // 禁用槽位点击功能
+        function disableSlotClicking() {
+            document.querySelectorAll('.slot').forEach(slot => {
+                slot.classList.remove('clickable');
+                slot.onclick = null;
+            });
+        }
+        
+        // 填入槽位
+        function fillSlot(slot) {
+            if (currentCard === null) {
+                return;
+            }
+            
+            const player = parseInt(slot.dataset.player);
+            const position = parseInt(slot.dataset.position);
+            
+            // 检查该玩家是否已经填入过这张卡片
+            if ((player === 1 && player1Filled) || (player === 2 && player2Filled)) {
+                return;
+            }
+            
+            // 填入数字
+            slot.textContent = currentCard;
+            slot.classList.add('filled');
+            slot.classList.remove('clickable');
+            slot.onclick = null;
+            
+            // 更新数据
+            if (player === 1) {
+                player1Numbers[position] = currentCard;
+                player1Filled = true;
+            } else {
+                player2Numbers[position] = currentCard;
+                player2Filled = true;
+            }
+            
+
+            
+            // 检查是否两个玩家都已填入
+            if (player1Filled && player2Filled) {
+                // 隐藏当前卡片
+                document.getElementById('currentCardArea').classList.add('hidden');
+                currentCard = null;
+                
+                // 禁用所有槽位点击
+                disableSlotClicking();
+                
+                // 检查游戏是否结束
+                if (gameRound >= 7) {
+                    setTimeout(() => {
+                        showFinalResult();
+                    }, 50);
+                } else {
+                    // 自动抽取下一张卡片
+                    setTimeout(() => {
+                        drawCard();
+                    }, 150);
+                }
+            }
+            
+            updateGameStatus();
+        }
+
+
+
+        // 更新游戏状态显示
+        function updateGameStatus() {
+            const statusText = document.getElementById('statusText');
+            const roundInfo = document.getElementById('roundInfo');
+            
+            if (currentCard !== null) {
+                if (!player1Filled && !player2Filled) {
+                    statusText.textContent = `两队同学都可以点击方格填入！`;
+                } else if (player1Filled && !player2Filled) {
+                    statusText.textContent = `等待蓝队填入数字 ${currentCard}...`;
+                } else if (!player1Filled && player2Filled) {
+                    statusText.textContent = `等待红队填入数字 ${currentCard}...`;
+                } else {
+                    statusText.textContent = '准备抽取下一张卡片...';
+                }
+            } else {
+                if (gameRound === 0) {
+                    statusText.textContent = '游戏即将开始...';
+                } else if (gameRound >= 7) {
+                    statusText.textContent = '游戏结束！';
+                } else {
+                    statusText.textContent = '准备下一轮...';
+                }
+            }
+            
+            roundInfo.textContent = `第${gameRound}轮`;
+        }
+
+        // 游戏结束处理
+        function showFinalResult() {
+            // 计算七位数
+            const player1Number = parseInt(player1Numbers.join(''));
+            const player2Number = parseInt(player2Numbers.join(''));
+            
+            const statusText = document.getElementById('statusText');
+            const roundInfo = document.getElementById('roundInfo');
+            const statusArea = document.getElementById('statusArea');
+            
+            // 显示获胜结果
+            if (player1Number > player2Number) {
+                statusText.textContent = `🏆 红队获胜！`;
+                statusArea.classList.add('red-winner');
+            } else if (player2Number > player1Number) {
+                statusText.textContent = `🏆 蓝队获胜！`;
+                statusArea.classList.add('blue-winner');
+            } else {
+                statusText.textContent = `🤝 不分上下！`;
+                statusArea.classList.add('tie');
+            }
+            
+            roundInfo.textContent = '游戏结束';
+        }
+
+        // 页面加载完成后直接初始化游戏
+        window.addEventListener('load', () => {
+            initGame();
+        });
+    </script>
+</body>
+</html>
