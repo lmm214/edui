@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
+    <title>温度计</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            height: 100vh;
+            background-image: linear-gradient(to top, #e6e9f0 0%, #eef1f5 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        .thermometer-container {
+            position: relative;
+            width: 180px;
+            height: min(80vh, 700px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .thermometer {
+            position: relative;
+            width: 60px;
+            height: calc(min(80vh, 700px) + 60px);
+            background: transparent;
+            cursor: ns-resize;
+            z-index: 2;
+        }
+        
+        /* 上圆角装饰 */
+        .thermometer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 54px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 3px solid #2c3e50;
+            border-bottom: none;
+            border-radius: 30px 30px 0 0;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1;
+        }
+        
+        /* 下圆角装饰 */
+        .thermometer::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 54px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 3px solid #2c3e50;
+            border-top: none;
+            border-radius: 0 0 30px 30px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1;
+        }
+        
+        /* 中间长方形温度计算区域 */
+        .thermometer-body {
+            position: absolute;
+            top: 30px;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 60px);
+            background: rgba(255, 255, 255, 0.9);
+            border-left: 3px solid #2c3e50;
+            border-right: 3px solid #2c3e50;
+            z-index: 1;
+        }
+        
+        .liquid {
+            position: absolute;
+            bottom: 0;
+            left: 3px;
+            right: 3px;
+            height: 50%;
+            background: linear-gradient(to top, #e74c3c, #ff8c00, #ffd700, #90ee90, #87ceeb);
+            transition: height 0.2s ease;
+            z-index: 2;
+            pointer-events: none;
+        }
+        
+        .scale-container {
+            position: absolute;
+            left: -60px;
+            top: 0;
+            height: min(80vh, 700px);
+            width: 120px;
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        .scale {
+            position: relative;
+            height: 100%;
+            width: 100%;
+        }
+        
+        .scale-mark {
+            position: absolute;
+            right: 20px;
+            width: 15px;
+            height: 2px;
+            background-color: #2c3e50;
+        }
+        
+        .scale-mark.main {
+            width: 20px;
+            height: 2px;
+        }
+        
+        .scale-mark.minor {
+            width: 10px;
+            height: 1px;
+        }
+        
+        .scale-mark.five {
+            width: 15px;
+            height: 1.5px;
+            background-color: rgba(44, 62, 80, 0.8);
+        }
+        
+        .temperature-label {
+            position: absolute;
+            right: calc(50px + (min(80vh, 800px) / 25 - 10px) * 0.5);
+            font-size: clamp(12px, calc(min(80vh, 800px) / 25), 28px);
+            color: #2c3e50;
+            font-weight: 500;
+            width: 50px;
+            text-align: right;
+            transform: translateY(-50%);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            pointer-events: auto; /* 重新启用点击事件 */
+        }
+        
+        .temperature-label:hover {
+            color: #e74c3c;
+            font-weight: bold;
+            transform: translateY(-50%) scale(1.1);
+            right: calc((50px + (min(80vh, 800px) / 25 - 12px) * 0.5) - 5px); /* hover时在动态right基础上再减5px */
+        }
+        
+        .bulb {
+            position: absolute;
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(to top, #e74c3c, #ff8c00);
+            border-radius: 50%;
+            bottom: -18px;
+            left: -5px;
+            z-index: 2;
+            pointer-events: none;
+            z-index: 99;
+        }
+        
+        .current-temp {
+            position: absolute;
+            right: -120px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: clamp(3rem, calc(min(80vh, 800px) / 20), 5rem);
+            font-weight: bold;
+            color: #2c3e50;
+            background: #fff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 2px solid #2c3e50;
+            min-width: 80px;
+            text-align: center;
+            transition: top 0.2s ease;
+            z-index: 3;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .current-temp:hover {
+            background: rgba(240, 240, 240, 0.95);
+            transform: translateY(-50%) scale(1.05);
+        }
+        
+        .current-temp.hidden-value {
+            opacity: 0.3;
+        }
+        
+        .current-temp.hidden-value .temp-value {
+            visibility: hidden;
+        }
+        
+        .current-temp::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-top: 8px solid transparent;
+            border-bottom: 8px solid transparent;
+            border-right: 8px solid #2c3e50;
+        }
+        
+        .current-temp::after {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+            border-right: 6px solid #fff;
+        }
+        
+        /* 放大镜按钮样式 */
+        .magnifier-button {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .magnifier-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* 放大镜组件样式 */
+        .magnifier {
+            position: fixed;
+            width: 500px;
+            height: 500px;
+            z-index: 999;
+            cursor: move;
+        }
+        
+        .magnifier-glass {
+            width: 420px;
+            height: 420px;
+            border: 8px solid #2c3e50;
+            border-radius: 50%;
+            background: white;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .magnifier-content {
+            width: 400px;
+            height: 400px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(2);
+            transform-origin: center;
+        }
+        
+        .magnifier-handle {
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            width: 100px;
+            height: 12px;
+            background: #2c3e50;
+            border-radius: 6px;
+            transform: rotate(45deg);
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="thermometer-container">
+        <div class="scale-container" id="scale-container"></div>
+        <div class="thermometer" id="thermometer">
+            <div class="thermometer-body" id="thermometer-body">
+                <div class="liquid" id="liquid"></div>
+            </div>
+            <div class="bulb"></div>
+        </div>
+        <div class="current-temp" id="current-temp"><span class="temp-value">20°C</span></div>
+    </div>
+
+    <!-- 放大镜按钮 -->
+    <div class="magnifier-button" id="magnifier-button">🔍</div>
+
+    <!-- 放大镜组件 -->
+    <div class="magnifier" id="magnifier" style="display: none;">
+        <div class="magnifier-glass">
+            <div class="magnifier-content" id="magnifier-content"></div>
+        </div>
+        <div class="magnifier-handle"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const liquid = document.getElementById('liquid');
+            const thermometer = document.getElementById('thermometer');
+            const currentTemp = document.getElementById('current-temp');
+            const scaleContainer = document.getElementById('scale-container');
+            const thermometerBody = document.getElementById('thermometer-body');
+            
+            // 创建温度刻度 (-40°C 到 50°C)
+            function createScale() {
+                const scale = document.createElement('div');
+                scale.classList.add('scale');
+                
+                for (let i = -40; i <= 50; i++) {
+                    const position = ((i + 40) / 90) * 100;
+                    
+                    // 每度一个刻度
+                    const mark = document.createElement('div');
+                    mark.classList.add('scale-mark');
+                    
+                    if (i % 10 === 0) {
+                        mark.classList.add('main');
+                        // 每10度一个标签
+                        const label = document.createElement('div');
+                        label.classList.add('temperature-label');
+                        label.textContent = `${i}°C`;
+                        label.style.top = `${100 - position}%`;
+                        label.dataset.temperature = i; // 存储温度值
+                        scale.appendChild(label);
+                    } else if (i % 5 === 0) {
+                        mark.classList.add('five');
+                    } else {
+                        mark.classList.add('minor');
+                    }
+                    
+                    mark.style.top = `${100 - position}%`;
+                    scale.appendChild(mark);
+                }
+                
+                scaleContainer.appendChild(scale);
+            }
+            
+            createScale();
+            
+            // 初始温度 (20°C)
+            const initialTemp = 20;
+            const initialHeight = ((initialTemp + 40) / 90) * 100;
+            updateLiquidHeight(initialHeight);
+            
+            let isValueHidden = false;
+            
+            // 添加温度标签点击事件
+            function addTemperatureLabelClickEvents() {
+                // 使用延迟确保DOM元素已完全创建
+                setTimeout(() => {
+                    const temperatureLabels = document.querySelectorAll('.temperature-label');
+                    console.log('找到温度标签数量:', temperatureLabels.length); // 调试信息
+                    
+                    temperatureLabels.forEach((label, index) => {
+                        console.log(`标签 ${index}:`, label.textContent, label.dataset.temperature); // 调试信息
+                        
+                        label.addEventListener('click', function(e) {
+                            e.stopPropagation(); // 防止事件冒泡
+                            console.log('点击了温度标签:', this.textContent); // 调试信息
+                            
+                            const targetTemp = parseInt(this.dataset.temperature);
+                            const targetHeight = ((targetTemp + 40) / 90) * 100;
+                            
+                            console.log('目标温度:', targetTemp, '目标高度:', targetHeight); // 调试信息
+                            
+                            // 添加平滑过渡动画
+                            liquid.style.transition = 'height 0.5s ease-in-out';
+                            currentTemp.style.transition = 'top 0.5s ease-in-out';
+                            
+                            // 更新到目标温度
+                            updateLiquidHeight(targetHeight);
+                            
+                            // 添加点击反馈效果
+                            this.style.transform = 'translateY(-50%) scale(1.2)';
+                            setTimeout(() => {
+                                this.style.transform = 'translateY(-50%) scale(1.1)';
+                            }, 150);
+                        });
+                    });
+                }, 100);
+            }
+            
+            // 在创建刻度后添加点击事件
+            addTemperatureLabelClickEvents();
+            
+            // 更新液柱高度和当前温度显示位置
+            function updateLiquidHeight(heightPercent) {
+                liquid.style.height = `${heightPercent}%`;
+                
+                // 计算温度
+                const temp = Math.round((heightPercent / 100) * 90 - 40);
+                const tempValue = currentTemp.querySelector('.temp-value');
+                tempValue.textContent = `${temp}°C`;
+                
+                // 更新温度指示器位置，使其与液柱顶部对齐（基于长方形区域）
+                // thermometer-body的高度是calc(100% - 60px)，顶部偏移30px
+                const thermometerTotalHeight = thermometer.offsetHeight;
+                const bodyHeight = thermometerTotalHeight - 60; // calc(100% - 60px)
+                const bodyTop = 0; // top: 30px
+                const liquidTopPosition = bodyTop + bodyHeight * (1 - heightPercent / 100);
+                currentTemp.style.top = `${liquidTopPosition}px`;
+                
+                // 根据温度改变颜色，并同时更新温度文字颜色
+                let topColor;
+                if (temp < -20) {
+                    liquid.style.background = 'linear-gradient(to top, #6495ed, #87ceeb)';
+                    topColor = '#87ceeb';
+                } else if (temp < 0) {
+                    liquid.style.background = 'linear-gradient(to top, #87ceeb, #90ee90)';
+                    topColor = '#90ee90';
+                } else if (temp < 20) {
+                    liquid.style.background = 'linear-gradient(to top, #90ee90, #ffd700)';
+                    topColor = '#ffd700';
+                } else if (temp < 40) {
+                    liquid.style.background = 'linear-gradient(to top, #ffd700, #ff8c00)';
+                    topColor = '#ff8c00';
+                } else {
+                    liquid.style.background = 'linear-gradient(to top, #ff8c00, #e74c3c)';
+                    topColor = '#e74c3c';
+                }
+                
+                // 更新温度文字颜色与温度条顶部颜色一致
+                tempValue.style.color = topColor;
+            }
+            
+            // 添加点击事件来切换温度数值显示
+            currentTemp.addEventListener('click', function() {
+                isValueHidden = !isValueHidden;
+                if (isValueHidden) {
+                    currentTemp.classList.add('hidden-value');
+                } else {
+                    currentTemp.classList.remove('hidden-value');
+                }
+            });
+            
+            // 温度计液柱拖动功能
+            let isDragging = false;
+            let startY, startHeight;
+            
+            thermometerBody.addEventListener('mousedown', function(e) {
+                isDragging = true;
+                startY = e.clientY;
+                startHeight = parseFloat(liquid.style.height);
+                liquid.style.transition = 'none';
+                currentTemp.style.transition = 'none';
+                thermometer.style.cursor = 'grabbing';
+                e.preventDefault();
+            });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (isDragging) {
+                    const deltaY = startY - e.clientY;
+                    const thermometerBodyRect = thermometerBody.getBoundingClientRect();
+                    const sensitivity = 100 / thermometerBodyRect.height;
+                    const newHeight = Math.max(0, Math.min(100, startHeight + (deltaY * sensitivity)));
+                    updateLiquidHeight(newHeight);
+                }
+            });
+            
+            document.addEventListener('mouseup', function() {
+                if (isDragging) {
+                    isDragging = false;
+                    liquid.style.transition = 'height 0.2s ease';
+                    currentTemp.style.transition = 'top 0.2s ease';
+                    thermometer.style.cursor = 'ns-resize';
+                }
+            });
+            
+            // 触摸事件支持
+            thermometerBody.addEventListener('touchstart', function(e) {
+                isDragging = true;
+                startY = e.touches[0].clientY;
+                startHeight = parseFloat(liquid.style.height);
+                liquid.style.transition = 'none';
+                currentTemp.style.transition = 'none';
+                e.preventDefault();
+            }, { passive: false });
+            
+            document.addEventListener('touchmove', function(e) {
+                if (isDragging) {
+                    const deltaY = startY - e.touches[0].clientY;
+                    const thermometerBodyRect = thermometerBody.getBoundingClientRect();
+                    const sensitivity = 100 / thermometerBodyRect.height;
+                    const newHeight = Math.max(0, Math.min(100, startHeight + (deltaY * sensitivity)));
+                    updateLiquidHeight(newHeight);
+                    e.preventDefault();
+                }
+            }, { passive: false });
+            
+            document.addEventListener('touchend', function() {
+                if (isDragging) {
+                    isDragging = false;
+                    liquid.style.transition = 'height 0.2s ease';
+                    currentTemp.style.transition = 'top 0.2s ease';
+                }
+            });
+            
+            // 防止拖动时选中文本
+            document.addEventListener('selectstart', function(e) {
+                if (isDragging) e.preventDefault();
+            });
+            
+            // 放大镜功能
+            const magnifierButton = document.getElementById('magnifier-button');
+            const magnifier = document.getElementById('magnifier');
+            const magnifierContent = document.getElementById('magnifier-content');
+            let isMagnifierVisible = false;
+            let isMagnifierDragging = false;
+            let magnifierOffset = { x: 0, y: 0 };
+            
+            // 点击放大镜按钮显示/隐藏放大镜
+            magnifierButton.addEventListener('click', function() {
+                isMagnifierVisible = !isMagnifierVisible;
+                if (isMagnifierVisible) {
+                    magnifier.style.display = 'block';
+                    magnifier.style.left = '50%';
+                    magnifier.style.top = '50%';
+                    magnifier.style.transform = 'translate(-50%, -50%)';
+                    updateMagnifierContent(window.innerWidth / 2, window.innerHeight / 2);
+                    // 切换为关闭按钮
+                    magnifierButton.textContent = '✖️';
+                } else {
+                    magnifier.style.display = 'none';
+                    // 切换回放大镜按钮
+                    magnifierButton.textContent = '🔍';
+                }
+            });
+            
+            // 放大镜拖动功能
+            magnifier.addEventListener('mousedown', function(e) {
+                isMagnifierDragging = true;
+                const rect = magnifier.getBoundingClientRect();
+                magnifierOffset.x = e.clientX - rect.left;
+                magnifierOffset.y = e.clientY - rect.top;
+                magnifier.style.transform = 'none';
+                e.preventDefault();
+            });
+            
+            // 触摸屏支持 - 放大镜拖动
+            magnifier.addEventListener('touchstart', function(e) {
+                isMagnifierDragging = true;
+                const rect = magnifier.getBoundingClientRect();
+                magnifierOffset.x = e.touches[0].clientX - rect.left;
+                magnifierOffset.y = e.touches[0].clientY - rect.top;
+                magnifier.style.transform = 'none';
+                e.preventDefault();
+            }, { passive: false });
+            
+            document.addEventListener('mousemove', function(e) {
+                if (isMagnifierDragging) {
+                    const x = e.clientX - magnifierOffset.x;
+                    const y = e.clientY - magnifierOffset.y;
+                    magnifier.style.left = x + 'px';
+                    magnifier.style.top = y + 'px';
+                    
+                    // 更新放大镜内容 - 以玻璃部分的中心为准
+                      const centerX = x + 250; // 放大镜玻璃中心X (500/2 = 250)
+                      const centerY = y + 250; // 放大镜玻璃中心Y (500/2 = 250)
+                    updateMagnifierContent(centerX, centerY);
+                }
+            });
+            
+            // 触摸屏支持 - 放大镜移动
+            document.addEventListener('touchmove', function(e) {
+                if (isMagnifierDragging) {
+                    const x = e.touches[0].clientX - magnifierOffset.x;
+                    const y = e.touches[0].clientY - magnifierOffset.y;
+                    magnifier.style.left = x + 'px';
+                    magnifier.style.top = y + 'px';
+                    
+                    // 更新放大镜内容 - 以玻璃部分的中心为准
+                    const centerX = x + 250; // 放大镜玻璃中心X (500/2 = 250)
+                    const centerY = y + 250; // 放大镜玻璃中心Y (500/2 = 250)
+                    updateMagnifierContent(centerX, centerY);
+                    e.preventDefault();
+                }
+            }, { passive: false });
+            
+            document.addEventListener('mouseup', function() {
+                if (isMagnifierDragging) {
+                    isMagnifierDragging = false;
+                }
+            });
+            
+            // 触摸屏支持 - 放大镜拖动结束
+            document.addEventListener('touchend', function() {
+                if (isMagnifierDragging) {
+                    isMagnifierDragging = false;
+                }
+            });
+            
+            // 更新放大镜内容
+             function updateMagnifierContent(centerX, centerY) {
+                 // 使用html2canvas或者直接复制DOM元素来实现放大效果
+                 // 由于html2canvas需要额外库，这里使用CSS transform来模拟放大效果
+                 
+                 // 清空之前的内容
+                 magnifierContent.innerHTML = '';
+                 
+                 // 创建一个容器来承载放大的内容
+                 const magnifiedView = document.createElement('div');
+                 magnifiedView.style.cssText = `
+                     position: absolute;
+                     width: 600px;
+                     height: 600px;
+                     top: 50%;
+                     left: 50%;
+                     transform: translate(-50%, -50%) scale(0.5);
+                     transform-origin: center;
+                     overflow: hidden;
+                     pointer-events: none;
+                 `;
+                 
+                 // 复制整个页面内容
+                 const bodyClone = document.body.cloneNode(true);
+                 
+                 // 移除克隆中的放大镜元素，避免无限递归
+                 const clonedMagnifier = bodyClone.querySelector('#magnifier');
+                 const clonedButton = bodyClone.querySelector('#magnifier-button');
+                 if (clonedMagnifier) clonedMagnifier.remove();
+                 if (clonedButton) clonedButton.remove();
+                 
+                 // 设置克隆内容的样式
+                 bodyClone.style.cssText = `
+                     position: absolute;
+                     top: ${-centerY * 2 + 360}px;
+                     left: ${-centerX * 2 + 360}px;
+                     transform: scale(2);
+                     transform-origin: top left;
+                     width: 100vw;
+                     height: 100vh;
+                     margin: 0;
+                     padding: 0;
+                 `;
+                 
+                 magnifiedView.appendChild(bodyClone);
+                 magnifierContent.appendChild(magnifiedView);
+             }
+        });
+    </script>
+</body>
+</html>
