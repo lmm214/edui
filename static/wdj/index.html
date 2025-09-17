@@ -253,18 +253,30 @@
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
         }
         
+        /* 遮罩层样式 */
+        .magnifier-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 998;
+            display: none;
+        }
+        
         /* 放大镜组件样式 */
         .magnifier {
             position: fixed;
-            width: 500px;
-            height: 500px;
+            width: 660px;
+            height: 660px;
             z-index: 999;
             cursor: move;
         }
         
         .magnifier-glass {
-            width: 420px;
-            height: 420px;
+            width: 580px;
+            height: 580px;
             border: 8px solid #2c3e50;
             border-radius: 50%;
             background: white;
@@ -274,8 +286,8 @@
         }
         
         .magnifier-content {
-            width: 400px;
-            height: 400px;
+            width: 560px;
+            height: 560px;
             position: absolute;
             top: 50%;
             left: 50%;
@@ -311,6 +323,9 @@
     <!-- 放大镜按钮 -->
     <div class="magnifier-button" id="magnifier-button">🔍</div>
 
+    <!-- 遮罩层 -->
+    <div class="magnifier-overlay" id="magnifier-overlay"></div>
+
     <!-- 放大镜组件 -->
     <div class="magnifier" id="magnifier" style="display: none;">
         <div class="magnifier-glass">
@@ -344,7 +359,9 @@
                         // 每10度一个标签
                         const label = document.createElement('div');
                         label.classList.add('temperature-label');
-                        label.textContent = `${i}°C`;
+                        // 隐藏负温度的负号
+                        const displayTemp = i < 0 ? Math.abs(i) : i;
+                        label.textContent = `${displayTemp}°C`;
                         label.style.top = `${100 - position}%`;
                         label.dataset.temperature = i; // 存储温度值
                         scale.appendChild(label);
@@ -530,6 +547,7 @@
             const magnifierButton = document.getElementById('magnifier-button');
             const magnifier = document.getElementById('magnifier');
             const magnifierContent = document.getElementById('magnifier-content');
+            const magnifierOverlay = document.getElementById('magnifier-overlay');
             let isMagnifierVisible = false;
             let isMagnifierDragging = false;
             let magnifierOffset = { x: 0, y: 0 };
@@ -538,6 +556,7 @@
             magnifierButton.addEventListener('click', function() {
                 isMagnifierVisible = !isMagnifierVisible;
                 if (isMagnifierVisible) {
+                    magnifierOverlay.style.display = 'block';
                     magnifier.style.display = 'block';
                     magnifier.style.left = '50%';
                     magnifier.style.top = '50%';
@@ -546,8 +565,19 @@
                     // 切换为关闭按钮
                     magnifierButton.textContent = '✖️';
                 } else {
+                    magnifierOverlay.style.display = 'none';
                     magnifier.style.display = 'none';
                     // 切换回放大镜按钮
+                    magnifierButton.textContent = '🔍';
+                }
+            });
+            
+            // 点击遮罩层关闭放大镜
+            magnifierOverlay.addEventListener('click', function() {
+                if (isMagnifierVisible) {
+                    isMagnifierVisible = false;
+                    magnifierOverlay.style.display = 'none';
+                    magnifier.style.display = 'none';
                     magnifierButton.textContent = '🔍';
                 }
             });
@@ -580,8 +610,8 @@
                     magnifier.style.top = y + 'px';
                     
                     // 更新放大镜内容 - 以玻璃部分的中心为准
-                      const centerX = x + 250; // 放大镜玻璃中心X (500/2 = 250)
-                      const centerY = y + 250; // 放大镜玻璃中心Y (500/2 = 250)
+                      const centerX = x + 330; // 放大镜玻璃中心X (660/2 = 330)
+                      const centerY = y + 330; // 放大镜玻璃中心Y (660/2 = 330)
                     updateMagnifierContent(centerX, centerY);
                 }
             });
@@ -595,8 +625,8 @@
                     magnifier.style.top = y + 'px';
                     
                     // 更新放大镜内容 - 以玻璃部分的中心为准
-                    const centerX = x + 250; // 放大镜玻璃中心X (500/2 = 250)
-                    const centerY = y + 250; // 放大镜玻璃中心Y (500/2 = 250)
+                    const centerX = x + 330; // 放大镜玻璃中心X (660/2 = 330)
+                    const centerY = y + 330; // 放大镜玻璃中心Y (660/2 = 330)
                     updateMagnifierContent(centerX, centerY);
                     e.preventDefault();
                 }
@@ -627,11 +657,11 @@
                  const magnifiedView = document.createElement('div');
                  magnifiedView.style.cssText = `
                      position: absolute;
-                     width: 600px;
-                     height: 600px;
+                     width: 800px;
+                     height: 800px;
                      top: 50%;
                      left: 50%;
-                     transform: translate(-50%, -50%) scale(0.5);
+                     transform: translate(-50%, -50%) scale(0.7);
                      transform-origin: center;
                      overflow: hidden;
                      pointer-events: none;
@@ -640,17 +670,19 @@
                  // 复制整个页面内容
                  const bodyClone = document.body.cloneNode(true);
                  
-                 // 移除克隆中的放大镜元素，避免无限递归
+                 // 移除克隆中的放大镜元素和遮罩层，避免无限递归和内容变暗
                  const clonedMagnifier = bodyClone.querySelector('#magnifier');
                  const clonedButton = bodyClone.querySelector('#magnifier-button');
+                 const clonedOverlay = bodyClone.querySelector('#magnifier-overlay');
                  if (clonedMagnifier) clonedMagnifier.remove();
                  if (clonedButton) clonedButton.remove();
+                 if (clonedOverlay) clonedOverlay.remove();
                  
                  // 设置克隆内容的样式
                  bodyClone.style.cssText = `
                      position: absolute;
-                     top: ${-centerY * 2 + 360}px;
-                     left: ${-centerX * 2 + 360}px;
+                     top: ${-centerY * 2 + 400}px;
+                     left: ${-centerX * 2 + 400}px;
                      transform: scale(2);
                      transform-origin: top left;
                      width: 100vw;
