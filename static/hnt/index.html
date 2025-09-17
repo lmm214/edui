@@ -10,42 +10,47 @@
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0;
+            padding: 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
             background-color: #f0f8ff;
+            min-height: 100vh;
         }
 
         h1 {
-            margin: 20px 0;
+            margin: 10px 0;
             font-size: 24px;
             color: #333;
         }
 
         .controls {
             display: flex;
-            flex-direction: column;
+            flex-wrap: wrap;
+            justify-content: center;
             align-items: center;
-            margin-bottom: 20px;
+            gap: 15px;
+            margin-bottom: 15px;
+            padding: 10px;
         }
 
         .controls p {
-            margin: 10px 0;
+            margin: 0;
+            font-size: 14px;
         }
 
         .controls input[type=range] {
-            width: 200px;
+            width: 120px;
         }
 
         .controls input[type=button] {
-            padding: 10px 20px;
-            margin: 5px;
+            padding: 8px 16px;
+            margin: 0;
             border: none;
             border-radius: 5px;
             background-color: #4CAF50;
             color: white;
-            font-size: 16px;
+            font-size: 14px;
             cursor: pointer;
             transition: background-color 0.3s;
         }
@@ -54,11 +59,21 @@
             background-color: #45a049;
         }
 
+        .controls .tip {
+            flex-basis: 100%;
+            text-align: center;
+            font-size: 18px;
+            color: #666;
+            margin: 5px;
+        }
+
         .main {
             background-color: #fff;
             border-radius: 10px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
             margin-bottom: 20px;
+            width: 100%;
+            max-width: 980px;
         }
 
         .bar {
@@ -79,6 +94,30 @@
         .disk:hover {
             filter: brightness(87%);
         }
+
+        .disk.dragging {
+            cursor: grabbing;
+            z-index: 1000;
+            filter: brightness(110%);
+        }
+
+        .disk {
+            cursor: grab;
+        }
+
+        .bar.drop-target {
+            stroke: #4CAF50;
+            stroke-width: 4px;
+        }
+
+        /* 触摸屏支持 */
+        .disk {
+            touch-action: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
     </style>
 </head>
 
@@ -96,9 +135,12 @@
         <p>
             移动次数: <span id="moves">...</span>
         </p>
-        <p>
-            <input id="startBtn" type="button" value="开始" onclick="start();" />
+        <p class="tip">
+            <input id="startBtn" type="button" value="自动演示" onclick="start();" />
             <input id="stopBtn" type="button" value="重置" onclick="stop();" />
+        </p>
+        <p class="tip">
+            💡 提示：你可以直接拖拽盘子进行游戏，只能将小盘子放在大盘子上面
         </p>
     </div>
     <script src="d3.v7.min.js"></script>
@@ -106,12 +148,16 @@
         let n = 3;
         let stepTime = 1000;
         let curMove = 0;
+        let isDragging = false;
+        let draggedDisk = null;
+        let draggedFromBar = null;
+        let isAutoPlaying = false;
 
 // 1. add svg
 let m = { t: 40, b: 50, l: 40, r: 40 };
-let maxW = 1200; // 最大宽度
+let maxW = 980; // 最大宽度
 let w = Math.min(window.innerWidth - m.l - m.r, maxW);
-let h = 380 - m.t - m.b;
+let h = 400 - m.t - m.b;
 
 let s = d3.select('body').append('svg')
     .attr('class', 'main')
@@ -119,7 +165,7 @@ let s = d3.select('body').append('svg')
     .attr('height', h + m.t + m.b);
 
 // 2. add bars
-let bw = Math.min(w / (n + 1), 180); // 动态计算柱子的宽度，最大宽度为180
+let bw = Math.min(w / (n + 1), 240); // 动态计算柱子的宽度，最大宽度为180
 let bh = h; // 柱子的高度保持不变
 let bars;
 
@@ -127,7 +173,7 @@ addBars();
 
 function addBars() {
     bars = [{
-        x: (w / 4),
+        x: (w / 5),
         y: h,
         lbl: 'A',
         id: 0,
@@ -139,7 +185,7 @@ function addBars() {
         id: 1,
         stacks: [],
     }, {
-        x: (3 * w / 4),
+        x: (4 * w / 5),
         y: h,
         lbl: 'C',
         id: 2,
@@ -177,7 +223,7 @@ function addDisks() {
         dw_max = bw - 10,
         dw_scale = d3.scaleLinear().range([dw_min, dw_max]).domain([0, n - 1]),
         dws = [...Array(n).keys()].map(d => dw_scale(d)),
-        dh = 25,
+        dh = 35,
         rx = 15;
 
     for (let i = 0; i < n; i++) {
@@ -201,11 +247,161 @@ function addDisks() {
         .attr('height', d => d.h)
         .attr('rx', rx)
         .attr('fill', d => d3.schemeCategory10[d.id % 10])
-        .attr('transform', d => `translate(${m.l + d.x},${m.t + d.y})`);
+        .attr('transform', d => `translate(${m.l + d.x},${m.t + d.y})`)
+        .call(d3.drag()
+            .on('start', dragStarted)
+            .on('drag', dragged)
+            .on('end', dragEnded));
+
+    // 初始化柱子的堆栈
+    bars[0].stacks = disks.map(d => d3.select("#" + d.tagid));
+    bars[1].stacks = [];
+    bars[2].stacks = [];
 }
 
 
-        // 4. move disks
+        // 4. drag functions
+        function dragStarted(event, d) {
+            if (isAutoPlaying) return;
+            
+            // 检查是否是最顶层的盘子
+            let sourceBar = findDiskBar(d.id);
+            if (!sourceBar || sourceBar.stacks.length === 0 || sourceBar.stacks[0].data()[0].id !== d.id) {
+                return; // 不是最顶层的盘子，不能拖拽
+            }
+            
+            isDragging = true;
+            draggedDisk = d3.select(this);
+            draggedFromBar = sourceBar;
+            
+            // 修复：在开始拖动时从原柱子移除盘子
+            sourceBar.stacks.shift();
+            
+            draggedDisk.classed('dragging', true);
+            draggedDisk.raise(); // 将拖拽的盘子置于最顶层
+        }
+        
+        function dragged(event, d) {
+            if (!isDragging || !draggedDisk) return;
+            
+            let [mouseX, mouseY] = d3.pointer(event, s.node());
+            let x = mouseX - m.l - d.w/2;
+            let y = mouseY - m.t - d.h/2;
+            
+            draggedDisk.attr('transform', `translate(${x}, ${y})`);
+            
+            // 高亮可能的放置目标
+            highlightDropTarget(mouseX - m.l, mouseY - m.t, d);
+        }
+        
+        function dragEnded(event, d) {
+            if (!isDragging || !draggedDisk) return;
+            
+            let [mouseX, mouseY] = d3.pointer(event, s.node());
+            let x = mouseX - m.l;
+            let y = mouseY - m.t;
+            
+            // 清除所有高亮
+            s.selectAll('.bar').classed('drop-target', false);
+            
+            let targetBar = findTargetBar(x, y);
+            let canDrop = targetBar && canDropDisk(d, targetBar);
+            
+            if (canDrop && targetBar !== draggedFromBar) {
+                // 执行移动到新柱子
+                moveDiskToBar(d, draggedFromBar, targetBar);
+                curMove++;
+                d3.select('#moves').text(`${curMove}/${2 ** n - 1}`);
+                
+                // 检查是否获胜
+                if (checkWin()) {
+                    setTimeout(() => alert('恭喜！你完成了汉诺塔！'), 100);
+                }
+            } else {
+                // 返回原位置：重新添加到原柱子的顶部
+                draggedFromBar.stacks.unshift(draggedDisk);
+                returnDiskToOriginalPosition(d, draggedFromBar);
+            }
+            
+            draggedDisk.classed('dragging', false);
+            isDragging = false;
+            draggedDisk = null;
+            draggedFromBar = null;
+        }
+        
+        function findDiskBar(diskId) {
+            for (let bar of bars) {
+                for (let stack of bar.stacks) {
+                    if (stack.data()[0].id === diskId) {
+                        return bar;
+                    }
+                }
+            }
+            return null;
+        }
+        
+        function highlightDropTarget(x, y, d) {
+            s.selectAll('.bar').classed('drop-target', false);
+            
+            let targetBar = findTargetBar(x, y);
+            if (targetBar && canDropDisk(d, targetBar)) {
+                s.selectAll('.bar')
+                    .filter(bar => bar.id === targetBar.id)
+                    .classed('drop-target', true);
+            }
+        }
+        
+        function findTargetBar(x, y) {
+            for (let bar of bars) {
+                let barLeft = bar.x - bw/2;
+                let barRight = bar.x + bw/2;
+                if (x >= barLeft && x <= barRight) {
+                    return bar;
+                }
+            }
+            return null;
+        }
+        
+        function canDropDisk(disk, targetBar) {
+            if (targetBar.stacks.length === 0) {
+                return true; // 空柱子可以放任何盘子
+            }
+            
+            let topDisk = targetBar.stacks[0].data()[0];
+            return disk.id < topDisk.id; // 只能放在更大的盘子上
+        }
+        
+        function moveDiskToBar(disk, fromBar, toBar) {
+            // 修复：盘子已经在 dragStarted 时从源柱子移除了，这里只需要添加到目标柱子
+            // 添加到目标柱子
+            toBar.stacks.unshift(draggedDisk);
+            
+            // 更新位置 - 修复：从柱子顶部开始计算，而不是底部
+            let newX = toBar.x - disk.w / 2;
+            let newY = toBar.y - toBar.stacks.length * disk.h;
+            
+            draggedDisk.transition()
+                .duration(300)
+                .attr('transform', `translate(${m.l + newX}, ${m.t + newY})`);
+        }
+        
+        function returnDiskToOriginalPosition(disk, bar) {
+            // 修复：在拖动过程中，被拖动的盘子已经从堆栈中移除了
+            // 所以应该放回到当前堆栈的顶部位置
+            let originalX = bar.x - disk.w / 2;
+            // 修复：盘子已经重新添加到堆栈顶部，所以使用 bar.stacks.length 计算位置
+            let originalY = bar.y - bar.stacks.length * disk.h;
+            
+            draggedDisk.transition()
+                .duration(300)
+                .attr('transform', `translate(${m.l + originalX}, ${m.t + originalY})`);
+        }
+        
+        function checkWin() {
+            return bars[2].stacks.length === n;
+        }
+
+        // 5. move disks (auto play)
         let allTimeouts = [];
 
         function moveDisks() {
@@ -268,6 +464,11 @@ function addDisks() {
                             .transition().ease(d3.easeBounce)
                             .duration(transTime)
                             .attr('transform', `translate(${m.l + x3},${m.t + y3})`)
+                            .on('end', () => {
+                                if (i === schedule.length - 1) {
+                                    isAutoPlaying = false;
+                                }
+                            });
                     }, delayTime)
                 );
             }
@@ -295,12 +496,14 @@ function addDisks() {
 
         function start() {
             stop();
+            isAutoPlaying = true;
             moveDisks();
         }
 
         function stop() {
             allTimeouts.forEach(d => clearTimeout(d));
             allTimeouts = [];
+            isAutoPlaying = false;
             curMove = 0;
             d3.select('#moves').text(`${curMove}/${2 ** n - 1}`);
 
