@@ -251,7 +251,10 @@ function addDisks() {
         .call(d3.drag()
             .on('start', dragStarted)
             .on('drag', dragged)
-            .on('end', dragEnded));
+            .on('end', dragEnded))
+        .on('touchstart', touchStarted)
+        .on('touchmove', touchMoved)
+        .on('touchend', touchEnded);
 
     // 初始化柱子的堆栈
     bars[0].stacks = disks.map(d => d3.select("#" + d.tagid));
@@ -259,10 +262,124 @@ function addDisks() {
     bars[2].stacks = [];
 }
 
+        // 触摸事件处理器
+        let touchStartPos = null;
+        let touchDraggedDisk = null;
+        let touchDraggedFromBar = null;
+        let isTouchDragging = false;
+
+        function touchStarted(event, d) {
+            if (isAutoPlaying || isDragging) return;
+            
+            event.preventDefault(); // 防止默认的触摸行为
+            
+            // 检查是否是最顶层的盘子
+            let sourceBar = findDiskBar(d.id);
+            if (!sourceBar || sourceBar.stacks.length === 0 || sourceBar.stacks[0].data()[0].id !== d.id) {
+                return; // 不是最顶层的盘子，不能拖拽
+            }
+            
+            let touch = event.touches[0];
+            touchStartPos = { x: touch.clientX, y: touch.clientY };
+            
+            isTouchDragging = true;
+            touchDraggedDisk = d3.select(this);
+            touchDraggedFromBar = sourceBar;
+            
+            // 从原柱子移除盘子
+            sourceBar.stacks.shift();
+            
+            touchDraggedDisk.classed('dragging', true);
+            touchDraggedDisk.raise(); // 将拖拽的盘子置于最顶层
+        }
+        
+        function touchMoved(event, d) {
+            if (!isTouchDragging || !touchDraggedDisk) return;
+            
+            event.preventDefault(); // 防止页面滚动
+            
+            let touch = event.touches[0];
+            let rect = s.node().getBoundingClientRect();
+            let touchX = touch.clientX - rect.left;
+            let touchY = touch.clientY - rect.top;
+            
+            let x = touchX - m.l - d.w/2;
+            let y = touchY - m.t - d.h/2;
+            
+            touchDraggedDisk.attr('transform', `translate(${x}, ${y})`);
+            
+            // 高亮可能的放置目标
+            highlightDropTarget(touchX - m.l, touchY - m.t, d);
+        }
+        
+        function touchEnded(event, d) {
+            if (!isTouchDragging || !touchDraggedDisk) return;
+            
+            event.preventDefault();
+            
+            let touch = event.changedTouches[0];
+            let rect = s.node().getBoundingClientRect();
+            let touchX = touch.clientX - rect.left;
+            let touchY = touch.clientY - rect.top;
+            
+            let x = touchX - m.l;
+            let y = touchY - m.t;
+            
+            // 清除所有高亮
+            s.selectAll('.bar').classed('drop-target', false);
+            
+            let targetBar = findTargetBar(x, y);
+            let canDrop = targetBar && canDropDisk(d, targetBar);
+            
+            if (canDrop && targetBar !== touchDraggedFromBar) {
+                // 执行移动到新柱子
+                moveTouchDiskToBar(d, touchDraggedFromBar, targetBar);
+                curMove++;
+                d3.select('#moves').text(`${curMove}/${2 ** n - 1}`);
+                
+                // 检查是否获胜
+                if (checkWin()) {
+                    setTimeout(() => alert('恭喜！你完成了汉诺塔！'), 100);
+                }
+            } else {
+                // 返回原位置：重新添加到原柱子的顶部
+                touchDraggedFromBar.stacks.unshift(touchDraggedDisk);
+                returnTouchDiskToOriginalPosition(d, touchDraggedFromBar);
+            }
+            
+            touchDraggedDisk.classed('dragging', false);
+            isTouchDragging = false;
+            touchDraggedDisk = null;
+            touchDraggedFromBar = null;
+            touchStartPos = null;
+        }
+        
+        function moveTouchDiskToBar(disk, fromBar, toBar) {
+            // 添加到目标柱子
+            toBar.stacks.unshift(touchDraggedDisk);
+            
+            // 更新位置
+            let newX = toBar.x - disk.w / 2;
+            let newY = toBar.y - toBar.stacks.length * disk.h;
+            
+            touchDraggedDisk.transition()
+                .duration(300)
+                .attr('transform', `translate(${m.l + newX}, ${m.t + newY})`);
+        }
+        
+        function returnTouchDiskToOriginalPosition(disk, bar) {
+            let originalX = bar.x - disk.w / 2;
+            let originalY = bar.y - bar.stacks.length * disk.h;
+            
+            touchDraggedDisk.transition()
+                .duration(300)
+                .attr('transform', `translate(${m.l + originalX}, ${m.t + originalY})`);
+        }
+
 
         // 4. drag functions
         function dragStarted(event, d) {
-            if (isAutoPlaying) return;
+            if (isAutoPlaying || isTouchDragging) return; // 防止与触摸拖动冲突
             
             // 检查是否是最顶层的盘子
             let sourceBar = findDiskBar(d.id);
@@ -282,7 +399,7 @@ function addDisks() {
         }
         
         function dragged(event, d) {
-            if (!isDragging || !draggedDisk) return;
+            if (!isDragging || !draggedDisk || isTouchDragging) return; // 防止与触摸拖动冲突
             
             let [mouseX, mouseY] = d3.pointer(event, s.node());
             let x = mouseX - m.l - d.w/2;
@@ -295,7 +412,7 @@ function addDisks() {
         }
         
         function dragEnded(event, d) {
-            if (!isDragging || !draggedDisk) return;
+            if (!isDragging || !draggedDisk || isTouchDragging) return; // 防止与触摸拖动冲突
             
             let [mouseX, mouseY] = d3.pointer(event, s.node());
             let x = mouseX - m.l;
