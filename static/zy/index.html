@@ -65,6 +65,8 @@
             transition: all 0.3s ease;
             min-width: 40px;
             text-align: center;
+            -webkit-user-select: none;
+            -ms-user-select: none;
         }
         
         .record-item:hover {
@@ -2229,7 +2231,7 @@
         let touchStartTime = 0;
         let touchTarget = null;
         let longPressTriggered = false; // 标记是否触发了长按事件
-        const LONG_PRESS_DURATION = 2000; // 长按时间阈值（毫秒）
+        const LONG_PRESS_DURATION = 1200; // 长按时间阈值（毫秒）
 
         // 添加移动端长按支持函数
         function addTouchSupport(element, recordId) {
@@ -2515,16 +2517,37 @@
             const recordIdToDelete = contextMenuRecordId;
             const recordName = recordNames[recordIdToDelete] || recordIdToDelete;
             
-            if (recordIdToDelete === currentRecordId) {
-                showCustomAlert('不能删除当前正在使用的记录！');
-                hideContextMenu();
-                return;
-            }
-            
             // 先隐藏菜单
             hideContextMenu();
             
-            if (await showCustomConfirm(`确定要删除 "${recordName}" 吗？此操作不可恢复。`)) {
+            // 检查是否删除当前正在使用的记录
+            const isCurrentRecord = recordIdToDelete === currentRecordId;
+            let confirmMessage;
+            
+            if (isCurrentRecord) {
+                confirmMessage = `确定要删除当前正在使用的记录 "${recordName}" 吗？\n\n删除后将自动切换到其他记录。此操作不可恢复。`;
+            } else {
+                confirmMessage = `确定要删除 "${recordName}" 吗？此操作不可恢复。`;
+            }
+            
+            if (await showCustomConfirm(confirmMessage)) {
+                // 如果删除的是当前记录，需要先切换到其他记录
+                if (isCurrentRecord) {
+                    // 查找其他可用的记录
+                    const allRecords = Object.keys(homeworkRecords).filter(id => id !== recordIdToDelete);
+                    
+                    if (allRecords.length > 0) {
+                        // 切换到第一个可用记录
+                        const targetRecordId = allRecords[0];
+                        currentRecordId = targetRecordId;
+                        loadRecord(targetRecordId);
+                    } else {
+                        // 如果没有其他记录，创建一个新的默认记录
+                        currentRecordId = 'A';
+                        initializeStudents();
+                    }
+                }
+                
                 // 删除记录数据
                 delete homeworkRecords[recordIdToDelete];
                 delete recordNames[recordIdToDelete];
@@ -2533,6 +2556,13 @@
                 const button = document.getElementById(`record-${recordIdToDelete}`);
                 if (button) {
                     button.remove();
+                }
+                
+                // 如果删除的是当前记录，需要更新UI
+                if (isCurrentRecord) {
+                    updateRecordButtons();
+                    updateFacePackColors();
+                    renderStudents();
                 }
                 
                 saveToStorage();
