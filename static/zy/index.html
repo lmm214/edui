@@ -766,6 +766,8 @@
             <div class="context-menu-separator"></div>
             <div class="context-menu-item" onclick="importNameList()">导入名单</div>
             <div class="context-menu-separator"></div>
+            <div class="context-menu-item" onclick="toggleFullscreen()" id="fullscreenToggle">全屏模式</div>
+            <div class="context-menu-separator"></div>
             <div class="context-menu-item" onclick="clearAllConfig()">重置所有</div>
         </div>
         
@@ -1680,6 +1682,35 @@
             }
         }
         
+        // 全屏模式切换函数
+        function toggleFullscreen() {
+            // 如果是从设置菜单调用，先隐藏菜单
+            const settingsMenu = document.getElementById('settingsMenu');
+            if (settingsMenu && settingsMenu.style.display === 'block') {
+                hideSettingsMenu();
+            }
+            
+            if (!document.fullscreenElement) {
+                // 进入全屏
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                // 退出全屏
+                document.exitFullscreen().catch(err => {
+                    console.log(`Error attempting to exit fullscreen: ${err.message}`);
+                });
+            }
+        }
+        
+        // 更新全屏按钮文本
+        function updateFullscreenButtonText() {
+            const fullscreenToggle = document.getElementById('fullscreenToggle');
+            if (fullscreenToggle) {
+                fullscreenToggle.textContent = document.fullscreenElement ? '退出全屏' : '全屏模式';
+            }
+        }
+        
         // 清空所有配置 - 恢复到最初始状态
         async function clearAllConfig() {
             // 如果是从设置菜单调用，先隐藏菜单
@@ -2193,6 +2224,73 @@
             }
         }
         
+        // 移动端长按支持变量
+        let touchTimer = null;
+        let touchStartTime = 0;
+        let touchTarget = null;
+        let longPressTriggered = false; // 标记是否触发了长按事件
+        const LONG_PRESS_DURATION = 2000; // 长按时间阈值（毫秒）
+
+        // 添加移动端长按支持函数
+        function addTouchSupport(element, recordId) {
+            // 触摸开始
+            element.addEventListener('touchstart', function(e) {
+                touchStartTime = Date.now();
+                touchTarget = element;
+                longPressTriggered = false; // 重置长按标记
+                
+                // 设置长按定时器
+                touchTimer = setTimeout(() => {
+                    // 长按触发右键菜单
+                    longPressTriggered = true; // 标记长按已触发
+                    e.preventDefault();
+                    
+                    // 创建一个模拟的事件对象来触发右键菜单
+                    const simulatedEvent = {
+                        preventDefault: () => {},
+                        stopPropagation: () => {},
+                        pageX: e.touches && e.touches[0] ? e.touches[0].pageX : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].pageX : 0),
+                        pageY: e.touches && e.touches[0] ? e.touches[0].pageY : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].pageY : 0)
+                    };
+                    
+                    showRecordContextMenu(simulatedEvent, recordId);
+                }, LONG_PRESS_DURATION);
+            }, { passive: false });
+
+            // 触摸结束
+            element.addEventListener('touchend', function(e) {
+                const touchDuration = Date.now() - touchStartTime;
+                
+                // 清除长按定时器
+                if (touchTimer) {
+                    clearTimeout(touchTimer);
+                    touchTimer = null;
+                }
+                
+                // 只有在没有触发长按且是短按的情况下，才执行正常点击
+                if (!longPressTriggered && touchDuration < LONG_PRESS_DURATION && touchTarget === element) {
+                    // 阻止默认的click事件触发，避免重复执行
+                    e.preventDefault();
+                    // 防止触发click事件的重复执行
+                    setTimeout(() => {
+                        switchToRecord(recordId);
+                    }, 10);
+                }
+                
+                touchTarget = null;
+            });
+
+            // 触摸取消（如滑动离开）
+            element.addEventListener('touchcancel', function(e) {
+                if (touchTimer) {
+                    clearTimeout(touchTimer);
+                    touchTimer = null;
+                }
+                touchTarget = null;
+                longPressTriggered = false; // 重置长按标记
+            });
+        }
+        
         // 切换到指定记录
         function switchToRecord(recordId) {
             // 检查是否正在显示统计报告
@@ -2274,6 +2372,8 @@
             newButton.title = nextChar;
             newButton.onclick = () => switchToRecord(nextChar);
             newButton.oncontextmenu = (event) => showRecordContextMenu(event, nextChar);
+            // 添加移动端长按支持
+            addTouchSupport(newButton, nextChar);
             container.appendChild(newButton);
             
             // 更新UI
@@ -2475,6 +2575,8 @@
                 button.title = displayName;
                 button.onclick = () => switchToRecord(recordId);
                 button.oncontextmenu = (event) => showRecordContextMenu(event, recordId);
+                // 添加移动端长按支持
+                addTouchSupport(button, recordId);
                 container.appendChild(button);
             });
         }
@@ -2490,6 +2592,12 @@
             // 初始化记录系统
             initializeRecordSystem();
             
+            // 为默认的record-A按钮添加长按支持（如果存在）
+            const defaultRecordButton = document.getElementById('record-A');
+            if (defaultRecordButton) {
+                addTouchSupport(defaultRecordButton, 'A');
+            }
+            
             // 注意：添加新记录按钮已在HTML中使用onclick绑定，无需重复绑定
             
             // 添加全局点击事件监听器，用于隐藏右键菜单
@@ -2499,6 +2607,15 @@
                     hideContextMenu();
                 }
             });
+            
+            // 添加全屏状态变化监听器
+            document.addEventListener('fullscreenchange', updateFullscreenButtonText);
+            document.addEventListener('webkitfullscreenchange', updateFullscreenButtonText);
+            document.addEventListener('mozfullscreenchange', updateFullscreenButtonText);
+            document.addEventListener('MSFullscreenChange', updateFullscreenButtonText);
+            
+            // 初始化全屏按钮文本
+            updateFullscreenButtonText();
             
             // 先预加载当前表情包的图片，然后渲染
             preloadFacePackImages(currentFacePack).then(() => {
