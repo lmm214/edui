@@ -166,14 +166,24 @@
             border-radius: 50%;
             bottom: -18px;
             left: -5px;
-            z-index: 2;
-            pointer-events: none;
             z-index: 99;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .bulb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(231, 76, 60, 0.5);
+        }
+        
+        .bulb:active {
+            transform: scale(0.95);
         }
         
         .current-temp {
             position: absolute;
-            right: -120px;
+            left: 150px;
             top: 50%;
             transform: translateY(-50%);
             font-size: clamp(3rem, calc(min(80vh, 800px) / 20), 5rem);
@@ -189,6 +199,7 @@
             z-index: 3;
             cursor: pointer;
             user-select: none;
+            white-space: nowrap;
         }
         
         .current-temp:hover {
@@ -228,6 +239,37 @@
             border-top: 6px solid transparent;
             border-bottom: 6px solid transparent;
             border-right: 6px solid #fff;
+        }
+        
+        /* 切换按钮样式 */
+        .toggle-button {
+            position: absolute;
+            right: -50px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #fff;
+            border: 2px solid #2c3e50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 4;
+            user-select: none;
+        }
+        
+        .toggle-button:hover {
+            background: rgba(240, 240, 240, 0.95);
+            transform: translateY(-50%) scale(1.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .toggle-button:active {
+            transform: translateY(-50%) scale(0.95);
         }
         
         /* 放大镜按钮样式 */
@@ -317,7 +359,10 @@
             </div>
             <div class="bulb"></div>
         </div>
-        <div class="current-temp" id="current-temp"><span class="temp-value">20°C</span></div>
+        <div class="current-temp" id="current-temp">
+            <span class="temp-value">20°C</span>
+            <div class="toggle-button" id="toggle-button">🔄</div>
+        </div>
     </div>
 
     <!-- 放大镜按钮 -->
@@ -380,12 +425,60 @@
             
             createScale();
             
+            // 初始化变量
+            let isValueHidden = false;
+            let isChineseFormat = false; // 新增：是否使用中文读数格式
+            
             // 初始温度 (20°C)
             const initialTemp = 20;
             const initialHeight = ((initialTemp + 40) / 90) * 100;
             updateLiquidHeight(initialHeight);
             
-            let isValueHidden = false;
+            // 数字转中文读数函数
+            function numberToChinese(num) {
+                const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+                const units = ['', '十', '百'];
+                
+                if (num === 0) return '零';
+                
+                let result = '';
+                let isNegative = num < 0;
+                num = Math.abs(num);
+                
+                if (num < 10) {
+                    result = digits[num];
+                } else if (num < 20) {
+                    result = '十' + (num === 10 ? '' : digits[num % 10]);
+                } else if (num < 100) {
+                    const tens = Math.floor(num / 10);
+                    const ones = num % 10;
+                    result = digits[tens] + '十' + (ones === 0 ? '' : digits[ones]);
+                } else {
+                    // 处理100以上的数字
+                    const hundreds = Math.floor(num / 100);
+                    const remainder = num % 100;
+                    result = digits[hundreds] + '百';
+                    
+                    if (remainder > 0) {
+                        if (remainder < 10) {
+                            result += '零' + digits[remainder];
+                        } else if (remainder < 20) {
+                            result += '一十' + (remainder === 10 ? '' : digits[remainder % 10]);
+                        } else {
+                            const tens = Math.floor(remainder / 10);
+                            const ones = remainder % 10;
+                            result += digits[tens] + '十' + (ones === 0 ? '' : digits[ones]);
+                        }
+                    }
+                }
+                
+                return (isNegative ? '负' : '') + result;
+            }
+            
+            // 温度转中文读数格式
+            function tempToChinese(temp) {
+                return numberToChinese(temp) + '摄氏度';
+            }
             
             // 添加温度标签点击事件
             function addTemperatureLabelClickEvents() {
@@ -426,6 +519,25 @@
             // 在创建刻度后添加点击事件
             addTemperatureLabelClickEvents();
             
+            // 为bulb元素添加点击事件
+            const bulb = document.querySelector('.bulb');
+            bulb.addEventListener('click', function(e) {
+                e.stopPropagation(); // 防止事件冒泡
+                
+                // 生成随机温度 (-40°C 到 50°C)
+                const randomTemp = Math.floor(Math.random() * 91) - 40; // -40 到 50
+                const targetHeight = ((randomTemp + 40) / 90) * 100;
+                
+                console.log('bulb点击 - 随机温度:', randomTemp, '目标高度:', targetHeight);
+                
+                // 添加平滑过渡动画
+                liquid.style.transition = 'height 0.5s ease-in-out';
+                currentTemp.style.transition = 'top 0.5s ease-in-out';
+                
+                // 更新到随机温度
+                updateLiquidHeight(targetHeight);
+            });
+            
             // 更新液柱高度和当前温度显示位置
             function updateLiquidHeight(heightPercent) {
                 liquid.style.height = `${heightPercent}%`;
@@ -433,7 +545,13 @@
                 // 计算温度
                 const temp = Math.round((heightPercent / 100) * 90 - 40);
                 const tempValue = currentTemp.querySelector('.temp-value');
-                tempValue.textContent = `${temp}°C`;
+                
+                // 根据格式显示温度
+                if (isChineseFormat) {
+                    tempValue.textContent = tempToChinese(temp);
+                } else {
+                    tempValue.textContent = `${temp}°C`;
+                }
                 
                 // 更新温度指示器位置，使其与液柱顶部对齐（基于长方形区域）
                 // thermometer-body的高度是calc(100% - 60px)，顶部偏移30px
@@ -474,6 +592,35 @@
                 } else {
                     currentTemp.classList.remove('hidden-value');
                 }
+            });
+            
+            // 添加切换按钮点击事件
+            const toggleButton = document.getElementById('toggle-button');
+            toggleButton.addEventListener('click', function(e) {
+                e.stopPropagation(); // 防止触发父元素的点击事件
+                
+                // 切换格式
+                isChineseFormat = !isChineseFormat;
+                
+                // 更新按钮emoji
+                toggleButton.textContent = isChineseFormat ? '🔢' : '🔄';
+                
+                // 重新计算并显示当前温度
+                const currentHeight = parseFloat(liquid.style.height);
+                const temp = Math.round((currentHeight / 100) * 90 - 40);
+                const tempValue = currentTemp.querySelector('.temp-value');
+                
+                if (isChineseFormat) {
+                    tempValue.textContent = tempToChinese(temp);
+                } else {
+                    tempValue.textContent = `${temp}°C`;
+                }
+                
+                // 添加点击反馈效果
+                toggleButton.style.transform = 'translateY(-50%) scale(0.9)';
+                setTimeout(() => {
+                    toggleButton.style.transform = 'translateY(-50%) scale(1)';
+                }, 150);
             });
             
             // 温度计液柱拖动功能
