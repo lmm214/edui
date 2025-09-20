@@ -37,7 +37,7 @@
         .incorrect { color: #dc2626; }
         .section-title { font-size: 2.25rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; }
         .section-subtitle { font-size: 1.125rem; color: #64748b; font-weight: 500; }
-        .num-separator { display: none; border-left:2px dashed #aaa; height:3rem; margin: 0 -1px; vertical-align: middle; }
+        .num-separator { display: none; border-left:2px dashed #888; height:3.5rem; margin: 0 -0.5px; vertical-align: middle; }
         .num-separator.visible { display: inline-block; }
         
 
@@ -257,12 +257,13 @@
         // --- Shared Utility Functions ---
         const CHINESE_CHARS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
         const SECTION_UNITS = ['', '十', '百', '千'];
-        function formatNumberWithSeparators(num) {
+        function formatNumberWithSeparators(num, showSeparators = false) {
             let s = num.toString();
             if (s.length <= 4) return s;
             let result = '';
+            const separatorClass = showSeparators ? 'num-separator visible' : 'num-separator';
             while (s.length > 4) {
-                result = '<span class="num-separator"></span>' + s.slice(-4) + result;
+                result = `<span class="${separatorClass}"></span>` + s.slice(-4) + result;
                 s = s.slice(0, s.length - 4);
             }
             return s + result;
@@ -270,43 +271,40 @@
         function numberToChinese(num) {
             if (num === 0) return '零';
             const units = ['', '万', '亿'];
-            let result = '';
-            let unitIndex = 0;
-            let hasHigherSection = false;
             
+            // 将数字按四位一组拆分（低位在前，高位在后）
+            const sections = [];
             while (num > 0) {
-                let section = num % 10000;
-                let sectionStr = sectionToChinese(section);
-                
-                if (section === 0) {
-                    // 如果当前节为0，但还有更高位的数字，需要添加零
-                    if (hasHigherSection && result.length > 0 && !result.startsWith('零')) {
-                        result = '零' + result;
-                    }
-                } else {
-                    // 当前节不为0
-                    if (hasHigherSection && section < 1000 && result.length > 0 && !result.startsWith('零')) {
-                        // 如果当前节小于1000且前面有更高位，需要添加零
-                        result = '零' + result;
-                    }
-                    result = sectionStr + units[unitIndex] + result;
-                    hasHigherSection = true;
-                }
-                
+                sections.push(num % 10000);
                 num = Math.floor(num / 10000);
-                unitIndex++;
             }
             
-            // 清理多余的零和错误的组合
-            result = result.replace(/零+/g, '零')
-                          .replace(/零万/g, '万')
-                          .replace(/零亿/g, '亿')
-                          .replace(/亿万/g, '亿')
-                          .replace(/零$/, '');
+            // 从高位节到低位节组装，按需在节与节之间插入一个“零”
+            let result = '';
+            let pendingZero = false; // 标记是否需要在下一个非零节前补一个“零”
+            for (let i = sections.length - 1; i >= 0; i--) {
+                const sec = sections[i];
+                if (sec === 0) {
+                    // 当前节为 0：如果之前已经有输出，则记录需要一个“零”（多个连续0只读一个零）
+                    if (result.length > 0) pendingZero = true;
+                } else {
+                    // 在需要的位置补一个“零”：
+                    if (result.length > 0) {
+                        if (pendingZero) {
+                            result += '零';
+                            pendingZero = false;
+                        } else if (sec < 1000) {
+                            // 低位节非零但小于1000，说明该节前面存在节内前导零，需要补一个“零”
+                            result += '零';
+                        }
+                    }
+                    result += sectionToChinese(sec) + units[i];
+                }
+            }
             
-            // 处理"一十"开头的情况
+            // 处理整体以“一十”开头的情况（如“一十万”、“一十九”等）
             if (result.startsWith('一十')) {
-                result = result.substring(1);
+                result = result.slice(1);
             }
             
             return result || '零';
@@ -420,9 +418,12 @@
                 const isHighlighted = numberOutputEl.dataset.highlighted === "true";
                 let currentHTML = numberOutputEl.innerHTML;
                 if (isHighlighted) {
+                    // 取消高亮：将所有高亮的零字还原为普通零字
                     currentHTML = currentHTML.replace(/<span class="highlight-ling">零<\/span>/g, '零');
                 } else {
-                    currentHTML = currentHTML.replace(/(?<!<[^>]*>)零/g, '<span class="highlight-ling">零</span>');
+                    // 添加高亮：先移除所有现有的零字高亮，然后重新高亮所有零字
+                    currentHTML = currentHTML.replace(/<span class="highlight-ling">零<\/span>/g, '零');
+                    currentHTML = currentHTML.replace(/零/g, '<span class="highlight-ling">零</span>');
                 }
                 numberOutputEl.innerHTML = currentHTML;
                 numberOutputEl.dataset.highlighted = !isHighlighted;
@@ -510,9 +511,9 @@
             let num2 = Math.floor(Math.random() * (Math.pow(10, digits2) - Math.pow(10, digits2-1))) + Math.pow(10, digits2-1);
             while (num1 === num2) { num2 = Math.floor(Math.random() * (Math.pow(10, digits2) - Math.pow(10, digits2-1))) + Math.pow(10, digits2-1); }
             
-            num1Btn.innerHTML = formatNumberWithSeparators(num1);
+            num1Btn.innerHTML = formatNumberWithSeparators(num1, true);
             num1Btn.dataset.value = num1;
-            num2Btn.innerHTML = formatNumberWithSeparators(num2);
+            num2Btn.innerHTML = formatNumberWithSeparators(num2, true);
             num2Btn.dataset.value = num2;
             largerNum = Math.max(num1, num2);
             comparisonFeedback.textContent = '';
@@ -545,7 +546,7 @@
             roundingOptionsEl.innerHTML = '';
             roundingFeedback.textContent = '';
             const num = Math.floor(Math.random() * 9999999) + 100000;
-            roundingNumberEl.innerHTML = formatNumberWithSeparators(num);
+            roundingNumberEl.innerHTML = formatNumberWithSeparators(num, true);
             currentRoundingAnswer = Math.round(num / 10000);
             const options = new Set([currentRoundingAnswer]);
             while(options.size < 3) {
@@ -611,7 +612,7 @@
                  
                  // Add separator every 4 digits from right
                  if ((numStr.length - i - 1) % 4 === 0 && i < numStr.length - 1) {
-                     visualHTML += '<span class="num-separator"></span>';
+                     visualHTML += '<span class="num-separator visible"></span>';
                  }
              }
              
