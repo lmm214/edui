@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>两点间的距离</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: grid;
+      place-items: center;
+      background: #f6f7fb;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    .card {
+      width: min(920px, 96vw);
+      height: min(620px, 92vh);
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      padding: 0px;
+      box-sizing: border-box;
+    }
+    svg { width: 100%; height: 100%; border-radius: 12px;}
+    svg, .node { touch-action: none; }
+
+    .node { fill: #2477bb; stroke: #000; stroke-width: 3; cursor: grab; }
+    .node.fixed { cursor: default; }
+    .node:active { cursor: grabbing; }
+    .label { font-size: 2rem; fill: #333; user-select: none; pointer-events: none;}
+
+    .line-straight { stroke: #d3e6cf; stroke-width: 10; fill: none; opacity: .95; stroke-linecap: round; }
+    .rope { stroke: #d3e6cf; stroke-width: 14; fill: none; opacity: .95; stroke-linecap: round; }
+    .rope-inner { stroke: #d3e6cf; stroke-width: 3; fill: none; opacity: .95; stroke-linecap: round; }
+
+    /* 外侧黑色描边，营造路线的双边边框效果 */
+    .line-outline { stroke: #000; stroke-width: 14; fill: none; opacity: 1; stroke-linecap: round; }
+    .rope-outline { stroke: #000; stroke-width: 18; fill: none; opacity: 1; stroke-linecap: round; }
+
+    .hint { position: absolute; inset: 16px auto auto 24px; font-size: 12px; color: #667; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <svg id="scene" viewBox="0 0 900 600" preserveAspectRatio="xMidYMid meet">
+      <!-- 直线连接（邮局—两端；小明家—学校） -->
+      <path id="topLeftOutline" class="line-outline" d="M 140,300 L 450,90" />
+      <path id="topRightOutline" class="line-outline" d="M 450,90 L 760,300" />
+      <path id="midOutline" class="line-outline" d="M 140,300 L 760,300" />
+      <path id="topLeft" class="line-straight" d="M 140,300 L 450,90" />
+      <path id="topRight" class="line-straight" d="M 450,90 L 760,300" />
+      <path id="mid" class="line-straight" d="M 140,300 L 760,300" />
+
+      <!-- 两条等长“绳子” -->
+      <path id="ropeLeftOutline" class="rope-outline" d="M 140,300 Q 225.5,509.6 450,480" />
+      <path id="ropeRightOutline" class="rope-outline" d="M 760,300 Q 674.5,509.6 450,480" />
+      <path id="ropeLeft" class="rope" d="M 140,300 Q 225.5,509.6 450,480" />
+      <path id="ropeRight" class="rope" d="M 760,300 Q 674.5,509.6 450,480" />
+      <path id="ropeLeftInner" class="rope-inner" d="M 140,300 Q 225.5,509.6 450,480" />
+      <path id="ropeRightInner" class="rope-inner" d="M 760,300 Q 674.5,509.6 450,480" />
+
+      <!-- 节点 -->
+      <circle id="home" class="node fixed" r="18" cx="140" cy="300" />
+      <text id="homeLabel" class="label" x="100" y="306">小明家</text>
+
+      <circle id="school" class="node fixed" r="18" cx="760" cy="300" />
+      <text id="schoolLabel" class="label" x="778" y="306">学校</text>
+
+      <circle id="post" class="node fixed" r="18" cx="450" cy="90" />
+      <text id="postLabel" class="label" x="436" y="66">邮局</text>
+
+      <circle id="store" class="node" r="18" cx="450" cy="480" />
+      <text id="storeLabel" class="label" x="432" y="520">商店</text>
+    </svg>
+  </div>
+
+  <script>
+    const svg = document.getElementById('scene');
+
+    // 关键点坐标（可以按需微调布局）
+    const P = {
+      home:   { x: 140, y: 300 },
+      school: { x: 760, y: 300 },
+      post:   { x: 450, y: 130  },
+      store:  { x: 420, y: 480 },
+    };
+
+    // 初始“绳子”的下垂量，用来定义固定长度
+    const initialSag = 120; // px 的视觉下垂
+
+    // 工具函数
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    function perpUnit(a, b) {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      let nx = -dy / len, ny = dx / len; // 一个法向量
+      // 统一朝“下”（y为正）的法向量，确保两条曲线都向下垂，不会朝右下外凸
+      if (ny < 0) { nx = -nx; ny = -ny; }
+      return { x: nx, y: ny };
+    }
+
+    function quadPoint(a, c, b, t) {
+      const ab = lerp(a, c, t);
+      const cb = lerp(c, b, t);
+      return lerp(ab, cb, t);
+    }
+
+    // 数值近似求二次贝塞尔曲线长度
+    function quadLength(a, b, sag, samples = 100) {
+      const mid = lerp(a, b, 0.5);
+      const n = perpUnit(a, b);
+      const c = { x: mid.x + n.x * sag, y: mid.y + n.y * sag };
+      let len = 0;
+      let prev = a;
+      for (let i = 1; i <= samples; i++) {
+        const t = i / samples;
+        const p = quadPoint(a, c, b, t);
+        len += Math.hypot(p.x - prev.x, p.y - prev.y);
+        prev = p;
+      }
+      return { len, c };
+    }
+
+    // 通过二分查找 sag，使得曲线长度 ≈ 指定的 L
+    function solveSagForLength(a, b, targetLen) {
+      const d = dist(a, b);
+      if (targetLen <= d + 0.05) return { sag: 0, ctrl: lerp(a, b, 0.5) }; // 已经拉直
+
+      let low = 0, high = 10;
+      // 扩大 high 直到长度覆盖到目标
+      for (let i = 0; i < 20; i++) {
+        const { len } = quadLength(a, b, high, 40);
+        if (len >= targetLen) break;
+        high *= 2;
+      }
+
+      let ctrl = null; let sag = high;
+      for (let i = 0; i < 36; i++) {
+        const mid = (low + high) / 2;
+        const { len, c } = quadLength(a, b, mid, 50);
+        if (len >= targetLen) {
+          sag = mid; ctrl = c; high = mid;
+        } else {
+          low = mid;
+        }
+      }
+      return { sag, ctrl };
+    }
+
+    // 生成 path d
+    function quadPathD(a, b, sag) {
+      const mid = lerp(a, b, 0.5);
+      const n = perpUnit(a, b);
+      const c = { x: mid.x + n.x * sag, y: mid.y + n.y * sag };
+      return { d: `M ${a.x},${a.y} Q ${c.x},${c.y} ${b.x},${b.y}`, ctrl: c };
+    }
+
+    // 初始计算两条“绳子”的固定长度（根据初始下垂量）
+    const L = {
+      homeStore: quadLength(P.home, P.store, initialSag, 120).len,
+      schoolStore: quadLength(P.school, P.store, initialSag, 120).len,
+    };
+
+    // 元素引用
+    const $ = (id) => {
+    // 允许传入 '#id' 或 'id'
+    if (typeof id === 'string' && id.startsWith('#')) id = id.slice(1);
+    return document.getElementById(id);
+    };
+
+    function renderStatic() {
+      // 直线：邮局-两端；家-学校
+      $('#topLeftOutline').setAttribute('d', `M ${P.home.x},${P.home.y} L ${P.post.x},${P.post.y}`);
+      $('#topLeft').setAttribute('d', `M ${P.home.x},${P.home.y} L ${P.post.x},${P.post.y}`);
+      $('#topRightOutline').setAttribute('d', `M ${P.post.x},${P.post.y} L ${P.school.x},${P.school.y}`);
+      $('#topRight').setAttribute('d', `M ${P.post.x},${P.post.y} L ${P.school.x},${P.school.y}`);
+      $('#midOutline').setAttribute('d', `M ${P.home.x},${P.home.y} L ${P.school.x},${P.school.y}`);
+      $('#mid').setAttribute('d', `M ${P.home.x},${P.home.y} L ${P.school.x},${P.school.y}`);
+
+      // 固定点
+      $('#home').setAttribute('cx', P.home.x); $('#home').setAttribute('cy', P.home.y);
+      $('#school').setAttribute('cx', P.school.x); $('#school').setAttribute('cy', P.school.y);
+      $('#post').setAttribute('cx', P.post.x); $('#post').setAttribute('cy', P.post.y);
+
+      // 标签
+      $('#homeLabel').setAttribute('x', P.home.x - 120);
+      $('#homeLabel').setAttribute('y', P.home.y + 6);
+      $('#schoolLabel').setAttribute('x', P.school.x + 38);
+      $('#schoolLabel').setAttribute('y', P.school.y + 6);
+      $('#postLabel').setAttribute('x', P.post.x - 28);
+      $('#postLabel').setAttribute('y', P.post.y - 28);
+    }
+
+    function renderStoreAndRopes() {
+      // 商店节点与标签
+      $('#store').setAttribute('cx', P.store.x);
+      $('#store').setAttribute('cy', P.store.y);
+      $('#storeLabel').setAttribute('x', P.store.x - 40);
+      $('#storeLabel').setAttribute('y', P.store.y + 60);
+
+      // 左边“绳子”：家—商店，长度恒定 L.homeStore
+      const left = solveSagForLength(P.home, P.store, L.homeStore);
+      const dLeft = quadPathD(P.home, P.store, left.sag).d;
+      $('#ropeLeftOutline').setAttribute('d', dLeft);
+      $('#ropeLeft').setAttribute('d', dLeft);
+      $('#ropeLeftInner').setAttribute('d', dLeft);
+
+      // 右边“绳子”：学校—商店，长度恒定 L.schoolStore
+      const right = solveSagForLength(P.school, P.store, L.schoolStore);
+      const dRight = quadPathD(P.school, P.store, right.sag).d;
+      $('#ropeRightOutline').setAttribute('d', dRight);
+      $('#ropeRight').setAttribute('d', dRight);
+      $('#ropeRightInner').setAttribute('d', dRight);
+    }
+
+    // 将点约束到两个圆盘（半径分别为两条绳子的长度）交集内
+    function clampIntoIntersection(p) {
+      let q = { ...p };
+      const constraints = [
+        { c: P.home, R: L.homeStore },
+        { c: P.school, R: L.schoolStore },
+      ];
+      for (let k = 0; k < 6; k++) { // 迭代投影，提高稳定性
+        for (const { c, R } of constraints) {
+          const vx = q.x - c.x, vy = q.y - c.y;
+          const d = Math.hypot(vx, vy);
+          if (d > R) { // 投影到圆周
+            const s = R / d;
+            q = { x: c.x + vx * s, y: c.y + vy * s };
+          }
+        }
+      }
+      return q;
+    }
+
+    function init() {
+      renderStatic();
+      renderStoreAndRopes();
+
+      // 拖拽商店
+      const storeEl = $('#store');
+      let dragging = false;
+      let offset = { x: 0, y: 0 };
+
+      function ptFromEvent(e) {
+        const rect = svg.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * (svg.viewBox.baseVal.width / rect.width);
+        const y = (e.clientY - rect.top) * (svg.viewBox.baseVal.height / rect.height);
+        return { x, y };
+      }
+
+      storeEl.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        storeEl.setPointerCapture(e.pointerId);
+        const p = ptFromEvent(e);
+        offset.x = p.x - P.store.x;
+        offset.y = p.y - P.store.y;
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const p = ptFromEvent(e);
+        const wanted = { x: p.x - offset.x, y: p.y - offset.y };
+        P.store = clampIntoIntersection(wanted);
+        renderStoreAndRopes();
+      });
+
+      window.addEventListener('pointerup', (e) => {
+        dragging = false;
+      });
+    }
+
+    // 等待 DOM 就绪后再初始化，避免早期脚本失败导致默认位置不被设置
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
