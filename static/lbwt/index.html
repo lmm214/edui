@@ -25,19 +25,12 @@
             padding: 0;
             box-sizing: border-box;
         }
-
-        body {
-            font-family: var(--font-family);
-            background-color: var(--bg-gray);
-            background-blend-mode: normal, multiply;
-            height: 100vh;
-            padding: var(--spacing);
-            overflow: hidden;
+        body{
+            background: var(--bg-light);
         }
-
         .container {
-            max-width: 1200px;
-            height: 98vh;
+            max-width: 1280px;
+            height: 100vh;
             margin: 0 auto;
             display: flex;
             flex-direction: column;
@@ -56,8 +49,6 @@
         .main-layout {
             display: flex;
             flex-direction: column;
-            gap: var(--spacing);
-            margin-bottom: var(--spacing);
         }
 
         .game-column {
@@ -200,11 +191,11 @@
         }
 
         .game-info {
-            padding: 15px;
+            padding: 10px;
             background: var(--bg-white);
             border-radius: var(--border-radius-small);
-            font-size: 24px;
-            color: var(--text-light);
+            font-size: 22px;
+            color: var(--primary-color);
             text-align: center;
         }
         
@@ -212,7 +203,7 @@
             background: var(--primary-color);
             color: white;
             border: none;
-            padding: 15px 20px;
+            padding: 10px 20px;
             border-radius: var(--border-radius-small);
             font-size: 24px;
             font-weight: 500;
@@ -257,7 +248,7 @@
     <div class="container">
         <div class="main-layout">
              <div class="game-column">
-                 <div class="controls">
+                <div class="controls">
                      <div style="display: flex; align-items: center; margin-right: auto;">
                          <select id="cakeCount" class="btn" onchange="updateCakeCount(event)">
                              <option value="2" selected>2张</option>
@@ -279,6 +270,7 @@
                 <div class="canvas-container" id="canvasContainer">
                     <canvas id="gameCanvas" width="1080" height="560"></canvas>
                 </div>
+
             </div>
         </div>
     </div>
@@ -311,7 +303,7 @@
         function setupHighDPICanvas() {
             const dpr = window.devicePixelRatio || 1;
             const canvasWidth = 1080;
-            const canvasHeight = 580;
+            const canvasHeight = 600;
             
             canvas.width = canvasWidth * dpr;
             canvas.height = canvasHeight * dpr;
@@ -350,24 +342,27 @@
         setupHighDPICanvas();
 
         // 游戏对象位置和尺寸
+        // 游戏对象
         const gameObjects = {
             cakes: [
-                { id: 1, x: 150, y: 420, radius: 60, color: '#e74c3c', name: '饼1' },
-                { id: 2, x: 300, y: 420, radius: 60, color: '#3498db', name: '饼2' },
-                { id: 3, x: 450, y: 420, radius: 60, color: '#2ecc71', name: '饼3' },
-                { id: 4, x: 600, y: 420, radius: 60, color: '#9b59b6', name: '饼4' },
-                { id: 5, x: 750, y: 420, radius: 60, color: '#f39c12', name: '饼5' }
+                { id: 1, x: 100, y: 450, radius: 38, color: '#e74c3c', name: '饼1' },
+                { id: 2, x: 250, y: 450, radius: 38, color: '#3498db', name: '饼2' },
+                { id: 3, x: 400, y: 450, radius: 38, color: '#2ecc71', name: '饼3' },
+                { id: 4, x: 550, y: 450, radius: 38, color: '#9b59b6', name: '饼4' },
+                { id: 5, x: 700, y: 450, radius: 38, color: '#f39c12', name: '饼5' }
             ],
             cakeSides: [],
+            // 缩小的子锅 - 调整位置使其在大锅内部更好分布
             pans: [
-                { id: 1, x: 250, y: 120, radius: 100, name: '锅A' },
-                { id: 2, x: 550, y: 120, radius: 100, name: '锅B' }
+                { id: 'A', x: 350, y: 180, radius: 45, name: '' },
+                { id: 'B', x: 450, y: 180, radius: 45, name: '' }
             ],
+            mainPan: { id: 'main', x: 400, y: 180, radius: 140, name: '大锅' },
             recordArea: {
                 x: 800,
                 y: 0,
                 width: 180,
-                height: 500,
+                height: 600,
                 records: []
             }
         };
@@ -397,8 +392,8 @@
                     cakeId: cake.id,
                     side: 'front',
                     x: cake.x,
-                    y: cake.y - 80,
-                    radius: 60,
+                    y: cake.y - 50,
+                    radius: 38,
                     color: cake.color,
                     name: `${cake.name.slice(1)}正`,
                     cooked: false,
@@ -410,8 +405,8 @@
                     cakeId: cake.id,
                     side: 'back',
                     x: cake.x,
-                    y: cake.y + 50,
-                    radius: 60,
+                    y: cake.y + 30,
+                    radius: 38,
                     color: adjustColorOpacity(cake.color, 0.6),
                     name: `${cake.name.slice(1)}反`,
                     cooked: false,
@@ -464,7 +459,10 @@
             // 绘制记录区域
             drawRecordArea();
             
-            // 绘制锅
+            // 先绘制大锅
+            drawMainPan(gameObjects.mainPan);
+            
+            // 再绘制小锅
             gameObjects.pans.forEach(pan => {
                 drawPan(pan);
             });
@@ -531,16 +529,10 @@
             
             // 内圈
             ctx.beginPath();
-            ctx.arc(pan.x, pan.y, pan.radius * 0.8, 0, 2 * Math.PI);
+            ctx.arc(pan.x, pan.y, pan.radius * 0.85, 0, 2 * Math.PI);
             ctx.fillStyle = '#f5f5f5';
             ctx.fill();
-            
-            // 标签
-            ctx.fillStyle = '#2c3e50';
-            ctx.font = '22px Microsoft YaHei';
-            ctx.textAlign = 'center';
-            ctx.fillText(pan.name, pan.x, pan.y + pan.radius + 30);
-            
+
             // 烙饼动效
             if (isCooking) {
                 ctx.beginPath();
@@ -790,7 +782,7 @@
             const originalCake = gameObjects.cakes.find(c => c.id === side.cakeId);
             if (originalCake) {
                 side.x = originalCake.x;
-                side.y = originalCake.y + (side.side === 'front' ? -80 : -10);
+                side.y = originalCake.y + (side.side === 'front' ? -50 : 20);
             }
         }
 
@@ -869,6 +861,11 @@
                 return;
             }
             
+            // 允许只有1张饼时也能开始烙饼
+            if (occupiedPans.length >= 1) {
+                // 可以开始烙饼
+            }
+            
             if (gameState.isTimerRunning) {
                 showMessage('正在烙饼中，请等待...', 'info');
                 return;
@@ -887,7 +884,7 @@
             
             const cookingList = gameState.cookingItems.map(item => {
                 const side = gameObjects.cakeSides.find(s => s.cakeId == item.cake && s.side === item.side);
-                return side ? '“'+side.name+'”' : '';
+                return side ? '"'+side.name+'"' : '';
             }).join('、');
             showMessage(`开始烙：${cookingList}`, 'info');
             
@@ -936,7 +933,7 @@
             
             draw();
         }
-        
+
         // 添加记录到canvas记录区域
         function addCookingLogToCanvas(cookingText) {
             gameObjects.recordArea.records.push({
@@ -1019,6 +1016,75 @@
 
             // 初始绘制
             draw();
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', initGame);
+        // 绘制大锅（带手柄）
+        function drawMainPan(mainPan) {
+            // 绘制锅体外圈
+            ctx.beginPath();
+            ctx.arc(mainPan.x, mainPan.y, mainPan.radius, 0, 2 * Math.PI);
+            ctx.fillStyle = '#2c3e50';
+            ctx.fill();
+            ctx.strokeStyle = '#34495e';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            
+            // 绘制锅体内圈 - 深色背景填充
+            ctx.beginPath();
+            ctx.arc(mainPan.x, mainPan.y, mainPan.radius - 15, 0, 2 * Math.PI);
+            ctx.fillStyle = '#ddd'; // 改为深色背景
+            ctx.fill();
+            
+            // 添加内圈边框
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // 绘制左侧手柄
+            drawPanHandle(mainPan.x - mainPan.radius - 10, mainPan.y, 'left');
+            
+            // 绘制右侧手柄
+            drawPanHandle(mainPan.x + mainPan.radius + 10, mainPan.y, 'right');
+            
+        }
+        
+        // 绘制锅柄
+        function drawPanHandle(x, y, side) {
+            const handleLength = 40;
+            const handleWidth = 12;
+            
+            ctx.save();
+            
+            // 设置手柄样式
+            ctx.fillStyle = '#34495e';
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 2;
+            
+            if (side === 'left') {
+                // 左侧手柄
+                ctx.fillRect(x - handleLength, y - handleWidth/2, handleLength, handleWidth);
+                ctx.strokeRect(x - handleLength, y - handleWidth/2, handleLength, handleWidth);
+                
+                // 手柄末端圆形
+                ctx.beginPath();
+                ctx.arc(x - handleLength, y, handleWidth/2, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.stroke();
+            } else {
+                // 右侧手柄
+                ctx.fillRect(x, y - handleWidth/2, handleLength, handleWidth);
+                ctx.strokeRect(x, y - handleWidth/2, handleLength, handleWidth);
+                
+                // 手柄末端圆形
+                ctx.beginPath();
+                ctx.arc(x + handleLength, y, handleWidth/2, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.stroke();
+            }
+            
+            ctx.restore();
         }
 
         // 页面加载完成后初始化
