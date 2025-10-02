@@ -90,6 +90,7 @@
             transform: translateY(-50%);
             box-shadow: 0 0 5px rgba(231, 76, 60, 0.6);
             animation: boat-float 4s ease-in-out infinite;
+            display: none; /* 默认隐藏水位线 */
         }
 
         .boat-stones {
@@ -130,25 +131,31 @@
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 20px;
+            display: none; /* 默认隐藏石头容器 */
+        }
+        .daxiang-container {
+            padding: 25px;
+            background: rgba(240, 240, 240, 0.8);
+            border-radius: 10px;
         }
 
-        .stone {
+        .stone, .daxiang {
             width: 100px;
             height: 100px;
             cursor: grab;
             transition: transform 0.2s ease;
             filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
         }
-
-        .stone:hover {
+        .daxiang {width:200px;height:150px;}
+        .stone:hover, .daxiang:hover {
             transform: scale(1.1);
         }
 
-        .stone:active {
+        .stone:active, .daxiang:active {
             cursor: grabbing;
         }
 
-        .stone img {
+        .stone img, .daxiang img {
             width: 100%;
             height: 100%;
             object-fit: contain;
@@ -171,7 +178,7 @@
             cursor: grabbing;
         }
 
-        .reset-btn {
+        .reset-btn,.addline-btn {
             padding: 12px 24px;
             background: #e74c3c;
             color: white;
@@ -182,15 +189,28 @@
             transition: background 0.3s ease;
         }
 
+        .reset-btn {
+            display: none; /* 默认隐藏重置按钮 */
+        }
+
         .reset-btn:hover {
             background: #c0392b;
         }
-
+        .addline-btn {
+            background: #2ecc71;
+        }
+        .addline-btn:hover {
+            background: #27ae60;
+        }
         .dragging {
             z-index: 1000;
             width: 100px;
             height: 100px;
             opacity: 0.8;
+        }
+        .daxiang.dragging {
+            width: 200px;
+            height: 150px;
         }
 
         @keyframes boat-float {
@@ -232,12 +252,18 @@
         
         <div class="control-panel">
             <h2 class="panel-title">曹冲称象</h2>
-            
+            <div class="daxiang-container" id="daxiangContainer">
+                <div class="daxiang" data-weight="200">
+                    <img src="dx.png" alt="大象">
+                </div>
+            </div>
+            <button class="addline-btn" onclick="addLine()">添加水位线</button>
+
             <div class="stones-container" id="stonesContainer">
-                <div class="stone" data-weight="4" data-stone="3">
+                <div class="stone" data-weight="5" data-stone="3">
                     <img src="st-3.png" alt="石头3">
                 </div>
-                <div class="stone" data-weight="8" data-stone="2">
+                <div class="stone" data-weight="5" data-stone="2">
                     <img src="st-2.png" alt="石头2">
                 </div>
                 <div class="stone" data-weight="10" data-stone="4">
@@ -246,7 +272,7 @@
                 <div class="stone" data-weight="10" data-stone="7">
                     <img src="st-7.png" alt="石头7">
                 </div>
-                <div class="stone" data-weight="18" data-stone="6">
+                <div class="stone" data-weight="20" data-stone="6">
                     <img src="st-6.png" alt="石头6">
                 </div>
                 <div class="stone" data-weight="20" data-stone="1">
@@ -263,263 +289,7 @@
     </div>
 
     <script>
-        let totalWeight = 0;
-        let stonesOnBoat = [];
-        let draggedElement = null;
-        let stoneCounter = {}; // 记录每种石头的数量
-
-        // 初始化拖拽功能
-        function initDragAndDrop() {
-            const stones = document.querySelectorAll('.stone');
-            const boat = document.getElementById('boat');
-            const boatStones = document.getElementById('boatStones');
-            const controlPanel = document.querySelector('.control-panel');
-
-            stones.forEach(stone => {
-                // 鼠标事件
-                stone.addEventListener('mousedown', startDrag);
-                stone.addEventListener('dragstart', e => e.preventDefault());
-                
-                // 触摸事件
-                stone.addEventListener('touchstart', startTouchDrag, {passive: false});
-            });
-
-            // 鼠标事件
-            document.addEventListener('mousemove', drag);
-            document.addEventListener('mouseup', endDrag);
-            
-            // 触摸事件
-            document.addEventListener('touchmove', touchDrag, {passive: false});
-            document.addEventListener('touchend', endTouchDrag);
-
-            // 设置船只为放置目标
-            boat.addEventListener('dragover', e => e.preventDefault());
-            //boat.addEventListener('drop', dropOnBoat);
-            
-            // 设置控制面板为放置目标（用于拖回石头）
-            controlPanel.addEventListener('dragover', e => e.preventDefault());
-        }
-
-        function startDrag(e) {
-            e.preventDefault();
-            draggedElement = e.target.closest('.stone') || e.target.closest('.stone-on-boat');
-            if (draggedElement) {
-                draggedElement.classList.add('dragging');
-                
-                // 创建拖拽副本
-                createDragClone();
-                updateClonePosition(e);
-            }
-        }
-
-        function startTouchDrag(e) {
-            e.preventDefault();
-            draggedElement = e.target.closest('.stone') || e.target.closest('.stone-on-boat');
-            if (draggedElement) {
-                draggedElement.classList.add('dragging');
-                
-                // 创建拖拽副本
-                createDragClone();
-                const touch = e.touches[0];
-                updateClonePosition(touch);
-            }
-        }
-
-        function createDragClone() {
-            const clone = draggedElement.cloneNode(true);
-            clone.style.position = 'fixed';
-            clone.style.pointerEvents = 'none';
-            clone.style.zIndex = '1000';
-            clone.style.width = '100px';
-            clone.style.height = '100px';
-            clone.id = 'dragClone';
-            
-            // 确保克隆元素内的图片也是100px
-            const img = clone.querySelector('img');
-            if (img) {
-                img.style.width = '100px';
-                img.style.height = '100px';
-            }
-            
-            document.body.appendChild(clone);
-        }
-
-        function drag(e) {
-            if (draggedElement) {
-                updateClonePosition(e);
-            }
-        }
-
-        function touchDrag(e) {
-            if (draggedElement) {
-                e.preventDefault();
-                const touch = e.touches[0];
-                updateClonePosition(touch);
-            }
-        }
-
-        function updateClonePosition(e) {
-            const clone = document.getElementById('dragClone');
-            if (clone) {
-                clone.style.left = (e.clientX - 50) + 'px';
-                clone.style.top = (e.clientY - 50) + 'px';
-            }
-        }
-
-        function endDrag(e) {
-            if (draggedElement) {
-                const clone = document.getElementById('dragClone');
-                if (clone) {
-                    document.body.removeChild(clone);
-                }
-
-                // 检查是否放置在船上
-                checkDropOnBoat(e.clientX, e.clientY);
-
-                draggedElement.classList.remove('dragging');
-                draggedElement = null;
-            }
-        }
-
-        function endTouchDrag(e) {
-            if (draggedElement) {
-                const clone = document.getElementById('dragClone');
-                if (clone) {
-                    document.body.removeChild(clone);
-                }
-
-                // 检查是否放置在船上
-                const touch = e.changedTouches[0];
-                checkDropOnBoat(touch.clientX, touch.clientY);
-
-                draggedElement.classList.remove('dragging');
-                draggedElement = null;
-            }
-        }
-
-        function checkDropOnBoat(x, y) {
-            const boat = document.getElementById('boat');
-            const boatRect = boat.getBoundingClientRect();
-            const controlPanel = document.querySelector('.control-panel');
-            const controlRect = controlPanel.getBoundingClientRect();
-            
-            // 检查是否拖拽到控制面板（拖回）
-            if (x >= controlRect.left && x <= controlRect.right &&
-                y >= controlRect.top && y <= controlRect.bottom) {
-                if (draggedElement.classList.contains('stone-on-boat')) {
-                    removeStoneFromBoat(draggedElement);
-                }
-                return;
-            }
-            
-            // 检查是否拖拽到船上（添加）
-            if (x >= boatRect.left && x <= boatRect.right &&
-                y >= boatRect.top && y <= boatRect.bottom) {
-                if (draggedElement.classList.contains('stone')) {
-                    addStoneToBoat(draggedElement);
-                }
-            }
-        }
-
-        function addStoneToBoat(stoneElement) {
-            const weight = parseInt(stoneElement.dataset.weight);
-            const stoneType = stoneElement.dataset.stone;
-            
-            // 初始化计数器
-            if (!stoneCounter[stoneType]) {
-                stoneCounter[stoneType] = 0;
-            }
-            
-            // 增加计数
-            stoneCounter[stoneType]++;
-
-            // 添加到船上
-            const boatStone = document.createElement('div');
-            boatStone.className = 'stone-on-boat';
-            boatStone.innerHTML = `<img src="st-${stoneType}.png" alt="石头${stoneType}">`;
-            boatStone.dataset.weight = weight;
-            boatStone.dataset.stone = stoneType;
-            boatStone.dataset.id = `${stoneType}-${stoneCounter[stoneType]}`;
-            
-            // 添加点击删除功能和拖拽功能
-            boatStone.addEventListener('click', function() {
-                removeStoneFromBoat(this);
-            });
-            
-            // 为船上的石头添加拖拽事件
-            boatStone.addEventListener('mousedown', startDrag);
-            boatStone.addEventListener('touchstart', startTouchDrag, {passive: false});
-            boatStone.addEventListener('dragstart', e => e.preventDefault());
-            
-            document.getElementById('boatStones').appendChild(boatStone);
-            
-            // 更新数据
-            stonesOnBoat.push({
-                type: stoneType, 
-                weight: weight, 
-                element: boatStone,
-                id: `${stoneType}-${stoneCounter[stoneType]}`
-            });
-            totalWeight += weight;
-            
-            updateDisplay();
-        }
-
-        function removeStoneFromBoat(stoneElement) {
-            const weight = parseInt(stoneElement.dataset.weight);
-            const stoneId = stoneElement.dataset.id;
-            
-            // 从数组中移除
-            stonesOnBoat = stonesOnBoat.filter(stone => stone.id !== stoneId);
-            totalWeight -= weight;
-            
-            // 从DOM中移除
-            stoneElement.remove();
-            
-            updateDisplay();
-        }
-
-        function updateDisplay() {
-            // 船只和水位线下沉效果
-            const boat = document.getElementById('boat');
-            const waterLine = document.getElementById('waterLine');
-            const targetWeight = 200; // 水位线重量
-            const sinkAmount = (totalWeight / targetWeight) * 45; // 最多下沉40px
-            
-            // 船只整体下沉，但保持浮动动画
-            boat.style.transform = `translateY(${sinkAmount}px)`;
-            
-            // 检查是否达到水位线
-            if (totalWeight >= targetWeight - 10 && totalWeight <= targetWeight + 10) {
-                waterLine.style.backgroundColor = '#27ae60';
-                waterLine.style.boxShadow = '0 0 10px rgba(39, 174, 96, 0.9)';
-            } else {
-                waterLine.style.backgroundColor = '#fff';
-                waterLine.style.boxShadow = '0 0 5px rgba(231, 76, 60, 0.6)';
-            }
-        }
-
-        function resetBoat() {
-            // 清空船上的石头
-            document.getElementById('boatStones').innerHTML = '';
-            
-            // 重置数据
-            stonesOnBoat = [];
-            totalWeight = 0;
-            stoneCounter = {};
-            
-            // 重置船只位置
-            const boat = document.getElementById('boat');
-            boat.style.transform = 'translateY(0px)';
-            
-            updateDisplay();
-        }
-
-        // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', function() {
-            initDragAndDrop();
-            updateDisplay();
-        });
+const _0x2d00=['body','addEventListener','.addline-btn','querySelector','remove','stonesContainer','daxiang','zIndex','createElement','boxShadow','width','dragover','dragging','150px','dataset','none','opacity','dragstart','waterLine','top','.control-panel','transition','translateY(0px)','.stone-on-boat','112px','#fff','target','weight','preventDefault','.elephant-on-boat','clientX','classList','boatStones','translateY(','removeChild','backgroundColor','filter','className','changedTouches','right','#27ae60','.stone','contains','stone-on-boat','width\x201s\x20ease-out','.daxiang','style','0\x200\x205px\x20rgba(231,\x2076,\x2060,\x200.6)','clientY','cloneNode','stone','touchstart','left','getElementById','transform','0\x200\x2010px\x20rgba(39,\x20174,\x2096,\x200.9)','display','block','dragClone','closest','touches','.reset-btn','mousemove','img','<img\x20src=\x22st-','transform\x200.3s\x20ease','boat','daxiangContainer','height'];const _0xc1a2=function(_0x2d00d4,_0xc1a241){_0x2d00d4=_0x2d00d4-0x0;let _0x3ef5b7=_0x2d00[_0x2d00d4];return _0x3ef5b7;};let totalWeight=0x0;let stonesOnBoat=[];let draggedElement=null;let stoneCounter={};function initDragAndDrop(){const _0x1cfccf=document['querySelectorAll']('.stone');const _0x185223=document[_0xc1a2('0x3')](_0xc1a2('0x2d'));const _0x18b159=document['getElementById']('boat');const _0x23d1ab=document[_0xc1a2('0x35')]('boatStones');const _0x1c0a73=document['querySelector'](_0xc1a2('0x14'));_0x1cfccf['forEach'](_0x101b35=>{_0x101b35['addEventListener']('mousedown',startDrag);_0x101b35['addEventListener']('dragstart',_0x8af8aa=>_0x8af8aa[_0xc1a2('0x1c')]());_0x101b35['addEventListener'](_0xc1a2('0x33'),startTouchDrag,{'passive':![]});});if(_0x185223){_0x185223[_0xc1a2('0x1')]('mousedown',startDrag);_0x185223[_0xc1a2('0x1')](_0xc1a2('0x11'),_0x539473=>_0x539473[_0xc1a2('0x1c')]());_0x185223[_0xc1a2('0x1')](_0xc1a2('0x33'),startTouchDrag,{'passive':![]});}document[_0xc1a2('0x1')](_0xc1a2('0x3e'),drag);document[_0xc1a2('0x1')]('mouseup',endDrag);document['addEventListener']('touchmove',touchDrag,{'passive':![]});document[_0xc1a2('0x1')]('touchend',endTouchDrag);_0x18b159['addEventListener'](_0xc1a2('0xb'),_0x531d9a=>_0x531d9a[_0xc1a2('0x1c')]());_0x1c0a73[_0xc1a2('0x1')](_0xc1a2('0xb'),_0x4d9d25=>_0x4d9d25[_0xc1a2('0x1c')]());}function startDrag(_0x5c3506){_0x5c3506['preventDefault']();draggedElement=_0x5c3506[_0xc1a2('0x1a')]['closest'](_0xc1a2('0x29'))||_0x5c3506[_0xc1a2('0x1a')][_0xc1a2('0x3b')](_0xc1a2('0x17'))||_0x5c3506[_0xc1a2('0x1a')]['closest']('.daxiang');if(draggedElement){draggedElement[_0xc1a2('0x1f')]['add']('dragging');createDragClone();updateClonePosition(_0x5c3506);}}function startTouchDrag(_0x2aa73d){_0x2aa73d['preventDefault']();draggedElement=_0x2aa73d['target']['closest']('.stone')||_0x2aa73d['target'][_0xc1a2('0x3b')]('.stone-on-boat')||_0x2aa73d['target'][_0xc1a2('0x3b')]('.daxiang');if(draggedElement){draggedElement['classList']['add']('dragging');createDragClone();const _0x5b5597=_0x2aa73d[_0xc1a2('0x3c')][0x0];updateClonePosition(_0x5b5597);}}function createDragClone(){const _0x5630d4=draggedElement[_0xc1a2('0x31')](!![]);_0x5630d4[_0xc1a2('0x2e')]['position']='fixed';_0x5630d4[_0xc1a2('0x2e')]['pointerEvents']=_0xc1a2('0xf');_0x5630d4[_0xc1a2('0x2e')][_0xc1a2('0x7')]='1000';if(draggedElement['classList']['contains'](_0xc1a2('0x6'))){_0x5630d4['style']['width']=_0xc1a2('0xd');_0x5630d4['style'][_0xc1a2('0x44')]=_0xc1a2('0x18');const _0x498e21=_0x5630d4['querySelector']('img');if(_0x498e21){_0x498e21['style']['width']=_0xc1a2('0xd');_0x498e21['style'][_0xc1a2('0x44')]='112px';}}else{_0x5630d4[_0xc1a2('0x2e')][_0xc1a2('0xa')]='100px';_0x5630d4[_0xc1a2('0x2e')][_0xc1a2('0x44')]='100px';const _0xbb4021=_0x5630d4['querySelector'](_0xc1a2('0x3f'));if(_0xbb4021){_0xbb4021[_0xc1a2('0x2e')][_0xc1a2('0xa')]='100px';_0xbb4021[_0xc1a2('0x2e')][_0xc1a2('0x44')]='100px';}}_0x5630d4['id']=_0xc1a2('0x3a');document['body']['appendChild'](_0x5630d4);}function drag(_0x400526){if(draggedElement){updateClonePosition(_0x400526);}}function touchDrag(_0x4fcfcc){if(draggedElement){_0x4fcfcc[_0xc1a2('0x1c')]();const _0x1f22f8=_0x4fcfcc['touches'][0x0];updateClonePosition(_0x1f22f8);}}function updateClonePosition(_0x36b125){const _0x3d4293=document['getElementById']('dragClone');if(_0x3d4293){let _0x2edc21=0x32;let _0x4fbd37=0x32;if(draggedElement&&draggedElement[_0xc1a2('0x1f')][_0xc1a2('0x2a')]('daxiang')){_0x2edc21=0x4b;_0x4fbd37=0x38;}_0x3d4293[_0xc1a2('0x2e')][_0xc1a2('0x34')]=_0x36b125['clientX']-_0x2edc21+'px';_0x3d4293['style'][_0xc1a2('0x13')]=_0x36b125[_0xc1a2('0x30')]-_0x4fbd37+'px';}}function endDrag(_0x322d22){if(draggedElement){const _0x34031d=document[_0xc1a2('0x35')]('dragClone');if(_0x34031d){document[_0xc1a2('0x0')]['removeChild'](_0x34031d);}checkDropOnBoat(_0x322d22[_0xc1a2('0x1e')],_0x322d22[_0xc1a2('0x30')]);draggedElement[_0xc1a2('0x1f')]['remove'](_0xc1a2('0xc'));draggedElement=null;}}function endTouchDrag(_0x381a0e){if(draggedElement){const _0x2e8cf8=document[_0xc1a2('0x35')](_0xc1a2('0x3a'));if(_0x2e8cf8){document['body'][_0xc1a2('0x22')](_0x2e8cf8);}const _0x249f28=_0x381a0e[_0xc1a2('0x26')][0x0];checkDropOnBoat(_0x249f28[_0xc1a2('0x1e')],_0x249f28[_0xc1a2('0x30')]);draggedElement[_0xc1a2('0x1f')]['remove']('dragging');draggedElement=null;}}function checkDropOnBoat(_0x62407d,_0x2c2930){const _0x419fbe=document['getElementById']('boat');const _0x29869a=_0x419fbe['getBoundingClientRect']();const _0x5deb12=document[_0xc1a2('0x3')]('.control-panel');const _0x5bab0a=_0x5deb12['getBoundingClientRect']();if(_0x62407d>=_0x5bab0a['left']&&_0x62407d<=_0x5bab0a['right']&&_0x2c2930>=_0x5bab0a[_0xc1a2('0x13')]&&_0x2c2930<=_0x5bab0a['bottom']){if(draggedElement[_0xc1a2('0x1f')][_0xc1a2('0x2a')]('stone-on-boat')){removeStoneFromBoat(draggedElement);}return;}if(_0x62407d>=_0x29869a[_0xc1a2('0x34')]&&_0x62407d<=_0x29869a[_0xc1a2('0x27')]&&_0x2c2930>=_0x29869a[_0xc1a2('0x13')]&&_0x2c2930<=_0x29869a['bottom']){if(draggedElement[_0xc1a2('0x1f')]['contains']('stone')){addStoneToBoat(draggedElement);}else if(draggedElement['classList']['contains'](_0xc1a2('0x6'))){addElephantToBoat(draggedElement);}}}function addStoneToBoat(_0x43bb9f){const _0x413842=parseInt(_0x43bb9f[_0xc1a2('0xe')][_0xc1a2('0x1b')]);const _0x2e099a=_0x43bb9f['dataset'][_0xc1a2('0x32')];if(!stoneCounter[_0x2e099a]){stoneCounter[_0x2e099a]=0x0;}stoneCounter[_0x2e099a]++;const _0x262cdc=document[_0xc1a2('0x8')]('div');_0x262cdc[_0xc1a2('0x25')]=_0xc1a2('0x2b');_0x262cdc['innerHTML']=_0xc1a2('0x40')+_0x2e099a+'.png\x22\x20alt=\x22石头'+_0x2e099a+'\x22>';_0x262cdc[_0xc1a2('0xe')]['weight']=_0x413842;_0x262cdc['dataset'][_0xc1a2('0x32')]=_0x2e099a;_0x262cdc['dataset']['id']=_0x2e099a+'-'+stoneCounter[_0x2e099a];_0x262cdc[_0xc1a2('0x1')]('click',function(){removeStoneFromBoat(this);});_0x262cdc[_0xc1a2('0x1')]('mousedown',startDrag);_0x262cdc['addEventListener'](_0xc1a2('0x33'),startTouchDrag,{'passive':![]});_0x262cdc[_0xc1a2('0x1')]('dragstart',_0x10aec2=>_0x10aec2['preventDefault']());document[_0xc1a2('0x35')](_0xc1a2('0x20'))['appendChild'](_0x262cdc);stonesOnBoat['push']({'type':_0x2e099a,'weight':_0x413842,'element':_0x262cdc,'id':_0x2e099a+'-'+stoneCounter[_0x2e099a]});totalWeight+=_0x413842;updateDisplay();}function removeStoneFromBoat(_0x4944e0){const _0x55ab0c=parseInt(_0x4944e0['dataset'][_0xc1a2('0x1b')]);const _0x5df015=_0x4944e0[_0xc1a2('0xe')]['id'];stonesOnBoat=stonesOnBoat[_0xc1a2('0x24')](_0x4c03d4=>_0x4c03d4['id']!==_0x5df015);totalWeight-=_0x55ab0c;_0x4944e0['remove']();updateDisplay();}function updateDisplay(){const _0x5b30e0=document[_0xc1a2('0x35')](_0xc1a2('0x42'));const _0x1b4ffc=document['getElementById']('waterLine');const _0x38c298=document[_0xc1a2('0x3')](_0xc1a2('0x3d'));const _0x3330f5=0xc8;const _0x1801de=totalWeight/_0x3330f5*0x2d;_0x5b30e0[_0xc1a2('0x2e')][_0xc1a2('0x36')]=_0xc1a2('0x21')+_0x1801de+'px)';if(totalWeight>=_0x3330f5-0xa&&totalWeight<=_0x3330f5+0xa){_0x1b4ffc['style']['backgroundColor']=_0xc1a2('0x28');_0x1b4ffc['style'][_0xc1a2('0x9')]=_0xc1a2('0x37');if(stonesOnBoat['length']>0x0){_0x38c298[_0xc1a2('0x2e')][_0xc1a2('0x38')]='block';}}else{_0x1b4ffc['style']['backgroundColor']=_0xc1a2('0x19');_0x1b4ffc[_0xc1a2('0x2e')]['boxShadow']=_0xc1a2('0x2f');if(totalWeight===0x0){_0x38c298[_0xc1a2('0x2e')][_0xc1a2('0x38')]=_0xc1a2('0xf');}}}function resetBoat(){document[_0xc1a2('0x35')](_0xc1a2('0x20'))['innerHTML']='';stonesOnBoat=[];totalWeight=0x0;stoneCounter={};elephantOnBoat=![];const _0x4465a5=document['getElementById']('boat');_0x4465a5['style'][_0xc1a2('0x36')]=_0xc1a2('0x16');_0x4465a5[_0xc1a2('0x2e')][_0xc1a2('0x15')]=_0xc1a2('0x41');const _0x557207=document[_0xc1a2('0x35')](_0xc1a2('0x12'));_0x557207['style']['display']='none';const _0x478d2c=document['getElementById'](_0xc1a2('0x43'));const _0x5c36dc=document[_0xc1a2('0x3')]('.daxiang');if(_0x478d2c){_0x478d2c[_0xc1a2('0x2e')]['display']=_0xc1a2('0x39');_0x5c36dc[_0xc1a2('0x2e')][_0xc1a2('0x38')]='block';}const _0x3a2c73=document['getElementById'](_0xc1a2('0x5'));_0x3a2c73[_0xc1a2('0x2e')][_0xc1a2('0x38')]='none';const _0x4eb201=document[_0xc1a2('0x3')](_0xc1a2('0x2'));_0x4eb201[_0xc1a2('0x2e')]['display']=_0xc1a2('0x39');updateDisplay();}let elephantOnBoat=![];function addElephantToBoat(_0x201704){if(elephantOnBoat)return;elephantOnBoat=!![];const _0x1a1328=parseInt(_0x201704[_0xc1a2('0xe')][_0xc1a2('0x1b')]);_0x201704[_0xc1a2('0x2e')]['display']=_0xc1a2('0xf');const _0x3eb65c=document['createElement']('div');_0x3eb65c['className']='elephant-on-boat';_0x3eb65c['innerHTML']='<img\x20src=\x22dx.png\x22\x20alt=\x22大象\x22>';_0x3eb65c['dataset'][_0xc1a2('0x1b')]=_0x1a1328;_0x3eb65c[_0xc1a2('0x2e')]['cssText']='\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20width:\x20400px\x20!important;\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20height:\x20300px\x20!important;\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20position:\x20absolute;\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20top:\x20-300px;\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20left:\x2050%;\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20transform:\x20translateX(-50%);\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20z-index:\x20-1;\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20filter:\x20drop-shadow(2px\x202px\x204px\x20rgba(0,0,0,0.3));\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20';document['getElementById'](_0xc1a2('0x20'))['appendChild'](_0x3eb65c);totalWeight+=_0x1a1328;updateDisplay();}function addLine(){const _0x201cbe=document['getElementById'](_0xc1a2('0x12'));const _0x3637cf=document[_0xc1a2('0x3')](_0xc1a2('0x2'));_0x3637cf['style']['display']='none';_0x201cbe[_0xc1a2('0x2e')][_0xc1a2('0x38')]='block';_0x201cbe[_0xc1a2('0x2e')][_0xc1a2('0xa')]='0%';_0x201cbe['style'][_0xc1a2('0x15')]=_0xc1a2('0x2c');setTimeout(()=>{_0x201cbe['style']['width']='55%';},0x32);setTimeout(()=>{startElephantFadeAndBoatFloat();},0x7d0);}function startElephantFadeAndBoatFloat(){const _0x20ce84=document['querySelector'](_0xc1a2('0x1d'));const _0x5e2afb=document[_0xc1a2('0x35')]('boat');const _0x4c4d97=document[_0xc1a2('0x35')]('stonesContainer');const _0x3b7814=document['querySelector']('.addline-btn');const _0x223eb3=document[_0xc1a2('0x35')]('daxiangContainer');if(_0x223eb3){_0x223eb3['style'][_0xc1a2('0x38')]='none';}if(_0x20ce84){_0x20ce84[_0xc1a2('0x2e')]['transition']='opacity\x202s\x20ease-out';_0x20ce84['style']['opacity']='0';setTimeout(()=>{_0x20ce84[_0xc1a2('0x4')]();elephantOnBoat=![];totalWeight-=0xc8;_0x5e2afb[_0xc1a2('0x2e')][_0xc1a2('0x15')]='transform\x201.5s\x20ease-out';_0x5e2afb[_0xc1a2('0x2e')]['transform']=_0xc1a2('0x16');setTimeout(()=>{_0x4c4d97[_0xc1a2('0x2e')]['display']='grid';_0x4c4d97[_0xc1a2('0x2e')]['opacity']='0';_0x4c4d97['style'][_0xc1a2('0x15')]='opacity\x201s\x20ease-in';setTimeout(()=>{_0x4c4d97[_0xc1a2('0x2e')][_0xc1a2('0x10')]='1';},0x32);const _0x4eafad=document[_0xc1a2('0x35')](_0xc1a2('0x12'));_0x4eafad[_0xc1a2('0x2e')][_0xc1a2('0x23')]=_0xc1a2('0x19');},0x5dc);},0x7d0);}}document[_0xc1a2('0x1')]('DOMContentLoaded',function(){initDragAndDrop();updateDisplay();});
     </script>
 </body>
 </html>
