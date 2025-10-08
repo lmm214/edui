@@ -1,0 +1,673 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地图区域面积计算工具</title>
+    <script type="text/javascript">
+        window._AMapSecurityConfig = {
+            securityJsCode: '0b71da9c4b2abe5d30da60fccd70f788'
+        };
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+        body {
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        #mapContainer {
+            width: 100%;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            min-width: 180px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .area-info {
+            margin-top: 12px;
+        }
+        
+        .area-info h3 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .drawing-controls {
+            border-bottom: 1px solid #eee;
+            margin-bottom: 0;
+            display: flex;
+            gap: 8px;
+        }
+        
+        .control-btn {
+            background: #4b6cb7;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 0;
+            flex: 1;
+        }
+        
+        .area-value {
+            font-size: 28px;
+            font-weight: 600;
+            color: #4b6cb7;
+            margin: 6px 0;
+            cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+        
+        .area-value:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .area-conversions {
+            font-size: 28px;
+            color: #666;
+            line-height: 1.3;
+        }
+        
+        .area-conversions div {
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            margin: 2px 0;
+        }
+        
+        .area-conversions div:hover {
+            background-color: #f0f0f0;
+            color: #4b6cb7;
+        }
+        
+        .area-conversions div.active {
+            font-size: 36px;
+            font-weight: 600;
+            color: #4b6cb7;
+            background-color: #f8f9ff;
+            border: 1px solid #4b6cb7;
+            margin: 6px 0;
+        }
+        
+        .control-btn:hover {
+            background: #3a5a9e;
+            transform: translateY(-1px);
+        }
+        
+        .control-btn.active {
+            background: #28a745;
+        }
+        
+        .status-message {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            z-index: 1000;
+            display: none;
+            font-size: 14px;
+        }
+        
+        .drawing-polygon {
+            stroke: #ff4757;
+            stroke-width: 3;
+            fill: rgba(255, 71, 87, 0.3);
+        }
+        
+        .drawing-point {
+            fill: #ff4757;
+            stroke: white;
+            stroke-width: 2;
+        }
+    </style>
+</head>
+<body>
+    <div id="mapContainer"></div>
+    
+    <div class="control-panel" id="control-panel">
+        <div class="drawing-controls">
+            <button class="control-btn active" id="draw-btn">
+                ✏️ 绘制
+            </button>
+            <button class="control-btn" id="clear-btn">
+                🗑️ 清除
+            </button>
+        </div>
+        
+        <div class="area-info" id="area-info" style="display: none;">
+            <h3>📐 区域面积</h3>
+            <div class="area-value" id="area-value">0 平方米</div>
+            <div class="area-conversions" id="area-conversions">
+                <div>0 公顷</div>
+                <div>0 平方千米</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="status-message" id="status-message"></div>
+
+    <!-- 高德地图API -->
+    <script src="https://webapi.amap.com/maps?v=1.4.15&key=05bce3e045e35d9c8479155adbb6716c&plugin=AMap.Geocoder,AMap.PlaceSearch"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let map, geocoder, placeSearch;
+            let isDrawing = false;
+            let drawingPoints = [];
+            let currentPolygon = null;
+            let pointMarkers = [];
+            
+            // 存储所有绘制的区域
+            let allPolygons = [];
+            let currentActivePolygon = null;
+            
+            const drawBtn = document.getElementById('draw-btn');
+            const clearBtn = document.getElementById('clear-btn');
+            const areaInfo = document.getElementById('area-info');
+            const areaValue = document.getElementById('area-value');
+            const areaConversions = document.getElementById('area-conversions');
+            const statusMessage = document.getElementById('status-message');
+            
+            // 初始化地图
+            function initMap() {
+                map = new AMap.Map('mapContainer', {
+                    zoom: 20, // 改为最大缩放级别
+                    //center: [112.944895, 28.236163], // 长沙市默认位置
+                    viewMode: '2D',
+                    resizeEnable: true
+                });
+                
+                // 加载插件
+                AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch'], function() {
+                    geocoder = new AMap.Geocoder({
+                        city: "全国"
+                    });
+                    
+                    placeSearch = new AMap.PlaceSearch({
+                        city: "全国",
+                        type: "小学",
+                        pageSize: 20,
+                        pageIndex: 1,
+                        extensions: 'all'
+                    });
+                });
+                
+                // 地图点击事件
+                map.on('click', function(e) {
+                    if (isDrawing) {
+                        addDrawingPoint(e.lnglat);
+                    }
+                });
+                
+                // 自动定位到最近的小学
+                setTimeout(() => {
+                    autoFindNearestSchool();
+                }, 1000);
+            }
+            
+            // 显示状态消息
+            function showStatus(message, duration = 3000) {
+                statusMessage.textContent = message;
+                statusMessage.style.display = 'block';
+                
+                setTimeout(() => {
+                    statusMessage.style.display = 'none';
+                }, duration);
+            }
+            
+            // 开始/停止绘制
+            drawBtn.addEventListener('click', function() {
+                if (isDrawing) {
+                    // 完成绘制
+                    finishDrawing();
+                } else {
+                    // 开始绘制
+                    startDrawing();
+                }
+            });
+            
+            // 清除绘制
+            clearBtn.addEventListener('click', function() {
+                clearDrawing();
+                showStatus('已清除所有绘制内容');
+            });
+            
+            // 开始绘制
+            function startDrawing() {
+                isDrawing = true;
+                drawingPoints = [];
+                drawBtn.textContent = '✅ 完成';
+                drawBtn.classList.add('active');
+                document.getElementById('mapContainer').style.cursor = 'crosshair';
+                showStatus('点击地图开始绘制区域，再次点击"完成绘制"按钮结束');
+            }
+            
+            // 完成绘制
+            function finishDrawing() {
+                if (drawingPoints.length < 3) {
+                    showStatus('至少需要3个点才能形成区域');
+                    return;
+                }
+                
+                isDrawing = false;
+                drawBtn.textContent = '✏️ 绘制';
+                drawBtn.classList.remove('active');
+                document.getElementById('mapContainer').style.cursor = 'default';
+                
+                // 创建多边形
+                createPolygon();
+                showStatus('区域绘制完成，面积已计算');
+            }
+            
+            // 添加绘制点
+             function addDrawingPoint(lnglat) {
+                 const point = [lnglat.lng, lnglat.lat];
+                 
+                 // 检查是否点击了第一个点（如果已有3个或更多点）
+                 if (drawingPoints.length >= 3) {
+                     const firstPoint = drawingPoints[0];
+                     const distance = calculateDistance(
+                         firstPoint[1], firstPoint[0],
+                         point[1], point[0]
+                     );
+                     
+                     // 如果点击位置距离第一个点很近（50米内），自动完成绘制
+                     if (distance < 50) {
+                         finishDrawing();
+                         return;
+                     }
+                 }
+                 
+                 drawingPoints.push(point);
+                 
+                 // 添加点标记
+                 const marker = new AMap.CircleMarker({
+                     center: point,
+                     radius: 4,
+                     strokeColor: '#ff4757',
+                     strokeWeight: 2,
+                     fillColor: '#ff4757',
+                     fillOpacity: 0.8,
+                     zIndex: 100
+                 });
+                 
+                 // 如果是第一个点，使其更显眼并添加点击事件
+                 if (drawingPoints.length === 1) {
+                     marker.setOptions({
+                         zIndex: 200
+                     });
+                     
+                     // 为第一个点添加专门的点击事件
+                     marker.on('click', function(event) {
+                         if (event && event.stopPropagation) {
+                             event.stopPropagation(); // 阻止事件冒泡
+                         }
+                         if (isDrawing && drawingPoints.length >= 3) {
+                             finishDrawing();
+                         }
+                         return false; // 阻止默认行为
+                     });
+                     
+                     // 添加鼠标悬停效果
+                     marker.on('mouseover', function() {
+                         if (isDrawing && drawingPoints.length >= 3) {
+                             marker.setOptions({
+                                 radius: 12,
+                                 strokeWeight: 5
+                             });
+                             document.getElementById('mapContainer').style.cursor = 'pointer';
+                         }
+                     });
+                     
+                     marker.on('mouseout', function() {
+                         if (isDrawing) {
+                             marker.setOptions({
+                                 radius: 10,
+                                 strokeWeight: 4
+                             });
+                             document.getElementById('mapContainer').style.cursor = 'crosshair';
+                         }
+                     });
+                 }
+                 
+                 map.add(marker);
+                 pointMarkers.push(marker);
+                 
+                 // 如果有多个点，绘制连线
+                 if (drawingPoints.length > 1) {
+                     updateDrawingLine();
+                 }
+             }
+            
+            // 更新绘制线条
+            function updateDrawingLine() {
+                // 移除之前的临时线条
+                if (window.tempPolyline) {
+                    map.remove(window.tempPolyline);
+                }
+                
+                // 创建新的临时线条
+                window.tempPolyline = new AMap.Polyline({
+                    path: drawingPoints,
+                    strokeColor: '#ff4757',
+                    strokeWeight: 3,
+                    strokeOpacity: 0.8,
+                    strokeStyle: 'dashed'
+                });
+                map.add(window.tempPolyline);
+            }
+            
+            // 创建多边形并计算面积
+            function createPolygon() {
+                // 移除临时线条
+                if (window.tempPolyline) {
+                    map.remove(window.tempPolyline);
+                    window.tempPolyline = null;
+                }
+                
+                // 创建多边形
+                const polygon = new AMap.Polygon({
+                    path: drawingPoints.slice(), // 复制数组避免引用问题
+                    strokeColor: '#ff4757',
+                    strokeWeight: 3,
+                    strokeOpacity: 0.8,
+                    fillColor: '#ff4757',
+                    fillOpacity: 0.3,
+                    cursor: 'pointer'
+                });
+                
+                // 计算面积
+                const area = AMap.GeometryUtil.ringArea(drawingPoints);
+                
+                // 创建多边形数据对象
+                const polygonData = {
+                    polygon: polygon,
+                    points: drawingPoints.slice(),
+                    area: area,
+                    id: Date.now() // 使用时间戳作为唯一ID
+                };
+                
+                // 添加到数组中
+                allPolygons.push(polygonData);
+                
+                // 添加点击事件
+                polygon.on('click', function() {
+                    setActivePolygon(polygonData);
+                });
+                
+                map.add(polygon);
+                
+                // 设置为当前激活的多边形
+                setActivePolygon(polygonData);
+                
+                // 重置绘制状态，准备绘制下一个区域
+                drawingPoints = [];
+                currentPolygon = null;
+                
+                // 移除点标记
+                pointMarkers.forEach(marker => {
+                    map.remove(marker);
+                });
+                pointMarkers = [];
+            }
+            
+            // 设置激活的多边形
+            function setActivePolygon(polygonData) {
+                // 重置所有多边形样式
+                allPolygons.forEach(data => {
+                    data.polygon.setOptions({
+                        strokeColor: '#ff4757',
+                        strokeWeight: 3,
+                        strokeOpacity: 0.8,
+                        fillColor: '#ff4757',
+                        fillOpacity: 0.3
+                    });
+                });
+                
+                // 高亮当前激活的多边形
+                polygonData.polygon.setOptions({
+                    strokeColor: '#2ed573',
+                    strokeWeight: 4,
+                    strokeOpacity: 1,
+                    fillColor: '#2ed573',
+                    fillOpacity: 0.4
+                });
+                
+                currentActivePolygon = polygonData;
+                displayArea(polygonData.area);
+            }
+            
+            // 显示面积信息
+            function displayArea(area) {
+                // 转换单位
+                const hectares = area / 10000; // 公顷
+                const squareKm = area / 1000000; // 平方千米
+                
+                // 格式化显示
+                areaValue.textContent = formatArea(area) + ' 平方米';
+                
+                areaConversions.innerHTML = `
+                    <div class="unit-option" data-unit="hectares">${formatArea(hectares)} 公顷</div>
+                    <div class="unit-option" data-unit="squareKm">${formatArea(squareKm)} 平方千米</div>
+                `;
+                
+                // 添加点击事件监听器
+                const unitOptions = areaConversions.querySelectorAll('.unit-option');
+                unitOptions.forEach(option => {
+                    option.addEventListener('click', function() {
+                        // 移除所有active类
+                        unitOptions.forEach(opt => opt.classList.remove('active'));
+                        areaValue.classList.remove('active');
+                        
+                        // 添加active类到被点击的元素
+                        this.classList.add('active');
+                    });
+                });
+                
+                areaInfo.style.display = 'block';
+            }
+            
+            // 格式化面积数值
+            function formatArea(area) {
+                if (area < 1) {
+                    return area.toFixed(4);
+                } else if (area < 100) {
+                    return area.toFixed(2);
+                } else {
+                    return Math.round(area).toString();
+                }
+            }
+            
+            // 清除绘制
+            function clearDrawing() {
+                // 停止绘制模式
+                isDrawing = false;
+                drawBtn.textContent = '✏️ 绘制';
+                drawBtn.classList.remove('active');
+                document.getElementById('mapContainer').style.cursor = 'default';
+                
+                // 清除所有绘制内容
+                drawingPoints = [];
+                
+                // 移除点标记
+                pointMarkers.forEach(marker => {
+                    map.remove(marker);
+                });
+                pointMarkers = [];
+                
+                // 移除临时线条
+                if (window.tempPolyline) {
+                    map.remove(window.tempPolyline);
+                    window.tempPolyline = null;
+                }
+                
+                // 移除当前绘制中的多边形
+                if (currentPolygon) {
+                    map.remove(currentPolygon);
+                    currentPolygon = null;
+                }
+                
+                // 移除所有已绘制的多边形
+                allPolygons.forEach(data => {
+                    map.remove(data.polygon);
+                });
+                allPolygons = [];
+                currentActivePolygon = null;
+                
+                // 隐藏面积信息
+                areaInfo.style.display = 'none';
+            }
+            
+            // 自动获取用户位置并搜索最近的小学
+            function autoFindNearestSchool() {
+                if (navigator.geolocation) {
+                    showStatus("正在获取您的位置并搜索最近的小学...");
+                    
+                    navigator.geolocation.getCurrentPosition(
+                        function(position) {
+                            const userLat = position.coords.latitude;
+                            const userLng = position.coords.longitude;
+                            const userPosition = [userLng, userLat];
+                            
+                            // 搜索附近的小学并定位到最近的一个
+                            findNearestSchool(userPosition);
+                        },
+                        function(error) {
+                            // 如果获取位置失败，使用默认位置（长沙市）
+                            console.log("无法获取用户位置，使用默认位置");
+                            const defaultPosition = [112.944895, 28.236163];
+                            findNearestSchool(defaultPosition);
+                            showStatus("无法获取您的位置，已显示默认区域的最近小学");
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 5000,
+                            maximumAge: 60000
+                        }
+                    );
+                } else {
+                    // 浏览器不支持地理位置，使用默认位置
+                    const defaultPosition = [112.944895, 28.236163];
+                    findNearestSchool(defaultPosition);
+                    showStatus("您的浏览器不支持地理位置功能，已显示默认区域的最近小学");
+                }
+            }
+            
+            // 搜索最近的小学并定位
+            function findNearestSchool(center) {
+                if (!placeSearch) {
+                    showStatus("搜索功能未初始化，请刷新页面重试");
+                    return;
+                }
+                
+                // 设置搜索中心点
+                placeSearch.searchNearBy('小学', center, 5000, function(status, result) {
+                    if (status === 'complete' && result.poiList && result.poiList.pois.length > 0) {
+                        const schools = result.poiList.pois;
+                        
+                        // 计算距离并找到最近的小学
+                        const schoolsWithDistance = schools.map(school => {
+                            const distance = calculateDistance(
+                                center[1], center[0],
+                                school.location.lat, school.location.lng
+                            );
+                            return { ...school, distance: distance };
+                        }).sort((a, b) => a.distance - b.distance);
+                        
+                        if (schoolsWithDistance.length > 0) {
+                            const nearestSchool = schoolsWithDistance[0];
+                            const schoolPosition = [nearestSchool.location.lng, nearestSchool.location.lat];
+                            
+                            // 将地图中心定位到最近的小学
+                            map.setCenter(schoolPosition);
+                            map.setZoom(20); // 改为最大缩放级别
+                            
+                            // 添加最近小学的标记
+                            const marker = new AMap.Marker({
+                                position: schoolPosition,
+                                icon: new AMap.Icon({
+                                    size: new AMap.Size(25, 34),
+                                    image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png'
+                                }),
+                                title: nearestSchool.name
+                            });
+                            
+                            // 添加信息窗体
+                            const infoWindow = new AMap.InfoWindow({
+                                content: `
+                                    <div style="padding: 10px;">
+                                        <h4 style="margin: 0 0 5px 0; color: #333;">${nearestSchool.name}</h4>
+                                        <p style="margin: 0; color: #666; font-size: 12px;">${nearestSchool.address || '地址信息不详'}</p>
+                                        <p style="margin: 5px 0 0 0; color: #28a745; font-size: 12px;">距离: ${nearestSchool.distance.toFixed(0)}米</p>
+                                    </div>
+                                `,
+                                offset: new AMap.Pixel(0, -30)
+                            });
+                            
+                            marker.on('click', function() {
+                                infoWindow.open(map, marker.getPosition());
+                            });
+                            
+                            map.add(marker);
+                            
+                            showStatus(`已定位到最近的小学：${nearestSchool.name}`);
+                        }
+                    } else {
+                        showStatus("附近没有找到小学，显示当前位置");
+                        map.setCenter(center);
+                    }
+                });
+            }
+            
+            // 计算两点间距离（米）
+            function calculateDistance(lat1, lng1, lat2, lng2) {
+                const R = 6371000; // 地球半径（米）
+                const dLat = (lat2 - lat1) * Math.PI / 180;
+                const dLng = (lng2 - lng1) * Math.PI / 180;
+                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                        Math.sin(dLng/2) * Math.sin(dLng/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                return R * c;
+            }
+            
+            // 初始化
+            initMap();
+        });
+    </script>
+</body>
+</html>
