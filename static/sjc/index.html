@@ -1,0 +1,1792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>一副三角尺</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        
+        #canvas {
+            display: block;
+            cursor: grab;
+            background: white;
+        }
+        
+        #canvas:active {
+            cursor: grabbing;
+        }
+        
+        .info {
+            display: none; /* 隐藏文字提示 */
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        
+        .snap-indicator {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #ff4444;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 999;
+            transform: translate(-50%, -50%);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .snap-indicator.active {
+            opacity: 1;
+        }
+        
+        .random-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            z-index: 1001;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .random-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .random-button:active {
+            transform: scale(0.95);
+        }
+        
+        .random-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="snapIndicator" class="snap-indicator"></div>
+    <button id="randomButton" class="random-button" title="随机拼接三角尺">🎲</button>
+
+    <script>
+        class Triangle {
+            constructor(x, y, size, angle = 0, type = '30-60-90') {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.angle = angle;
+                this.type = type;
+                this.selected = false;
+                this.dragging = false;
+                this.rotating = false;
+                this.dragOffset = { x: 0, y: 0 };
+                this.rotationStart = 0;
+                this.angleStart = 0;
+                // 记录当前旋转使用的局部枢轴（顶点或重心）
+                this.rotationPivotLocal = null;
+                // 记录当前旋转使用的世界枢轴坐标（吸附顶点或重心）
+                this.rotationCenterWorldX = null;
+                this.rotationCenterWorldY = null;
+                
+                // 旋转按钮的相对位置（相对于三角形中心的偏移）
+                this.rotationButtonOffsetX = null;
+                this.rotationButtonOffsetY = null;
+                this.rotationButtonNeedsRecalc = true;  // 标记是否需要重新计算按钮位置
+                
+                // 角度标记显示状态
+                this.angleMarkVisible = {
+                    angle0: false,  // 第一个角（30°或45°）
+                    angle1: false,  // 第二个角（90°）
+                    angle2: false   // 第三个角（60°或45°）
+                };
+                
+                // 根据类型设置顶点
+                this.updateVertices();
+            }
+            
+            updateVertices() {
+                const cos = Math.cos(this.angle);
+                const sin = Math.sin(this.angle);
+                
+                if (this.type === '30-60-90') {
+                    // 30-60-90度直角三角形：90°角在左下，30°角在顶部，60°角在右下
+                    // 在30-60-90三角形中，边长比例为 1 : √3 : 2
+                    // 设置直角边长度，确保90°角在左下角
+                    const shortSide = this.size;           // 短直角边（水平向右）
+                    const longSide = this.size * Math.sqrt(3);  // 长直角边（垂直向上）
+                    
+                    const vertices = [
+                        { x: 0, y: -longSide },               // 顶部 (30°角) - 长边顶端
+                        { x: 0, y: 0 },                       // 左下 (90°角) - 直角顶点
+                        { x: shortSide, y: 0 }                // 右下 (60°角) - 短边顶端
+                    ];
+                    
+                    this.vertices = vertices.map(v => ({
+                        x: this.x + v.x * cos - v.y * sin,
+                        y: this.y + v.x * sin + v.y * cos
+                    }));
+                    // 计算并存储当前三角形中心点（重心）
+                    this.centerX = (this.vertices[0].x + this.vertices[1].x + this.vertices[2].x) / 3;
+                    this.centerY = (this.vertices[0].y + this.vertices[1].y + this.vertices[2].y) / 3;
+                } else if (this.type === '45-45-90') {
+                    // 45-45-90度直角三角形：90°角在左下，两个45°角分别在顶部和右下
+                    // 在45-45-90三角形中，两条直角边相等，斜边为直角边的√2倍
+                    const leg = this.size;                     // 直角边长度
+                    
+                    const vertices = [
+                        { x: 0, y: -leg },                     // 顶部 (45°角) - 垂直边顶端
+                        { x: 0, y: 0 },                       // 左下 (90°角) - 直角顶点
+                        { x: leg, y: 0 }                      // 右下 (45°角) - 水平边顶端
+                    ];
+                    
+                    this.vertices = vertices.map(v => ({
+                        x: this.x + v.x * cos - v.y * sin,
+                        y: this.y + v.x * sin + v.y * cos
+                    }));
+                    // 计算并存储当前三角形中心点（重心）
+                    this.centerX = (this.vertices[0].x + this.vertices[1].x + this.vertices[2].x) / 3;
+                    this.centerY = (this.vertices[0].y + this.vertices[1].y + this.vertices[2].y) / 3;
+                }
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                
+                // 启用抗锯齿和图像平滑
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                
+                // 绘制三角形
+                ctx.beginPath();
+                ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+                for (let i = 1; i < this.vertices.length; i++) {
+                    ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+                }
+                ctx.closePath();
+                
+                // 填充和描边
+                ctx.fillStyle = this.selected ? 'rgba(173, 216, 230, 0.8)' : 'rgba(173, 216, 230, 0.7)';
+                ctx.fill();
+                ctx.strokeStyle = this.selected ? '#4080ff' : '#666';
+                ctx.lineWidth = this.selected ? 3 : 2;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+                
+                // 绘制顶点
+                if (this.selected) {
+                    this.vertices.forEach((vertex, index) => {
+                        ctx.beginPath();
+                        ctx.arc(vertex.x, vertex.y, 5, 0, Math.PI * 2);
+                        ctx.fillStyle = '#ff4444';
+                        ctx.fill();
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    });
+                    
+                    // 绘制旋转按钮（在三角形顶部）
+                    this.drawRotationButton(ctx);
+                }
+                
+                // 绘制角度标记
+                this.drawAngleMarks(ctx);
+                
+                ctx.restore();
+            }
+            
+            drawAngleMarks(ctx) {
+                const fontSize = 20;
+                ctx.font = `bold ${fontSize}px Arial`;
+                ctx.fillStyle = '#333';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                if (this.type === '30-60-90') {
+                    // 绘制30°角的弧线（始终显示）
+                    this.drawAngleArcOnly(ctx, this.vertices[0], this.vertices[1], this.vertices[2], 20);
+                    // 绘制30°角的文字标记（仅在可见时显示）
+                    if (this.angleMarkVisible.angle0) {
+                        this.drawAngleLabel(ctx, this.vertices[0], this.vertices[1], this.vertices[2], 20, '30°');
+                    }
+                    
+                    // 绘制90°角的直角符号（始终显示）
+                    this.drawRightAngleSymbol(ctx, this.vertices[1], this.vertices[0], this.vertices[2], 15);
+                    // 绘制90°角的文字标记（仅在可见时显示）
+                    if (this.angleMarkVisible.angle1) {
+                        this.drawRightAngleLabel(ctx, this.vertices[1], this.vertices[0], this.vertices[2], '90°');
+                    }
+                    
+                    // 绘制60°角的弧线（始终显示）
+                    this.drawAngleArcOnly(ctx, this.vertices[2], this.vertices[0], this.vertices[1], 25);
+                    // 绘制60°角的文字标记（仅在可见时显示）
+                    if (this.angleMarkVisible.angle2) {
+                        this.drawAngleLabel(ctx, this.vertices[2], this.vertices[0], this.vertices[1], 25, '60°');
+                    }
+                } else if (this.type === '45-45-90') {
+                    // 绘制45°角的弧线（始终显示）
+                    this.drawAngleArcOnly(ctx, this.vertices[0], this.vertices[1], this.vertices[2], 20);
+                    // 绘制45°角的文字标记（仅在可见时显示）
+                    if (this.angleMarkVisible.angle0) {
+                        this.drawAngleLabel(ctx, this.vertices[0], this.vertices[1], this.vertices[2], 20, '45°');
+                    }
+                    
+                    // 绘制90°角的直角符号（始终显示）
+                    this.drawRightAngleSymbol(ctx, this.vertices[1], this.vertices[0], this.vertices[2], 15);
+                    // 绘制90°角的文字标记（仅在可见时显示）
+                    if (this.angleMarkVisible.angle1) {
+                        this.drawRightAngleLabel(ctx, this.vertices[1], this.vertices[0], this.vertices[2], '90°');
+                    }
+                    
+                    // 绘制45°角的弧线（始终显示）
+                    this.drawAngleArcOnly(ctx, this.vertices[2], this.vertices[0], this.vertices[1], 20);
+                    // 绘制45°角的文字标记（仅在可见时显示）
+                    if (this.angleMarkVisible.angle2) {
+                        this.drawAngleLabel(ctx, this.vertices[2], this.vertices[0], this.vertices[1], 20, '45°');
+                    }
+                }
+            }
+            
+            drawRightAngleSymbol(ctx, vertex, point1, point2, size) {
+                // 计算两条边的单位向量
+                const vec1 = { x: point1.x - vertex.x, y: point1.y - vertex.y };
+                const vec2 = { x: point2.x - vertex.x, y: point2.y - vertex.y };
+                
+                const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+                const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+                
+                const unit1 = { x: vec1.x / len1, y: vec1.y / len1 };
+                const unit2 = { x: vec2.x / len2, y: vec2.y / len2 };
+                
+                // 绘制直角符号
+                const corner1 = { x: vertex.x + unit1.x * size, y: vertex.y + unit1.y * size };
+                const corner2 = { x: vertex.x + unit2.x * size, y: vertex.y + unit2.y * size };
+                const corner3 = { x: corner1.x + unit2.x * size, y: corner1.y + unit2.y * size };
+                
+                ctx.beginPath();
+                ctx.moveTo(corner1.x, corner1.y);
+                ctx.lineTo(corner3.x, corner3.y);
+                ctx.lineTo(corner2.x, corner2.y);
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            
+            drawRightAngleLabel(ctx, vertex, point1, point2, label) {
+                // 计算两条边的单位向量
+                const vec1 = { x: point1.x - vertex.x, y: point1.y - vertex.y };
+                const vec2 = { x: point2.x - vertex.x, y: point2.y - vertex.y };
+                
+                const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+                const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+                
+                const unit1 = { x: vec1.x / len1, y: vec1.y / len1 };
+                const unit2 = { x: vec2.x / len2, y: vec2.y / len2 };
+                
+                // 计算角平分线方向（向三角形内部）
+                const bisector = { 
+                    x: (unit1.x + unit2.x) / 2, 
+                    y: (unit1.y + unit2.y) / 2 
+                };
+                
+                // 标准化角平分线向量
+                const bisectorLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+                if (bisectorLen > 0) {
+                    bisector.x /= bisectorLen;
+                    bisector.y /= bisectorLen;
+                }
+                
+                // 在角平分线上放置标签，距离顶点50像素
+                const labelDistance = 50;
+                const labelX = vertex.x + bisector.x * labelDistance;
+                const labelY = vertex.y + bisector.y * labelDistance;
+                
+                // 绘制90°标签
+                ctx.fillStyle = '#333';
+                ctx.font = '30px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(label, labelX, labelY);
+            }
+            
+            drawAngleArcOnly(ctx, vertex, point1, point2, radius) {
+                // 计算两条边的向量
+                const vec1 = { x: point1.x - vertex.x, y: point1.y - vertex.y };
+                const vec2 = { x: point2.x - vertex.x, y: point2.y - vertex.y };
+                
+                // 计算角度
+                const angle1 = Math.atan2(vec1.y, vec1.x);
+                const angle2 = Math.atan2(vec2.y, vec2.x);
+                
+                // 确保弧线在三角形内部
+                let startAngle = angle1;
+                let endAngle = angle2;
+                
+                // 计算角度差，确保选择较小的内角
+                let angleDiff = endAngle - startAngle;
+                if (angleDiff > Math.PI) {
+                    angleDiff -= 2 * Math.PI;
+                } else if (angleDiff < -Math.PI) {
+                    angleDiff += 2 * Math.PI;
+                }
+                
+                if (angleDiff < 0) {
+                    [startAngle, endAngle] = [endAngle, startAngle];
+                    angleDiff = -angleDiff;
+                }
+                
+                // 绘制弧线
+                ctx.beginPath();
+                ctx.arc(vertex.x, vertex.y, radius, startAngle, endAngle);
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            
+            drawAngleLabel(ctx, vertex, point1, point2, radius, label) {
+                // 计算三角形的重心，用于确定内部方向
+                const centroidX = (this.vertices[0].x + this.vertices[1].x + this.vertices[2].x) / 3;
+                const centroidY = (this.vertices[0].y + this.vertices[1].y + this.vertices[2].y) / 3;
+                
+                // 从顶点到重心的向量
+                const toCentroid = {
+                    x: centroidX - vertex.x,
+                    y: centroidY - vertex.y
+                };
+                
+                // 标准化向重心的向量
+                const toCentroidLen = Math.sqrt(toCentroid.x * toCentroid.x + toCentroid.y * toCentroid.y);
+                if (toCentroidLen > 0) {
+                    toCentroid.x /= toCentroidLen;
+                    toCentroid.y /= toCentroidLen;
+                }
+                
+                // 使用向重心方向的偏移来确保标签在三角形内部
+                const labelRadius = radius + 50; // 在弧线外侧50像素
+                const labelX = vertex.x + toCentroid.x * labelRadius;
+                const labelY = vertex.y + toCentroid.y * labelRadius;
+                
+                // 绘制角度标签
+                ctx.fillStyle = '#333';
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(label, labelX, labelY);
+            }
+            
+            drawRotationButton(ctx) {
+                // 如果正在旋转，隐藏旋转按钮
+                if (this.rotating) {
+                    return;
+                }
+                
+                // 计算三角形中心点
+                const centerX = (this.vertices[0].x + this.vertices[1].x + this.vertices[2].x) / 3;
+                const centerY = (this.vertices[0].y + this.vertices[1].y + this.vertices[2].y) / 3;
+                
+                // 如果需要重新计算按钮位置（首次选中或重新选中）
+                if (this.rotationButtonNeedsRecalc) {
+                    // 计算三角形的边界矩形
+                    let minX = this.vertices[0].x;
+                    let maxX = this.vertices[0].x;
+                    let minY = this.vertices[0].y;
+                    let maxY = this.vertices[0].y;
+                    
+                    for (let vertex of this.vertices) {
+                        minX = Math.min(minX, vertex.x);
+                        maxX = Math.max(maxX, vertex.x);
+                        minY = Math.min(minY, vertex.y);
+                        maxY = Math.max(maxY, vertex.y);
+                    }
+                    
+                    // 计算按钮在矩形顶部中间的位置
+                    const buttonX = (minX + maxX) / 2;
+                    const buttonY = minY - 30;
+                    
+                    // 存储相对于三角形中心的偏移
+                    this.rotationButtonOffsetX = buttonX - centerX;
+                    this.rotationButtonOffsetY = buttonY - centerY;
+                    
+                    // 标记不再需要重新计算
+                    this.rotationButtonNeedsRecalc = false;
+                }
+                
+                // 使用存储的偏移计算当前按钮位置（跟随三角形旋转）
+                this.rotationButtonX = centerX + this.rotationButtonOffsetX;
+                this.rotationButtonY = centerY + this.rotationButtonOffsetY;
+                this.rotationButtonRadius = 15;            // 按钮半径
+                
+                // 存储三角形中心点用于旋转
+                this.centerX = centerX;
+                this.centerY = centerY;
+                
+                // 绘制旋转按钮
+                ctx.beginPath();
+                ctx.arc(this.rotationButtonX, this.rotationButtonY, this.rotationButtonRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#fefefe';
+                ctx.fill();
+                ctx.strokeStyle = '#4080ff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // 绘制旋转图标（小圆圈）
+                ctx.save();
+                ctx.translate(this.rotationButtonX, this.rotationButtonY);
+                ctx.strokeStyle = '#4080ff';
+                ctx.lineWidth = 2;
+                
+                // 绘制小圆圈
+                ctx.beginPath();
+                ctx.arc(0, 0, 16, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+            
+            isPointInRotationButton(x, y) {
+                if (!this.selected || !this.rotationButtonX) return false;
+                
+                const dx = x - this.rotationButtonX;
+                const dy = y - this.rotationButtonY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                return distance <= this.rotationButtonRadius;
+            }
+            
+            containsPoint(x, y) {
+                // 使用射线法判断点是否在三角形内
+                let inside = false;
+                const vertices = this.vertices;
+                
+                for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+                    if (((vertices[i].y > y) !== (vertices[j].y > y)) &&
+                        (x < (vertices[j].x - vertices[i].x) * (y - vertices[i].y) / (vertices[j].y - vertices[i].y) + vertices[i].x)) {
+                        inside = !inside;
+                    }
+                }
+                
+                return inside;
+            }
+            
+            getClosestVertex(x, y, threshold = 20) {
+                let closest = null;
+                let minDistance = threshold;
+                
+                this.vertices.forEach((vertex, index) => {
+                    const distance = Math.sqrt((x - vertex.x) ** 2 + (y - vertex.y) ** 2);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closest = { index, vertex, distance };
+                    }
+                });
+                
+                return closest;
+            }
+            
+            getClosestEdge(x, y, threshold = 15) {
+                let closest = null;
+                let minDistance = threshold;
+                
+                for (let i = 0; i < this.vertices.length; i++) {
+                    const v1 = this.vertices[i];
+                    const v2 = this.vertices[(i + 1) % this.vertices.length];
+                    
+                    const distance = this.pointToLineDistance(x, y, v1.x, v1.y, v2.x, v2.y);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closest = { 
+                            index: i, 
+                            v1, 
+                            v2, 
+                            distance,
+                            closestPoint: this.getClosestPointOnLine(x, y, v1.x, v1.y, v2.x, v2.y)
+                        };
+                    }
+                }
+                
+                return closest;
+            }
+            
+            pointToLineDistance(px, py, x1, y1, x2, y2) {
+                const A = px - x1;
+                const B = py - y1;
+                const C = x2 - x1;
+                const D = y2 - y1;
+                
+                const dot = A * C + B * D;
+                const lenSq = C * C + D * D;
+                
+                if (lenSq === 0) return Math.sqrt(A * A + B * B);
+                
+                let param = dot / lenSq;
+                param = Math.max(0, Math.min(1, param));
+                
+                const xx = x1 + param * C;
+                const yy = y1 + param * D;
+                
+                return Math.sqrt((px - xx) ** 2 + (py - yy) ** 2);
+            }
+            
+            getClosestPointOnLine(px, py, x1, y1, x2, y2) {
+                const A = px - x1;
+                const B = py - y1;
+                const C = x2 - x1;
+                const D = y2 - y1;
+                
+                const dot = A * C + B * D;
+                const lenSq = C * C + D * D;
+                
+                if (lenSq === 0) return { x: x1, y: y1 };
+                
+                let param = dot / lenSq;
+                param = Math.max(0, Math.min(1, param));
+                
+                return {
+                    x: x1 + param * C,
+                    y: y1 + param * D
+                };
+            }
+            
+            // 检测点击是否在角度区域内
+            isPointInAngleArea(x, y, angleIndex, threshold = 130) {
+                const vertex = this.vertices[angleIndex];
+                const distance = Math.sqrt((x - vertex.x) ** 2 + (y - vertex.y) ** 2);
+                
+                // 首先检查点是否在阈值距离内
+                if (distance > threshold) {
+                    return false;
+                }
+                
+                // 检查点是否在三角形内部
+                if (!this.containsPoint(x, y)) {
+                    return false;
+                }
+                
+                // 进一步检查点是否在角度扇形区域内
+                const otherVertices = this.vertices.filter((_, index) => index !== angleIndex);
+                const point1 = otherVertices[0];
+                const point2 = otherVertices[1];
+                
+                // 计算从顶点到其他两个顶点的向量
+                const vec1 = { x: point1.x - vertex.x, y: point1.y - vertex.y };
+                const vec2 = { x: point2.x - vertex.x, y: point2.y - vertex.y };
+                
+                // 计算从顶点到点击点的向量
+                const vecClick = { x: x - vertex.x, y: y - vertex.y };
+                
+                // 使用叉积判断点是否在角度扇形内
+                // 计算两个边向量的叉积，判断角度方向
+                const cross1 = vec1.x * vecClick.y - vec1.y * vecClick.x;
+                const cross2 = vec2.x * vecClick.y - vec2.y * vecClick.x;
+                
+                // 计算两个边向量之间的叉积，判断角度是否为凸角
+                const edgeCross = vec1.x * vec2.y - vec1.y * vec2.x;
+                
+                // 如果是凸角（叉积同号），点击点应该在两个边向量之间
+                // 如果是凹角（叉积异号），需要特殊处理
+                if (edgeCross >= 0) {
+                    // 凸角：点击点应该在两个边向量之间
+                    return (cross1 >= 0 && cross2 <= 0) || (cross1 <= 0 && cross2 >= 0);
+                } else {
+                    // 凹角：点击点不应该在两个边向量的外侧
+                    return !(cross1 < 0 && cross2 < 0) && !(cross1 > 0 && cross2 > 0);
+                }
+            }
+            
+            // 切换角度标记的显示状态
+            toggleAngleMark(angleIndex) {
+                const angleKey = `angle${angleIndex}`;
+                this.angleMarkVisible[angleKey] = !this.angleMarkVisible[angleKey];
+            }
+            
+        }
+        
+        class CanvasApp {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.snapIndicator = document.getElementById('snapIndicator');
+                
+                this.triangles = [];
+                this.selectedTriangle = null;
+                this.snapThreshold = 20;
+                this.currentSnap = null;
+                this.sharedVertex = null; // 存储共享顶点信息
+                this.persistentSharedVertices = []; // 存储持久化的重合顶点信息
+                
+                // 角度吸附配置
+                this.angleSnapThreshold = 5; // 角度吸附阈值（度）
+                this.snapAngles = [0, 15,30, 45, 60,75, 90, 105,120, 135, 150,165, 180,195, 210, 225, 240,255, 270,285, 300, 315, 330,345]; // 特殊角度
+                
+                this.setupCanvas();
+                this.createTriangles();
+                this.setupEventListeners();
+                this.animate();
+            }
+            
+            setupCanvas() {
+                this.resizeCanvas();
+                window.addEventListener('resize', () => this.resizeCanvas());
+            }
+            
+            resizeCanvas() {
+                // 获取设备像素比，支持高DPI显示
+                const dpr = window.devicePixelRatio || 1;
+                
+                // 设置画布的实际尺寸
+                this.canvas.width = window.innerWidth * dpr;
+                this.canvas.height = window.innerHeight * dpr;
+                
+                // 设置画布的显示尺寸
+                this.canvas.style.width = window.innerWidth + 'px';
+                this.canvas.style.height = window.innerHeight + 'px';
+                
+                // 缩放画布上下文以匹配设备像素比
+                this.ctx.scale(dpr, dpr);
+            }
+            
+            createTriangles() {
+                // 获取显示尺寸（而非实际画布尺寸，避免devicePixelRatio影响）
+                const displayWidth = window.innerWidth;
+                const displayHeight = window.innerHeight;
+                
+                // 计算合适的三角形大小，充分利用窗口空间
+                const windowSize = Math.min(displayWidth, displayHeight);
+                const triangleSize = windowSize * 0.3; // 30-60-90三角形保持原大小
+                const rightTriangleSize = windowSize * 0.34; // 45-45-90三角形增大到35%
+                
+                // 计算三角形间距，使两个三角形的重心在水平居中两侧
+                const spacing = windowSize * 0.55; // 两个三角形重心之间的距离
+                const centerX = displayWidth * 0.4; // 窗口水平中心
+                const centerY = displayHeight * 0.75; // 窗口垂直中心
+                
+                // 创建30-60-90度三角形，重心位于左侧
+                const triangle1 = new Triangle(
+                    centerX - spacing / 2,
+                    centerY,
+                    triangleSize,
+                    0,
+                    '30-60-90'
+                );
+                
+                // 创建45-45-90度三角形，重心位于右侧
+                const triangle2 = new Triangle(
+                    centerX + spacing / 2,
+                    centerY,
+                    rightTriangleSize,
+                    0,
+                    '45-45-90'
+                );
+                
+                this.triangles = [triangle1, triangle2];
+            }
+            
+            setupEventListeners() {
+                // 鼠标事件
+                this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+                this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+                this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+                
+                // 触摸屏事件
+                this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+                this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+                this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+                
+                // 防止触摸时的默认行为（如滚动）
+                this.canvas.addEventListener('touchstart', (e) => e.preventDefault());
+                this.canvas.addEventListener('touchmove', (e) => e.preventDefault());
+                this.canvas.addEventListener('touchend', (e) => e.preventDefault());
+                
+                // 随机按钮事件
+                const randomButton = document.getElementById('randomButton');
+                randomButton.addEventListener('click', () => this.randomSnap());
+            }
+            
+            // 检测角度吸附
+            checkAngleSnapping(angle) {
+                // 将角度转换为度数并标准化到0-360范围
+                let angleDegrees = (angle * 180 / Math.PI) % 360;
+                if (angleDegrees < 0) angleDegrees += 360;
+                
+                // 检查是否接近任何特殊角度
+                for (let snapAngle of this.snapAngles) {
+                    let diff = Math.abs(angleDegrees - snapAngle);
+                    // 处理跨越0度的情况
+                    if (diff > 180) diff = 360 - diff;
+                    
+                    if (diff <= this.angleSnapThreshold) {
+                        return snapAngle * Math.PI / 180; // 返回弧度值
+                    }
+                }
+                
+                return null; // 没有找到吸附角度
+            }
+            
+            // 检测两个三角形是否有共享顶点
+            findSharedVertex() {
+                if (this.triangles.length < 2) return null;
+                
+                const threshold = 5; // 顶点重合的阈值距离
+                
+                for (let i = 0; i < this.triangles.length; i++) {
+                    for (let j = i + 1; j < this.triangles.length; j++) {
+                        const triangle1 = this.triangles[i];
+                        const triangle2 = this.triangles[j];
+                        
+                        // 检查每个顶点是否与另一个三角形的顶点重合
+                        for (let v1 = 0; v1 < triangle1.vertices.length; v1++) {
+                            for (let v2 = 0; v2 < triangle2.vertices.length; v2++) {
+                                const vertex1 = triangle1.vertices[v1];
+                                const vertex2 = triangle2.vertices[v2];
+                                
+                                const distance = Math.sqrt(
+                                    (vertex1.x - vertex2.x) ** 2 + 
+                                    (vertex1.y - vertex2.y) ** 2
+                                );
+                                
+                                if (distance <= threshold) {
+                                    return {
+                                        triangle1: triangle1,
+                                        triangle2: triangle2,
+                                        vertex1Index: v1,
+                                        vertex2Index: v2,
+                                        sharedPoint: {
+                                            x: (vertex1.x + vertex2.x) / 2,
+                                            y: (vertex1.y + vertex2.y) / 2
+                                        }
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return null;
+            }
+            
+            // 更新持久化的重合顶点列表
+            updatePersistentSharedVertices() {
+                this.persistentSharedVertices = [];
+                const threshold = 5; // 顶点重合的阈值距离
+                
+                for (let i = 0; i < this.triangles.length; i++) {
+                    for (let j = i + 1; j < this.triangles.length; j++) {
+                        const triangle1 = this.triangles[i];
+                        const triangle2 = this.triangles[j];
+                        
+                        // 检查每个顶点是否与另一个三角形的顶点重合
+                        for (let v1 = 0; v1 < triangle1.vertices.length; v1++) {
+                            for (let v2 = 0; v2 < triangle2.vertices.length; v2++) {
+                                const vertex1 = triangle1.vertices[v1];
+                                const vertex2 = triangle2.vertices[v2];
+                                
+                                const distance = Math.sqrt(
+                                    (vertex1.x - vertex2.x) ** 2 + 
+                                    (vertex1.y - vertex2.y) ** 2
+                                );
+                                
+                                if (distance <= threshold) {
+                                    this.persistentSharedVertices.push({
+                                        triangle1: triangle1,
+                                        triangle2: triangle2,
+                                        vertex1Index: v1,
+                                        vertex2Index: v2,
+                                        sharedPoint: {
+                                            x: (vertex1.x + vertex2.x) / 2,
+                                            y: (vertex1.y + vertex2.y) / 2
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            getMousePos(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                return {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+            }
+            
+            getTouchPos(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const touch = e.touches[0] || e.changedTouches[0];
+                return {
+                    x: touch.clientX - rect.left,
+                    y: touch.clientY - rect.top
+                };
+            }
+            
+            handleMouseDown(e) {
+                const pos = this.getMousePos(e);
+                const isShiftPressed = e.shiftKey;
+                
+                // 首先检查是否点击了旋转按钮
+                let rotationButtonClicked = false;
+                for (let triangle of this.triangles) {
+                    if (triangle.isPointInRotationButton(pos.x, pos.y)) {
+                        // 点击了旋转按钮
+                        this.triangles.forEach(t => {
+                            t.selected = false;
+                            t.rotationButtonNeedsRecalc = true;  // 重新选择时需要重新计算按钮位置
+                        });
+                        triangle.selected = true;
+                        triangle.rotationButtonNeedsRecalc = true;  // 新选中的三角形需要重新计算按钮位置
+                        this.selectedTriangle = triangle;
+                        triangle.rotating = true;
+                        
+                        // 检查是否有共享顶点来确定旋转中心
+                        this.sharedVertex = this.findSharedVertex();
+                        let rotationCenterX, rotationCenterY;
+                        
+                        if (this.sharedVertex && 
+                            (this.sharedVertex.triangle1 === triangle || 
+                             this.sharedVertex.triangle2 === triangle)) {
+                            // 如果有共享顶点，以共享顶点为旋转中心
+                            rotationCenterX = this.sharedVertex.sharedPoint.x;
+                            rotationCenterY = this.sharedVertex.sharedPoint.y;
+                            // 记录局部旋转枢轴为对应的本地顶点
+                            const lv = this.getLocalVerticesFor(triangle);
+                            const idx = (this.sharedVertex.triangle1 === triangle) ? this.sharedVertex.vertex1Index : this.sharedVertex.vertex2Index;
+                            triangle.rotationPivotLocal = lv[idx];
+                            // 锁定世界枢轴
+                            triangle.rotationCenterWorldX = rotationCenterX;
+                            triangle.rotationCenterWorldY = rotationCenterY;
+                        } else {
+                            // 否则以三角形中心为旋转中心
+                            rotationCenterX = triangle.centerX;
+                            rotationCenterY = triangle.centerY;
+                            // 记录局部旋转枢轴为重心
+                            triangle.rotationPivotLocal = this.getLocalCentroidFor(triangle);
+                            // 锁定世界枢轴
+                            triangle.rotationCenterWorldX = rotationCenterX;
+                            triangle.rotationCenterWorldY = rotationCenterY;
+                        }
+                        
+                        triangle.rotationStart = Math.atan2(
+                            pos.y - rotationCenterY,
+                            pos.x - rotationCenterX
+                        );
+                        triangle.angleStart = triangle.angle;
+                        rotationButtonClicked = true;
+                        break;
+                    }
+                }
+                
+                if (rotationButtonClicked) return;
+                
+                // 检查是否点击了角度区域
+                let angleClicked = false;
+                for (let triangle of this.triangles) {
+                    for (let i = 0; i < 3; i++) {
+                        if (triangle.isPointInAngleArea(pos.x, pos.y, i)) {
+                            triangle.toggleAngleMark(i);
+                            angleClicked = true;
+                            break;
+                        }
+                    }
+                    if (angleClicked) break;
+                }
+                
+                if (angleClicked) return;
+                
+                // 查找被点击的三角形
+                let clickedTriangle = null;
+                for (let i = this.triangles.length - 1; i >= 0; i--) {
+                    if (this.triangles[i].containsPoint(pos.x, pos.y)) {
+                        clickedTriangle = this.triangles[i];
+                        break;
+                    }
+                }
+                
+                // 取消之前的选择
+                this.triangles.forEach(t => {
+                    t.selected = false;
+                    t.rotationButtonNeedsRecalc = true;  // 重新选择时需要重新计算按钮位置
+                });
+                
+                if (clickedTriangle) {
+                    clickedTriangle.selected = true;
+                    clickedTriangle.rotationButtonNeedsRecalc = true;  // 新选中的三角形需要重新计算按钮位置
+                    this.selectedTriangle = clickedTriangle;
+                    
+                    if (isShiftPressed) {
+                        // 旋转模式
+                        clickedTriangle.rotating = true;
+                        
+                        // 使用公共函数初始化旋转
+                        this.initializeRotation(clickedTriangle, pos);
+                    } else {
+                        // 拖动模式
+                        clickedTriangle.dragging = true;
+                        clickedTriangle.dragOffset = {
+                            x: pos.x - clickedTriangle.x,
+                            y: pos.y - clickedTriangle.y
+                        };
+                    }
+                } else {
+                    this.selectedTriangle = null;
+                }
+            }
+            
+            handleMouseMove(e) {
+                const pos = this.getMousePos(e);
+                
+                if (this.selectedTriangle) {
+                    if (this.selectedTriangle.dragging) {
+                        // 拖动三角形
+                        const newX = pos.x - this.selectedTriangle.dragOffset.x;
+                        const newY = pos.y - this.selectedTriangle.dragOffset.y;
+                        
+                        // 检查吸附
+                        const snap = this.checkSnapping(this.selectedTriangle, newX, newY);
+                        
+                        if (snap) {
+                            this.selectedTriangle.x = snap.x;
+                            this.selectedTriangle.y = snap.y;
+                            this.currentSnap = snap;
+                            this.showSnapIndicator(snap.snapPoint);
+                        } else {
+                            this.selectedTriangle.x = newX;
+                            this.selectedTriangle.y = newY;
+                            this.currentSnap = null;
+                            this.hideSnapIndicator();
+                        }
+                        
+                        this.selectedTriangle.updateVertices();
+                        // 实时更新持久化重合顶点
+                        this.updatePersistentSharedVertices();
+                        
+                    } else if (this.selectedTriangle.rotating) {
+                        // 旋转过程中不再切换枢轴，使用开始时锁定的世界枢轴
+                        const rotationCenterX = this.selectedTriangle.rotationCenterWorldX ?? this.selectedTriangle.centerX;
+                        const rotationCenterY = this.selectedTriangle.rotationCenterWorldY ?? this.selectedTriangle.centerY;
+                        
+                        const currentAngle = Math.atan2(
+                            pos.y - rotationCenterY,
+                            pos.x - rotationCenterX
+                        );
+                        const deltaAngle = currentAngle - this.selectedTriangle.rotationStart;
+                        // 使用记录的局部枢轴旋转，保持该点不动
+                        const pivotLocal = this.selectedTriangle.rotationPivotLocal || this.getLocalCentroidFor(this.selectedTriangle);
+                        this.rotateTriangleAroundPivot(
+                            this.selectedTriangle,
+                            rotationCenterX,
+                            rotationCenterY,
+                            deltaAngle,
+                            pivotLocal
+                        );
+                        // 实时更新持久化重合顶点
+                        this.updatePersistentSharedVertices();
+                    }
+                }
+            }
+            
+            // 围绕指定点旋转三角形
+            rotateTriangleAroundPoint(triangle, pivotX, pivotY, deltaAngle) {
+                // 计算三角形中心相对于旋转点的位置
+                const centerX = triangle.centerX;
+                const centerY = triangle.centerY;
+                
+                // 计算中心点相对于旋转点的向量
+                const dx = centerX - pivotX;
+                const dy = centerY - pivotY;
+                
+                // 旋转中心点位置
+                const cos = Math.cos(deltaAngle);
+                const sin = Math.sin(deltaAngle);
+                
+                const newCenterX = pivotX + (dx * cos - dy * sin);
+                const newCenterY = pivotY + (dx * sin + dy * cos);
+                
+                // 更新三角形位置和角度
+                triangle.x = newCenterX;
+                triangle.y = newCenterY;
+                triangle.angle = triangle.angleStart + deltaAngle;
+                
+                // 更新顶点
+                triangle.updateVertices();
+            }
+
+            // 初始化三角形的旋转参数
+            initializeRotation(triangle, pos) {
+                // 检查是否有共享顶点来确定旋转中心
+                this.sharedVertex = this.findSharedVertex();
+                let rotationCenterX, rotationCenterY;
+                
+                if (this.sharedVertex && 
+                    (this.sharedVertex.triangle1 === triangle || 
+                     this.sharedVertex.triangle2 === triangle)) {
+                    // 如果有共享顶点，以共享顶点为旋转中心
+                    rotationCenterX = this.sharedVertex.sharedPoint.x;
+                    rotationCenterY = this.sharedVertex.sharedPoint.y;
+                    // 记录局部旋转枢轴为对应的本地顶点
+                    const lv = this.getLocalVerticesFor(triangle);
+                    const idx = (this.sharedVertex.triangle1 === triangle) ? this.sharedVertex.vertex1Index : this.sharedVertex.vertex2Index;
+                    triangle.rotationPivotLocal = lv[idx];
+                } else {
+                    // 否则以三角形中心为旋转中心
+                    rotationCenterX = triangle.centerX;
+                    rotationCenterY = triangle.centerY;
+                    // 记录局部旋转枢轴为重心
+                    triangle.rotationPivotLocal = this.getLocalCentroidFor(triangle);
+                }
+                
+                // 锁定世界枢轴
+                triangle.rotationCenterWorldX = rotationCenterX;
+                triangle.rotationCenterWorldY = rotationCenterY;
+                
+                // 设置旋转起始角度
+                triangle.rotationStart = Math.atan2(
+                    pos.y - rotationCenterY,
+                    pos.x - rotationCenterX
+                );
+                triangle.angleStart = triangle.angle;
+                
+                return { rotationCenterX, rotationCenterY };
+            }
+
+            // 获取与三角形类型匹配的局部顶点坐标（以直角顶点为原点）
+            getLocalVerticesFor(triangle) {
+                if (triangle.type === '30-60-90') {
+                    const shortSide = triangle.size;
+                    const longSide = triangle.size * Math.sqrt(3);
+                    return [
+                        { x: 0, y: -longSide }, // 顶部
+                        { x: 0, y: 0 },         // 左下（直角）
+                        { x: shortSide, y: 0 }  // 右下
+                    ];
+                } else if (triangle.type === '45-45-90') {
+                    const leg = triangle.size;
+                    return [
+                        { x: 0, y: -leg },      // 顶部
+                        { x: 0, y: 0 },         // 左下（直角）
+                        { x: leg, y: 0 }        // 右下
+                    ];
+                }
+                return [{x:0,y:0},{x:0,y:0},{x:0,y:0}];
+            }
+
+            // 获取局部重心（顶点平均值，局部坐标系）
+            getLocalCentroidFor(triangle) {
+                const lv = this.getLocalVerticesFor(triangle);
+                return {
+                    x: (lv[0].x + lv[1].x + lv[2].x) / 3,
+                    y: (lv[0].y + lv[1].y + lv[2].y) / 3
+                };
+            }
+
+            // 按局部枢轴绕指定世界枢轴旋转，保持该局部点不动
+            rotateTriangleAroundPivot(triangle, pivotX, pivotY, deltaAngle, pivotLocal) {
+                let newAngle = triangle.angleStart + deltaAngle;
+                
+                // 检查角度吸附（适用于所有旋转模式，包括共享顶点旋转）
+                const snappedAngle = this.checkAngleSnapping(newAngle);
+                if (snappedAngle !== null) {
+                    newAngle = snappedAngle;
+                }
+                
+                const cos = Math.cos(newAngle);
+                const sin = Math.sin(newAngle);
+
+                // 将局部枢轴旋转到世界坐标的相对向量
+                const rotatedLocalX = pivotLocal.x * cos - pivotLocal.y * sin;
+                const rotatedLocalY = pivotLocal.x * sin + pivotLocal.y * cos;
+
+                // 计算新的锚点位置，使得该局部枢轴对应的世界坐标等于指定旋转中心
+                const newAnchorX = pivotX - rotatedLocalX;
+                const newAnchorY = pivotY - rotatedLocalY;
+
+                triangle.x = newAnchorX;
+                triangle.y = newAnchorY;
+                triangle.angle = newAngle;
+                triangle.updateVertices();
+            }
+            
+            handleMouseUp(e) {
+                if (this.selectedTriangle) {
+                    this.selectedTriangle.dragging = false;
+                    this.selectedTriangle.rotating = false;
+                }
+                this.hideSnapIndicator();
+            }
+            
+            // 触摸事件处理方法
+            handleTouchStart(e) {
+                const pos = this.getTouchPos(e);
+                
+                // 检查是否是长按（用于旋转模式）
+                this.touchStartTime = Date.now();
+                this.touchStartPos = pos;
+                
+                // 设置长按定时器（500ms后进入旋转模式）
+                this.longPressTimer = setTimeout(() => {
+                    this.isLongPress = true;
+                    // 触发旋转模式的逻辑，类似于Shift+点击
+                    this.handleTouchDown(pos, true);
+                }, 500);
+                
+                // 立即处理普通点击
+                this.handleTouchDown(pos, false);
+            }
+            
+            handleTouchMove(e) {
+                const pos = this.getTouchPos(e);
+                
+                // 如果移动距离超过阈值，取消长按
+                if (this.touchStartPos) {
+                    const distance = Math.sqrt(
+                        (pos.x - this.touchStartPos.x) ** 2 + 
+                        (pos.y - this.touchStartPos.y) ** 2
+                    );
+                    if (distance > 10) {
+                        clearTimeout(this.longPressTimer);
+                        this.isLongPress = false;
+                    }
+                }
+                
+                // 处理移动逻辑，类似于handleMouseMove
+                if (this.selectedTriangle) {
+                    if (this.selectedTriangle.dragging) {
+                        // 拖动三角形
+                        const newX = pos.x - this.selectedTriangle.dragOffset.x;
+                        const newY = pos.y - this.selectedTriangle.dragOffset.y;
+                        
+                        // 检查吸附
+                        const snap = this.checkSnapping(this.selectedTriangle, newX, newY);
+                        
+                        if (snap) {
+                            this.selectedTriangle.x = snap.x;
+                            this.selectedTriangle.y = snap.y;
+                            this.currentSnap = snap;
+                            this.showSnapIndicator(snap.snapPoint);
+                        } else {
+                            this.selectedTriangle.x = newX;
+                            this.selectedTriangle.y = newY;
+                            this.currentSnap = null;
+                            this.hideSnapIndicator();
+                        }
+                        
+                        this.selectedTriangle.updateVertices();
+                        // 实时更新持久化重合顶点
+                        this.updatePersistentSharedVertices();
+                        
+                    } else if (this.selectedTriangle.rotating) {
+                        // 旋转过程中不再切换枢轴，使用开始时锁定的世界枢轴
+                        const rotationCenterX = this.selectedTriangle.rotationCenterWorldX ?? this.selectedTriangle.centerX;
+                        const rotationCenterY = this.selectedTriangle.rotationCenterWorldY ?? this.selectedTriangle.centerY;
+                        
+                        const currentAngle = Math.atan2(
+                            pos.y - rotationCenterY,
+                            pos.x - rotationCenterX
+                        );
+                        const deltaAngle = currentAngle - this.selectedTriangle.rotationStart;
+                        // 使用记录的局部枢轴旋转，保持该点不动
+                        const pivotLocal = this.selectedTriangle.rotationPivotLocal || this.getLocalCentroidFor(this.selectedTriangle);
+                        this.rotateTriangleAroundPivot(
+                            this.selectedTriangle,
+                            rotationCenterX,
+                            rotationCenterY,
+                            deltaAngle,
+                            pivotLocal
+                        );
+                        // 实时更新持久化重合顶点
+                        this.updatePersistentSharedVertices();
+                    }
+                }
+            }
+            
+            handleTouchEnd(e) {
+                // 清除长按定时器
+                clearTimeout(this.longPressTimer);
+                this.isLongPress = false;
+                this.touchStartTime = null;
+                this.touchStartPos = null;
+                
+                // 结束拖动和旋转
+                if (this.selectedTriangle) {
+                    this.selectedTriangle.dragging = false;
+                    this.selectedTriangle.rotating = false;
+                }
+                this.hideSnapIndicator();
+            }
+            
+            handleTouchDown(pos, isRotationMode) {
+                // 首先检查是否点击了旋转按钮
+                let rotationButtonClicked = false;
+                for (let triangle of this.triangles) {
+                    if (triangle.isPointInRotationButton(pos.x, pos.y)) {
+                        // 点击了旋转按钮
+                        triangle.selected = true;
+                        triangle.rotationButtonNeedsRecalc = true;  // 新选中的三角形需要重新计算按钮位置
+                        this.selectedTriangle = triangle;
+                        triangle.rotating = true;
+                        
+                        // 使用公共函数初始化旋转
+                        this.initializeRotation(triangle, pos);
+                        
+                        rotationButtonClicked = true;
+                        break;
+                    }
+                }
+                
+                if (rotationButtonClicked) return;
+                
+                // 检查是否点击了角度区域
+                let angleClicked = false;
+                for (let triangle of this.triangles) {
+                    for (let i = 0; i < 3; i++) {
+                        if (triangle.isPointInAngleArea(pos.x, pos.y, i)) {
+                            triangle.toggleAngleMark(i);
+                            angleClicked = true;
+                            break;
+                        }
+                    }
+                    if (angleClicked) break;
+                }
+                
+                if (angleClicked) return;
+                
+                // 查找被点击的三角形
+                let clickedTriangle = null;
+                for (let i = this.triangles.length - 1; i >= 0; i--) {
+                    if (this.triangles[i].containsPoint(pos.x, pos.y)) {
+                        clickedTriangle = this.triangles[i];
+                        break;
+                    }
+                }
+                
+                // 取消之前的选择
+                this.triangles.forEach(t => {
+                    t.selected = false;
+                    t.rotationButtonNeedsRecalc = true;  // 重新选择时需要重新计算按钮位置
+                });
+                
+                if (clickedTriangle) {
+                    clickedTriangle.selected = true;
+                    clickedTriangle.rotationButtonNeedsRecalc = true;  // 新选中的三角形需要重新计算按钮位置
+                    this.selectedTriangle = clickedTriangle;
+                    
+                    if (isRotationMode) {
+                        // 旋转模式（长按触发）
+                        clickedTriangle.rotating = true;
+                        
+                        // 使用公共函数初始化旋转
+                        this.initializeRotation(clickedTriangle, pos);
+                    } else {
+                        // 拖动模式
+                        clickedTriangle.dragging = true;
+                        clickedTriangle.dragOffset = {
+                            x: pos.x - clickedTriangle.x,
+                            y: pos.y - clickedTriangle.y
+                        };
+                    }
+                } else {
+                    this.selectedTriangle = null;
+                }
+            }
+            
+            checkSnapping(triangle, newX, newY) {
+                const tempTriangle = new Triangle(newX, newY, triangle.size, triangle.angle, triangle.type);
+                
+                // 检查与其他三角形的吸附
+                for (let other of this.triangles) {
+                    if (other === triangle) continue;
+                    
+                    // 只进行顶点与顶点之间的吸附
+                    for (let vertex of tempTriangle.vertices) {
+                        const closestVertex = other.getClosestVertex(vertex.x, vertex.y, this.snapThreshold);
+                        if (closestVertex) {
+                            const offsetX = closestVertex.vertex.x - vertex.x;
+                            const offsetY = closestVertex.vertex.y - vertex.y;
+                            return {
+                                x: newX + offsetX,
+                                y: newY + offsetY,
+                                type: 'vertex',
+                                snapPoint: closestVertex.vertex
+                            };
+                        }
+                    }
+                }
+                
+                return null;
+            }
+            
+            showSnapIndicator(point) {
+                this.snapIndicator.style.left = point.x + 'px';
+                this.snapIndicator.style.top = point.y + 'px';
+                this.snapIndicator.classList.add('active');
+            }
+            
+            hideSnapIndicator() {
+                this.snapIndicator.classList.remove('active');
+            }
+            
+            draw() {
+                // 清空画布
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // 添加背景色
+                this.ctx.fillStyle = '#efefef';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // 不绘制网格（已隐藏）
+                //this.drawGrid();
+                
+                // 绘制所有三角形
+                this.triangles.forEach(triangle => triangle.draw(this.ctx));
+                
+                // 绘制持久化的重合顶点红色小点
+                this.drawPersistentSharedVertices();
+            }
+            
+            // 绘制持久化的重合顶点红色小点
+            drawPersistentSharedVertices() {
+                this.persistentSharedVertices.forEach(sharedVertex => {
+                    const point = sharedVertex.sharedPoint;
+                    
+                    // 绘制红色小点
+                    this.ctx.beginPath();
+                    this.ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+                    this.ctx.fillStyle = '#ff4444';
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = '#fff';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.stroke();
+                });
+            }
+            
+            drawGrid() {
+                const gridSize = 50;
+                this.ctx.strokeStyle = '#e0e0e0';
+                this.ctx.lineWidth = 1;
+                
+                for (let x = 0; x < this.canvas.width; x += gridSize) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x, 0);
+                    this.ctx.lineTo(x, this.canvas.height);
+                    this.ctx.stroke();
+                }
+                
+                for (let y = 0; y < this.canvas.height; y += gridSize) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, y);
+                    this.ctx.lineTo(this.canvas.width, y);
+                    this.ctx.stroke();
+                }
+            }
+            
+            animate() {
+                this.draw();
+                requestAnimationFrame(() => this.animate());
+            }
+            
+            // 随机拼接功能 - 双三角形同时移动到中心区域
+            randomSnap() {
+                if (this.triangles.length < 2) return;
+                
+                // 禁用按钮防止重复点击
+                const randomButton = document.getElementById('randomButton');
+                randomButton.disabled = true;
+                
+                // 获取两个三角形
+                const triangle1 = this.triangles[0];
+                const triangle2 = this.triangles[1];
+                
+                // 随机选择每个三角形的一个顶点进行拼接
+                const vertex1Index = Math.floor(Math.random() * 3);
+                const vertex2Index = Math.floor(Math.random() * 3);
+                
+                // 计算窗口中心区域的拼接点
+                const centerX = window.innerWidth / 2;
+                const centerY = window.innerHeight / 2;
+                
+                // 添加一些随机偏移，让拼接点在中心区域内变化
+                const offsetRange = 100; // 中心区域范围
+                const snapPointX = centerX + (Math.random() - 0.5) * offsetRange;
+                const snapPointY = centerY + (Math.random() - 0.5) * offsetRange;
+                
+                // 计算两个三角形的目标角度（边对边拼接）
+                const alignmentAngles = this.calculateDualAlignmentAngles(triangle1, triangle2, vertex1Index, vertex2Index);
+                
+                // 开始双三角形同时动画
+                this.animateDualRandomSnap(
+                    triangle1, triangle2, 
+                    vertex1Index, vertex2Index,
+                    snapPointX, snapPointY,
+                    alignmentAngles.angle1, alignmentAngles.angle2,
+                    randomButton
+                );
+            }
+            
+            // 双三角形同时动画到中心区域拼接
+            animateDualRandomSnap(triangle1, triangle2, vertex1Index, vertex2Index, snapPointX, snapPointY, targetAngle1, targetAngle2, button) {
+                const startTime = Date.now();
+                const duration = 1500; // 动画持续时间1.5秒
+                
+                // 记录两个三角形的初始状态
+                const start1 = { x: triangle1.x, y: triangle1.y, angle: triangle1.angle };
+                const start2 = { x: triangle2.x, y: triangle2.y, angle: triangle2.angle };
+                
+                // 计算两个三角形的目标位置
+                const target1 = this.calculateTriangleTargetPosition(triangle1, vertex1Index, snapPointX, snapPointY, targetAngle1);
+                const target2 = this.calculateTriangleTargetPosition(triangle2, vertex2Index, snapPointX, snapPointY, targetAngle2);
+                
+                // 确保拼接后的组合在窗口中心区域内
+                const adjustedTargets = this.adjustDualTargetsToCenter(target1, target2, triangle1, triangle2, targetAngle1, targetAngle2);
+                
+                const animate = () => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    // 使用缓动函数
+                    const easeProgress = this.easeInOutCubic(progress);
+                    
+                    // 同时动画两个三角形的位置和角度
+                    // 三角形1
+                    triangle1.x = start1.x + (adjustedTargets.target1.x - start1.x) * easeProgress;
+                    triangle1.y = start1.y + (adjustedTargets.target1.y - start1.y) * easeProgress;
+                    
+                    let angleDiff1 = targetAngle1 - start1.angle;
+                    if (angleDiff1 > Math.PI) angleDiff1 -= 2 * Math.PI;
+                    if (angleDiff1 < -Math.PI) angleDiff1 += 2 * Math.PI;
+                    triangle1.angle = start1.angle + angleDiff1 * easeProgress;
+                    triangle1.updateVertices();
+                    
+                    // 三角形2
+                    triangle2.x = start2.x + (adjustedTargets.target2.x - start2.x) * easeProgress;
+                    triangle2.y = start2.y + (adjustedTargets.target2.y - start2.y) * easeProgress;
+                    
+                    let angleDiff2 = targetAngle2 - start2.angle;
+                    if (angleDiff2 > Math.PI) angleDiff2 -= 2 * Math.PI;
+                    if (angleDiff2 < -Math.PI) angleDiff2 += 2 * Math.PI;
+                    triangle2.angle = start2.angle + angleDiff2 * easeProgress;
+                    triangle2.updateVertices();
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        // 动画完成，更新持久化重合顶点
+                        this.updatePersistentSharedVertices();
+                        // 重新启用按钮
+                        button.disabled = false;
+                    }
+                };
+                
+                animate();
+            }
+            
+            // 计算双三角形对齐角度
+            calculateDualAlignmentAngles(triangle1, triangle2, vertex1Index, vertex2Index) {
+                // 随机选择要对齐的边
+                const getAdjacentVertices = (index) => [(index + 1) % 3, (index + 2) % 3];
+                
+                const adjacent1 = getAdjacentVertices(vertex1Index);
+                const adjacent2 = getAdjacentVertices(vertex2Index);
+                
+                const randomEdge1 = Math.floor(Math.random() * 2);
+                const randomEdge2 = Math.floor(Math.random() * 2);
+                
+                const edge1Vertex = adjacent1[randomEdge1];
+                const edge2Vertex = adjacent2[randomEdge2];
+                
+                // 计算理想的对齐角度（让两条边反向对齐）
+                const localVertices1 = this.getLocalVerticesFor(triangle1);
+                const localVertices2 = this.getLocalVerticesFor(triangle2);
+                
+                const edge1Angle = Math.atan2(
+                    localVertices1[edge1Vertex].y - localVertices1[vertex1Index].y,
+                    localVertices1[edge1Vertex].x - localVertices1[vertex1Index].x
+                );
+                
+                const edge2Angle = Math.atan2(
+                    localVertices2[edge2Vertex].y - localVertices2[vertex2Index].y,
+                    localVertices2[edge2Vertex].x - localVertices2[vertex2Index].x
+                );
+                
+                // 让两条边反向对齐
+                const targetAngle1 = -edge1Angle;
+                const targetAngle2 = Math.PI - edge2Angle;
+                
+                return { angle1: targetAngle1, angle2: targetAngle2 };
+            }
+            
+            // 计算三角形目标位置（让指定顶点移动到拼接点）
+            calculateTriangleTargetPosition(triangle, vertexIndex, snapPointX, snapPointY, targetAngle) {
+                const localVertices = this.getLocalVerticesFor(triangle);
+                const localVertex = localVertices[vertexIndex];
+                
+                // 应用目标角度旋转到局部顶点
+                const cos = Math.cos(targetAngle);
+                const sin = Math.sin(targetAngle);
+                
+                const rotatedLocalVertex = {
+                    x: localVertex.x * cos - localVertex.y * sin,
+                    y: localVertex.x * sin + localVertex.y * cos
+                };
+                
+                // 计算目标位置（让旋转后的顶点与拼接点重合）
+                return {
+                    x: snapPointX - rotatedLocalVertex.x,
+                    y: snapPointY - rotatedLocalVertex.y
+                };
+            }
+            
+            // 调整双三角形目标位置，确保组合在中心区域
+            adjustDualTargetsToCenter(target1, target2, triangle1, triangle2, angle1, angle2) {
+                const displayWidth = window.innerWidth;
+                const displayHeight = window.innerHeight;
+                const margin = 80; // 边界留白
+                
+                // 计算两个三角形组合后的边界
+                const bounds1 = this.calculateTriangleBounds(triangle1, target1.x, target1.y, angle1);
+                const bounds2 = this.calculateTriangleBounds(triangle2, target2.x, target2.y, angle2);
+                
+                const combinedBounds = {
+                    minX: Math.min(bounds1.minX, bounds2.minX),
+                    maxX: Math.max(bounds1.maxX, bounds2.maxX),
+                    minY: Math.min(bounds1.minY, bounds2.minY),
+                    maxY: Math.max(bounds1.maxY, bounds2.maxY)
+                };
+                
+                let offsetX = 0;
+                let offsetY = 0;
+                
+                // 检查边界并计算偏移
+                if (combinedBounds.minX < margin) {
+                    offsetX = margin - combinedBounds.minX;
+                }
+                if (combinedBounds.maxX > displayWidth - margin) {
+                    offsetX = (displayWidth - margin) - combinedBounds.maxX;
+                }
+                if (combinedBounds.minY < margin) {
+                    offsetY = margin - combinedBounds.minY;
+                }
+                if (combinedBounds.maxY > displayHeight - margin) {
+                    offsetY = (displayHeight - margin) - combinedBounds.maxY;
+                }
+                
+                // 应用偏移
+                return {
+                    target1: { x: target1.x + offsetX, y: target1.y + offsetY },
+                    target2: { x: target2.x + offsetX, y: target2.y + offsetY }
+                };
+            }
+            
+            // 动画实现随机拼接
+            animateRandomSnap(movingTriangle, targetTriangle, movingVertexIndex, targetVertexIndex, button) {
+                const startTime = Date.now();
+                const duration = 1500; // 动画持续时间1.5秒
+                
+                // 记录初始状态
+                const startX = movingTriangle.x;
+                const startY = movingTriangle.y;
+                const startAngle = movingTriangle.angle;
+                
+                // 计算边的对齐角度
+                const targetAngle = this.calculateAlignmentAngle(movingTriangle, targetTriangle, movingVertexIndex, targetVertexIndex);
+                
+                // 计算最终目标位置（考虑旋转后的顶点位置）
+                const finalTargetPos = this.calculateFinalTargetPosition(
+                    movingTriangle, targetTriangle, movingVertexIndex, targetVertexIndex, targetAngle
+                );
+                
+                // 检查并调整目标位置，确保在窗口内
+                const adjustedTarget = this.adjustPositionToBounds(finalTargetPos, movingTriangle, targetAngle);
+                
+                const animate = () => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    // 使用缓动函数
+                    const easeProgress = this.easeInOutCubic(progress);
+                    
+                    // 同时插值位置和角度
+                    movingTriangle.x = startX + (adjustedTarget.x - startX) * easeProgress;
+                    movingTriangle.y = startY + (adjustedTarget.y - startY) * easeProgress;
+                    
+                    // 插值角度
+                    let angleDiff = targetAngle - startAngle;
+                    // 处理角度跨越问题，选择最短路径
+                    if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+                    if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+                    
+                    movingTriangle.angle = startAngle + angleDiff * easeProgress;
+                    movingTriangle.updateVertices();
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(animate);
+                    } else {
+                        // 动画完成，更新持久化重合顶点
+                        this.updatePersistentSharedVertices();
+                        // 重新启用按钮
+                        button.disabled = false;
+                    }
+                };
+                
+                animate();
+            }
+            
+            // 计算最终目标位置（考虑旋转）
+            calculateFinalTargetPosition(movingTriangle, targetTriangle, movingVertexIndex, targetVertexIndex, targetAngle) {
+                // 获取目标顶点位置
+                const targetVertex = targetTriangle.vertices[targetVertexIndex];
+                
+                // 计算旋转后的局部顶点坐标
+                const localVertices = this.getLocalVerticesFor(movingTriangle);
+                const movingLocalVertex = localVertices[movingVertexIndex];
+                
+                // 应用目标角度旋转到局部顶点
+                const cos = Math.cos(targetAngle);
+                const sin = Math.sin(targetAngle);
+                
+                const rotatedLocalVertex = {
+                    x: movingLocalVertex.x * cos - movingLocalVertex.y * sin,
+                    y: movingLocalVertex.x * sin + movingLocalVertex.y * cos
+                };
+                
+                // 计算目标位置（让旋转后的顶点与目标顶点重合）
+                return {
+                    x: targetVertex.x - rotatedLocalVertex.x,
+                    y: targetVertex.y - rotatedLocalVertex.y
+                };
+            }
+            
+            // 调整位置确保在窗口边界内
+            adjustPositionToBounds(targetPos, triangle, targetAngle) {
+                // 获取显示尺寸
+                const displayWidth = window.innerWidth;
+                const displayHeight = window.innerHeight;
+                const margin = 150; // 边界留白
+                
+                // 计算旋转后的三角形边界
+                const bounds = this.calculateTriangleBounds(triangle, targetPos.x, targetPos.y, targetAngle);
+                
+                let adjustedX = targetPos.x;
+                let adjustedY = targetPos.y;
+                
+                // 检查左边界
+                if (bounds.minX < margin) {
+                    adjustedX += margin - bounds.minX;
+                }
+                // 检查右边界
+                if (bounds.maxX > displayWidth - margin) {
+                    adjustedX -= bounds.maxX - (displayWidth - margin);
+                }
+                // 检查上边界
+                if (bounds.minY < margin) {
+                    adjustedY += margin - bounds.minY;
+                }
+                // 检查下边界
+                if (bounds.maxY > displayHeight - margin) {
+                    adjustedY -= bounds.maxY - (displayHeight - margin);
+                }
+                
+                return { x: adjustedX, y: adjustedY };
+            }
+            
+            // 计算三角形在指定位置和角度下的边界
+            calculateTriangleBounds(triangle, x, y, angle) {
+                const localVertices = this.getLocalVerticesFor(triangle);
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                
+                // 计算所有顶点的世界坐标
+                localVertices.forEach(vertex => {
+                    const worldX = x + vertex.x * cos - vertex.y * sin;
+                    const worldY = y + vertex.x * sin + vertex.y * cos;
+                    
+                    minX = Math.min(minX, worldX);
+                    maxX = Math.max(maxX, worldX);
+                    minY = Math.min(minY, worldY);
+                    maxY = Math.max(maxY, worldY);
+                });
+                
+                return { minX, maxX, minY, maxY };
+            }
+            
+            // 缓动函数
+            easeInOutCubic(t) {
+                return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            }
+            
+            // 计算边对齐的角度
+            calculateAlignmentAngle(movingTriangle, targetTriangle, movingVertexIndex, targetVertexIndex) {
+                // 获取相邻顶点索引
+                const getAdjacentVertices = (index) => {
+                    return [(index + 1) % 3, (index + 2) % 3];
+                };
+                
+                const movingAdjacent = getAdjacentVertices(movingVertexIndex);
+                const targetAdjacent = getAdjacentVertices(targetVertexIndex);
+                
+                // 随机选择一条边进行对齐
+                const randomEdge = Math.floor(Math.random() * 2);
+                const movingEdgeVertex = movingAdjacent[randomEdge];
+                const targetEdgeVertex = targetAdjacent[randomEdge];
+                
+                // 计算目标边的方向
+                const targetVertex1 = targetTriangle.vertices[targetVertexIndex];
+                const targetVertex2 = targetTriangle.vertices[targetEdgeVertex];
+                const targetEdgeAngle = Math.atan2(
+                    targetVertex2.y - targetVertex1.y,
+                    targetVertex2.x - targetVertex1.x
+                );
+                
+                // 计算移动三角形对应边的当前方向
+                const movingLocalVertices = this.getLocalVerticesFor(movingTriangle);
+                const movingLocalVertex1 = movingLocalVertices[movingVertexIndex];
+                const movingLocalVertex2 = movingLocalVertices[movingEdgeVertex];
+                const movingEdgeAngle = Math.atan2(
+                    movingLocalVertex2.y - movingLocalVertex1.y,
+                    movingLocalVertex2.x - movingLocalVertex1.x
+                );
+                
+                // 计算需要的旋转角度（让边反向对齐）
+                return targetEdgeAngle - movingEdgeAngle + Math.PI;
+            }
+        }
+        
+        // 启动应用
+        window.addEventListener('DOMContentLoaded', () => {
+            new CanvasApp();
+        });
+    </script>
+</body>
+</html>
