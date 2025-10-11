@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分数墙</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            /* 防止移动端点击闪烁 */
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        body {
+            overflow: hidden;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            /* 防止移动端滚动和缩放 */
+            touch-action: manipulation;
+        }
+        
+        #canvas {
+            display: block;
+            cursor: pointer;
+            /* 防止移动端长按选择 */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        .number-panel {
+            position: absolute;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            display: none;
+            z-index: 1000;
+        }
+        
+        .number-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .number-btn,.ok-btn {
+            width: 60px;
+            height: 60px;
+            border: 2px solid #007acc;
+            background: #e6f3ff;
+            color: #007acc;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.2s;
+            /* 移动端优化 */
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        
+        .number-btn:hover, .number-btn:active {
+            background: #007acc;
+            color: white;
+        }
+        
+        .panel-title {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #333;
+        }
+        
+        .ok-btn {
+            background: #007acc !important;
+            color: #fff;
+        }
+        
+        .input-box {
+            width: 60px;
+            height: 60px;
+            border: 2px solid #ccc;
+            text-align: center;
+            font-size: 18px;
+            border-radius: 5px;
+        }
+        
+        .color-palette {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+        }
+        
+        .color-block {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #333;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.2s;
+            /* 移动端优化 */
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        
+        .color-block:hover {
+            transform: scale(1.1);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        .color-block.selected {
+            border-color: #007acc;
+            border-width: 3px;
+            transform: scale(1.1);
+        }
+        
+        .color-white { background-color: white; }
+        .color-blue { background-color: #4285f4; }
+        .color-green { background-color: #34a853; }
+        .color-orange { background-color: #ff9800; }
+        .color-red { background-color: #ea4335; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div id="numberPanel" class="number-panel">
+        <div class="number-grid">
+            <button class="number-btn" data-value="2">2</button>
+            <button class="number-btn" data-value="3">3</button>
+            <button class="number-btn" data-value="4">4</button>
+            <button class="number-btn" data-value="5">5</button>
+            <button class="number-btn" data-value="6">6</button>
+            <button class="number-btn" data-value="7">7</button>
+            <button class="number-btn" data-value="8">8</button>
+            <button class="number-btn" data-value="9">9</button>
+            <button class="number-btn" data-value="10">10</button>
+            <button class="number-btn" data-value="11">11</button>
+            <button class="ok-btn" id="okBtn">确定</button>
+        </div>
+    </div>
+    
+    <div class="color-palette">
+        <div class="color-block color-white selected" data-color="white" title="白色"></div>
+        <div class="color-block color-blue" data-color="#4285f4" title="蓝色"></div>
+        <div class="color-block color-green" data-color="#34a853" title="绿色"></div>
+        <div class="color-block color-orange" data-color="#ff9800" title="橙色"></div>
+        <div class="color-block color-red" data-color="#ea4335" title="红色"></div>
+    </div>
+
+    <script>
+        class FractionBoard {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.numberPanel = document.getElementById('numberPanel');
+                this.rectangles = [];
+                this.selectedRect = null;
+                this.selectedParts = 1;
+                this.currentColor = 'white';
+                this.colorMode = false; // 是否处于颜色填充模式
+                this.animatingRect = null; // 正在动画的长方形
+                this.animationId = null; // 动画ID
+                
+                this.initCanvas();
+                this.createDefaultRectangle();
+                this.bindEvents();
+            }
+            
+            initCanvas() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                
+                window.addEventListener('resize', () => {
+                    this.canvas.width = window.innerWidth;
+                    this.canvas.height = window.innerHeight;
+                    
+                    // 窗口大小改变时重新创建长方形以适应新的宽度
+                    this.rectangles = [];
+                    this.createDefaultRectangle();
+                });
+            }
+            
+            createDefaultRectangle() {
+                // 根据窗口宽度动态设置长方形宽度
+                let rectWidth;
+                if (this.canvas.width > 1000) {
+                    rectWidth = 800;
+                } else {
+                    rectWidth = this.canvas.width * 0.8;
+                }
+                
+                // 高度为浏览器高度的十五分之一
+                const rectHeight = this.canvas.height / 20;
+                
+                const rect = {
+                    x: this.canvas.width / 2 - rectWidth / 2,
+                    y: 50,
+                    width: rectWidth,
+                    height: rectHeight,
+                    parts: 1,
+                    colors: ['white'], // 每个部分的颜色
+                    id: Date.now()
+                };
+                this.rectangles.push(rect);
+                this.draw();
+            }
+            
+            draw() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                this.rectangles.forEach(rect => {
+                    this.drawRectangle(rect);
+                });
+            }
+            
+            drawRectangle(rect) {
+                // 绘制白色填充背景
+                this.ctx.fillStyle = 'white';
+                this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+                
+                // 绘制彩色填充
+                if (rect.parts > 1 && rect.colors) {
+                    const partWidth = rect.width / rect.parts;
+                    for (let i = 0; i < rect.parts; i++) {
+                        const color = rect.colors[i] || 'white';
+                        if (color !== 'white') {
+                            this.ctx.fillStyle = color;
+                            this.ctx.fillRect(
+                                rect.x + i * partWidth, 
+                                rect.y, 
+                                partWidth, 
+                                rect.height
+                            );
+                        }
+                    }
+                }
+                
+                // 绘制边框
+                this.ctx.strokeStyle = '#000';
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+                
+                // 绘制分割线
+                if (rect.parts > 1) {
+                    const partWidth = rect.width / rect.parts;
+                    this.ctx.lineWidth = 2;
+                    for (let i = 1; i < rect.parts; i++) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(rect.x + i * partWidth, rect.y);
+                        this.ctx.lineTo(rect.x + i * partWidth, rect.y + rect.height);
+                        this.ctx.stroke();
+                    }
+                }
+            }
+            
+            isPointInRectangle(x, y, rect) {
+                return x >= rect.x && x <= rect.x + rect.width &&
+                       y >= rect.y && y <= rect.y + rect.height;
+            }
+            
+            showNumberPanel(x, y, rect) {
+                this.selectedRect = rect;
+                this.numberPanel.style.left = x + 'px';
+                this.numberPanel.style.top = y + 'px';
+                this.numberPanel.style.display = 'block';
+                
+                // 确保面板不会超出屏幕
+                const panelRect = this.numberPanel.getBoundingClientRect();
+                if (panelRect.right > window.innerWidth) {
+                    this.numberPanel.style.left = (window.innerWidth - panelRect.width - 10) + 'px';
+                }
+                if (panelRect.bottom > window.innerHeight) {
+                    this.numberPanel.style.top = (window.innerHeight - panelRect.height - 10) + 'px';
+                }
+            }
+            
+            hideNumberPanel() {
+                this.numberPanel.style.display = 'none';
+                this.selectedRect = null;
+            }
+            
+            findNextPosition() {
+                // 找到所有长方形的最低位置
+                let maxY = 100; // 默认起始位置
+                this.rectangles.forEach(rect => {
+                    if (rect !== this.animatingRect) { // 排除正在动画的长方形
+                        maxY = Math.max(maxY, rect.y + rect.height);
+                    }
+                });
+                return maxY + 10; // 添加20px间距
+            }
+            
+            animateRectangle(rect, targetY) {
+                const startY = rect.y;
+                const distance = targetY - startY;
+                const duration = 1000; // 增加动画持续时间到1秒
+                const startTime = Date.now();
+                
+                const animate = () => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    // 使用更平滑的缓动函数（ease-in-out）
+                    const easeInOut = progress < 0.5 
+                        ? 2 * progress * progress 
+                        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+                    
+                    rect.y = startY + distance * easeInOut;
+                    
+                    this.draw();
+                    
+                    if (progress < 1) {
+                        this.animationId = requestAnimationFrame(animate);
+                    } else {
+                        // 动画完成
+                        this.animatingRect = null;
+                        this.animationId = null;
+                    }
+                };
+                
+                this.animatingRect = rect;
+                animate();
+            }
+             
+            divideRectangle(parts) {
+                if (this.selectedRect && parts > 0) {
+                    // 停止任何正在进行的动画
+                    if (this.animationId) {
+                        cancelAnimationFrame(this.animationId);
+                        this.animatingRect = null;
+                        this.animationId = null;
+                    }
+                    
+                    // 计算标准高度（与默认长方形一致）
+                    const standardHeight = this.canvas.height / 15;
+                    
+                    // 克隆当前长方形
+                    const newRect = {
+                        x: this.selectedRect.x,
+                        y: this.selectedRect.y, // 初始位置与原长方形相同
+                        width: this.selectedRect.width,
+                        height: standardHeight, // 使用标准高度
+                        parts: parts,
+                        colors: new Array(parts).fill('white')
+                    };
+                    
+                    // 添加到数组
+                    this.rectangles.push(newRect);
+                    
+                    // 计算目标位置并开始动画
+                    const targetY = this.findNextPosition();
+                    this.animateRectangle(newRect, targetY);
+                    
+                    // 隐藏数字面板
+                    this.hideNumberPanel();
+                }
+            }
+            
+            getPartIndex(x, y, rect) {
+                if (!this.isPointInRectangle(x, y, rect) || rect.parts <= 1) {
+                    return -1;
+                }
+                const partWidth = rect.width / rect.parts;
+                const relativeX = x - rect.x;
+                return Math.floor(relativeX / partWidth);
+            }
+            
+            fillPart(rect, partIndex, color) {
+                if (rect && rect.colors && partIndex >= 0 && partIndex < rect.parts) {
+                    rect.colors[partIndex] = color;
+                    this.draw();
+                }
+            }
+            
+            bindEvents() {
+                // Canvas 点击和触摸事件
+                const handleInteraction = (e) => {
+                    // 防止默认行为和事件冒泡
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const rect = this.canvas.getBoundingClientRect();
+                    let x, y;
+                    
+                    // 处理触摸和鼠标事件
+                    if (e.type === 'touchstart' || e.type === 'touchend') {
+                        if (e.touches && e.touches.length > 0) {
+                            x = e.touches[0].clientX - rect.left;
+                            y = e.touches[0].clientY - rect.top;
+                        } else if (e.changedTouches && e.changedTouches.length > 0) {
+                            x = e.changedTouches[0].clientX - rect.left;
+                            y = e.changedTouches[0].clientY - rect.top;
+                        } else {
+                            return;
+                        }
+                    } else {
+                        x = e.clientX - rect.left;
+                        y = e.clientY - rect.top;
+                    }
+                    
+                    // 检查是否点击了某个长方形
+                    for (let rectangle of this.rectangles) {
+                        if (this.isPointInRectangle(x, y, rectangle)) {
+                            // 如果处于颜色模式且长方形已分割，则填充颜色
+                            if (this.colorMode && rectangle.parts > 1) {
+                                const partIndex = this.getPartIndex(x, y, rectangle);
+                                if (partIndex >= 0) {
+                                    this.fillPart(rectangle, partIndex, this.currentColor);
+                                }
+                            } else {
+                                // 否则显示数字面板
+                                this.showNumberPanel(e.clientX || e.changedTouches[0].clientX, 
+                                                   e.clientY || e.changedTouches[0].clientY, rectangle);
+                            }
+                            return;
+                        }
+                    }
+                };
+                
+                // 绑定鼠标事件
+                this.canvas.addEventListener('click', handleInteraction);
+                
+                // 绑定触摸事件（移动端）
+                this.canvas.addEventListener('touchend', handleInteraction, { passive: false });
+                
+                // 防止触摸时的默认行为
+                this.canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                }, { passive: false });
+                
+                this.canvas.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                }, { passive: false });
+                
+                // 数字按钮点击事件处理函数
+                const handleNumberButtonClick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const value = e.target.getAttribute('data-value');
+                    if (value && value !== '') {
+                        this.selectedParts = parseInt(value);
+                        // 重置所有按钮的样式
+                        document.querySelectorAll('.number-btn').forEach(b => {
+                            b.style.background = '#e6f3ff';
+                            b.style.color = '#333';
+                        });
+                        // 高亮选中的按钮
+                        e.target.style.background = '#007acc';
+                        e.target.style.color = 'white';
+                    }
+                };
+                
+                // 为数字按钮绑定点击和触摸事件
+                document.querySelectorAll('.number-btn').forEach(btn => {
+                    // 鼠标点击事件
+                    btn.addEventListener('click', handleNumberButtonClick);
+                    
+                    // 触摸事件支持
+                    btn.addEventListener('touchend', (e) => {
+                        // 防止触摸后触发click事件导致重复执行
+                        e.preventDefault();
+                        handleNumberButtonClick(e);
+                    }, { passive: false });
+                    
+                    // 防止触摸时的默认行为
+                    btn.addEventListener('touchstart', (e) => {
+                        e.stopPropagation();
+                    }, { passive: false });
+                });
+                
+                // OK 按钮事件处理函数
+                const handleOkButtonClick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.divideRectangle(this.selectedParts);
+                };
+                
+                // 为OK按钮绑定点击和触摸事件
+                const okBtn = document.getElementById('okBtn');
+                okBtn.addEventListener('click', handleOkButtonClick);
+                okBtn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    handleOkButtonClick(e);
+                }, { passive: false });
+                okBtn.addEventListener('touchstart', (e) => {
+                    e.stopPropagation();
+                }, { passive: false });
+                
+                // 点击面板外部关闭面板
+                const handleOutsideClick = (e) => {
+                    // 防止在触摸设备上的重复触发
+                    if (e.type === 'touchend') {
+                        e.preventDefault();
+                    }
+                    
+                    if (!this.numberPanel.contains(e.target) && e.target !== this.canvas) {
+                        this.hideNumberPanel();
+                    }
+                };
+                
+                document.addEventListener('click', handleOutsideClick);
+                document.addEventListener('touchend', handleOutsideClick, { passive: false });
+                
+                // 颜色选择器事件处理函数
+                const handleColorBlockClick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // 移除其他颜色块的选中状态
+                    document.querySelectorAll('.color-block').forEach(b => b.classList.remove('selected'));
+                    // 选中当前颜色块
+                    e.target.classList.add('selected');
+                    // 更新当前颜色
+                    this.currentColor = e.target.getAttribute('data-color');
+                    // 启用颜色模式
+                    this.colorMode = true;
+                    // 更新鼠标样式
+                    this.canvas.style.cursor = 'crosshair';
+                };
+                
+                // 为颜色选择器绑定点击和触摸事件
+                document.querySelectorAll('.color-block').forEach(block => {
+                    // 鼠标点击事件
+                    block.addEventListener('click', handleColorBlockClick);
+                    
+                    // 触摸事件支持
+                    block.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        handleColorBlockClick(e);
+                    }, { passive: false });
+                    
+                    // 防止触摸时的默认行为
+                    block.addEventListener('touchstart', (e) => {
+                        e.stopPropagation();
+                    }, { passive: false });
+                });
+            }
+        }
+        
+        // 初始化应用
+        window.addEventListener('DOMContentLoaded', () => {
+            new FractionBoard();
+        });
+    </script>
+</body>
+</html>
