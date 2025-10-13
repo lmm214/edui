@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>圆的面积展开</title>
+  <style>
+    body {
+      background: #f0f8ff;
+      font-family: "Comic Sans MS", cursive, sans-serif;
+      text-align: center;
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+    h1 {
+      color: #ff4500;
+      margin: 0;
+      font-size: clamp(1.5rem, 2vw, 2rem);
+    }
+    #canvasContainer {
+      flex: 1;
+      position: relative;
+      width: 98vw;
+      margin: 0 auto;
+      max-height: calc(100vh - 200px);
+      min-height: 300px;
+    }
+    canvas {
+      background: #f0f8ff;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .controls {
+      margin: 0 auto;
+      width: max-content;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+      flex-wrap: wrap;
+      z-index: 1000;
+    }
+    
+    .controls label {
+      color: #ff4500;
+      font-weight: bold;
+      font-size: clamp(14px, 2.5vw, 18px);
+    }
+    
+    #segmentValue {
+      color: #ff4500;
+      font-weight: bold;
+      font-size: clamp(16px, 3vw, 20px);
+      background: #ffffff;
+      border: 2px solid #ffa500;
+      border-radius: 8px;
+      padding: 4px 8px;
+      min-width: 30px;
+      text-align: center;
+    }
+    
+    input[type=range] {
+      width: clamp(100px, 55vw, 800px);
+      height: 8px;
+      border-radius: 5px;
+      background: linear-gradient(to right, #ffa500, #ff6347);
+      outline: none;
+      -webkit-appearance: none;
+      transition: all 0.3s ease;
+    }
+    
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #ff4500;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(255, 69, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+    
+    input[type=range]::-webkit-slider-thumb:hover {
+      background: #ff6347;
+      transform: scale(1.1);
+      box-shadow: 0 4px 8px rgba(255, 69, 0, 0.4);
+    }
+    
+    input[type=range]::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #ff4500;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(255, 69, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+    
+    input[type=range]::-moz-range-thumb:hover {
+      background: #ff6347;
+      transform: scale(1.1);
+      box-shadow: 0 4px 8px rgba(255, 69, 0, 0.4);
+    }
+    
+    button {
+      font-size: clamp(16px, 3vw, 20px);
+      padding: 10px 20px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #ff6347, #ff4500);
+      color: white;
+      border: none;
+      border-radius: 25px;
+      font-weight: bold;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 8px rgba(255, 69, 0, 0.3);
+    }
+    
+    button:hover {
+      background: linear-gradient(135deg, #ff4500, #ff6347);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(255, 69, 0, 0.4);
+    }
+    
+    button:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 4px rgba(255, 69, 0, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <h1>圆的面积</h1>
+  <div id="canvasContainer">
+    <canvas id="canvas" width="1200" height="800"></canvas>
+  </div>
+  <div class="controls">
+    <span id="segmentValue">4</span>
+    <!-- 使用滑块替代输入框，范围2-20，步长2 -->
+    <input type="range" id="segmentCount" value="4" min="4" max="200" step="2">
+    <button id="unfoldButton">展开</button>
+  </div>
+  
+  <script>
+    /********** 全局参数 **********/
+    let r = 150;      // 圆的半径，现在改为动态计算
+    const T = 2000;   // 动画总时长（毫秒）
+    
+    let canvas, ctx;
+    let animationRequest = null, animationStart = null;
+    let polylineConfig = {}; // 保存圆、顶点、链信息
+    
+    // 拖拽相关全局变量
+    let redOffset = { x: 0, y: 0 };
+    let blueOffset = { x: 0, y: 0 };
+    let dragEnabled = false;  // 扇形展开完成后允许拖拽
+    let draggingGroup = null; // "red" 或 "blue"
+    let lastDragPos = { x: 0, y: 0 };
+    
+    /********** 辅助函数：计算扇形圆心 **********/
+    // 重新设计：基于正确的几何原理
+    // 每个扇形应该有相同的圆心角，扇形圆心位置由弦的垂直平分线确定
+    function computeSectorCenter(P, Q, sectorColor) {
+      // 计算弦的中点
+      let M = { x: (P.x + Q.x) / 2, y: (P.y + Q.y) / 2 };
+      
+      // 计算弦的长度
+      let chordLength = Math.hypot(Q.x - P.x, Q.y - P.y);
+      if (chordLength < 1e-6) return { x: polylineConfig.cx, y: polylineConfig.cy };
+      
+      // 计算弦心距（从扇形圆心到弦的距离）
+      // 使用公式：弦心距 = sqrt(r² - (弦长/2)²)
+      let halfChord = chordLength / 2;
+      if (halfChord > r) return null; // 弦长不能超过直径
+      
+      let chordDistance = Math.sqrt(r * r - halfChord * halfChord);
+      
+      // 计算弦的垂直方向单位向量
+      let chordVector = { x: Q.x - P.x, y: Q.y - P.y };
+      let perpVector = { x: -chordVector.y / chordLength, y: chordVector.x / chordLength };
+      
+      // 根据扇形颜色确定圆心位置（红色在上方，蓝色在下方）
+      let direction = (sectorColor.indexOf("255,0,0") !== -1) ? 1 : -1;
+      
+      let sectorCenter = {
+        x: M.x + direction * chordDistance * perpVector.x,
+        y: M.y + direction * chordDistance * perpVector.y
+      };
+      
+      return sectorCenter;
+    }
+    
+    /********** 辅助函数：绘制扇形 **********/
+    // 参数 P, Q 为扇形弧的两端；sectorColor 为基础颜色字符串（如 "255,0,0" 或 "0,0,255"）
+    function drawSector(P, Q, sectorColor) {
+      // 计算弦长，如果弦长太小（接近0），说明这是一个半径线扇形，不应该绘制
+      let chordLength = Math.hypot(Q.x - P.x, Q.y - P.y);
+      let minChordLength = r * 0.01; // 设置最小弦长阈值为半径的1%
+      if (chordLength < minChordLength) {
+        return; // 跳过绘制半径线扇形
+      }
+      
+      let center = computeSectorCenter(P, Q, sectorColor);
+      if (!center) return;
+      let startAngle = Math.atan2(P.y - center.y, P.x - center.x);
+      let endAngle = Math.atan2(Q.y - center.y, Q.x - center.x);
+      let delta = endAngle - startAngle;
+      if (delta < 0) delta += 2 * Math.PI;
+      let anticlockwise = (delta > Math.PI);
+      
+      ctx.beginPath();
+      ctx.moveTo(center.x, center.y);
+      ctx.arc(center.x, center.y, r, startAngle, endAngle, anticlockwise);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(" + sectorColor + ",0.5)";
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(" + sectorColor + ",1)";
+      ctx.stroke();
+    }
+    
+    /********** 辅助函数：判断点是否在扇形内 **********/
+    // 根据 P, Q 及扇形颜色生成扇形区域，并检测点 pos 是否在该区域内
+    function isPointInSector(P, Q, sectorColor, pos) {
+      // 同样需要检查弦长，避免对半径线扇形进行点击检测
+      let chordLength = Math.hypot(Q.x - P.x, Q.y - P.y);
+      let minChordLength = r * 0.01; // 设置最小弦长阈值为半径的1%
+      if (chordLength < minChordLength) {
+        return false; // 半径线扇形不参与点击检测
+      }
+      
+      let center = computeSectorCenter(P, Q, sectorColor);
+      if (!center) return false;
+      let startAngle = Math.atan2(P.y - center.y, P.x - center.x);
+      let endAngle = Math.atan2(Q.y - center.y, Q.x - center.x);
+      let delta = endAngle - startAngle;
+      if (delta < 0) delta += 2 * Math.PI;
+      let anticlockwise = (delta > Math.PI);
+      
+      let path = new Path2D();
+      path.moveTo(center.x, center.y);
+      path.arc(center.x, center.y, r, startAngle, endAngle, anticlockwise);
+      path.closePath();
+      return ctx.isPointInPath(path, pos.x, pos.y);
+    }
+    
+    /********** 配置生成 **********/
+    function generateConfig() {
+      const input = document.getElementById("segmentCount");
+      const val = parseInt(input.value);
+      const N = val / 2;
+      polylineConfig.N = N;
+      
+      // 动态计算圆的半径，充分利用画布空间
+      // 取画布宽度和高度的较小值的35%作为半径，确保圆能完整显示且有足够的展开空间
+      r = Math.min(canvas.width, canvas.height) * 0.4;
+      
+      // 固定圆的圆心：画布中心
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      polylineConfig.cx = cx;
+      polylineConfig.cy = cy;
+      polylineConfig.r = r;
+      
+      // 在圆上取 N+1 个顶点：确保每个扇形角度相等
+      // 每个扇形的角度应该是 π/N（半圆平均分成N份）
+      let V = [];
+      for (let i = 0; i <= N; i++) {
+        let theta = Math.PI - i * (Math.PI / N);
+        let x = cx + r * Math.cos(theta);
+        let y = cy - r * Math.sin(theta);
+        V.push({ x: x, y: y });
+      }
+      polylineConfig.V = V;
+      
+      // 根据 N 的奇偶性构造两条链：B链（左侧）和 A链（右侧）
+      let Bchain = [], Achain = [];
+      if (N % 2 === 0) {
+        let j = N / 2;
+        for (let i = 0; i <= j; i++) {
+          Bchain.push(V[j - i]);
+        }
+        for (let i = 0; i <= N - j; i++) {
+          Achain.push(V[j + i]);
+        }
+        polylineConfig.creaseType = "even";
+      } else {
+        let j = Math.floor(N / 2);
+        for (let i = 0; i <= j; i++) {
+          Bchain.push(V[j - i]);
+        }
+        for (let i = 0; i <= N - j - 1; i++) {
+          Achain.push(V[j + 1 + i]);
+        }
+        polylineConfig.creaseType = "odd";
+      }
+      polylineConfig.Bchain = Bchain;
+      polylineConfig.Achain = Achain;
+      
+      // 计算各链中每段的长度与初始角度
+      let Bsegments = [];
+      for (let i = 0; i < Bchain.length - 1; i++) {
+        let p0 = Bchain[i], p1 = Bchain[i + 1];
+        let dx = p1.x - p0.x, dy = p1.y - p0.y;
+        let angle = Math.atan2(dy, dx);
+        let len = Math.hypot(dx, dy);
+        Bsegments.push({ len: len, initAngle: angle });
+      }
+      polylineConfig.Bsegments = Bsegments;
+      
+      let Asegments = [];
+      for (let i = 0; i < Achain.length - 1; i++) {
+        let p0 = Achain[i], p1 = Achain[i + 1];
+        let dx = p1.x - p0.x, dy = p1.y - p0.y;
+        let angle = Math.atan2(dy, dx);
+        let len = Math.hypot(dx, dy);
+        Asegments.push({ len: len, initAngle: angle });
+      }
+      polylineConfig.Asegments = Asegments;
+    }
+    
+    /********** 根据动画进度计算链上顶点位置 **********/
+    function computeChainPositions(chain, segments, finalAngle, progress) {
+      let pos = [];
+      pos.push({ x: chain[0].x, y: chain[0].y });
+      let current = { x: chain[0].x, y: chain[0].y };
+      for (let i = 0; i < segments.length; i++) {
+        let seg = segments[i];
+        let curAngle = seg.initAngle + (finalAngle - seg.initAngle) * progress;
+        current = {
+          x: current.x + seg.len * Math.cos(curAngle),
+          y: current.y + seg.len * Math.sin(curAngle)
+        };
+        pos.push(current);
+      }
+      return pos;
+    }
+    
+    /********** 绘制已展开状态（进度=1），并应用拖拽偏移 **********/
+    function drawExpanded() {
+      let Bpos = computeChainPositions(polylineConfig.Bchain, polylineConfig.Bsegments, Math.PI, 1);
+      let Apos = computeChainPositions(polylineConfig.Achain, polylineConfig.Asegments, 0, 1);
+      let polyline = [];
+      for (let i = Bpos.length - 1; i >= 0; i--) {
+        polyline.push(Bpos[i]);
+      }
+      for (let i = 0; i < Apos.length; i++) {
+        polyline.push(Apos[i]);
+      }
+      let mirror = polyline.map(p => ({ x: p.x, y: 2 * polylineConfig.cy - p.y }));
+      
+      // 应用拖拽偏移
+      let redPolyline = polyline.map(p => ({ x: p.x + redOffset.x, y: p.y + redOffset.y }));
+      let bluePolyline = mirror.map(p => ({ x: p.x + blueOffset.x, y: p.y + blueOffset.y }));
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      ctx.arc(polylineConfig.cx, polylineConfig.cy, r, 0, 2 * Math.PI);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = "gray";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      for (let i = 0; i < redPolyline.length - 1; i++) {
+        drawSector(redPolyline[i], redPolyline[i + 1], "255,0,0");
+      }
+      for (let i = 0; i < bluePolyline.length - 1; i++) {
+        drawSector(bluePolyline[i], bluePolyline[i + 1], "0,0,255");
+      }
+    }
+    
+    /********** 动画 **********/
+    function animate(timestamp) {
+      if (!animationStart) animationStart = timestamp;
+      let elapsed = timestamp - animationStart;
+      let progress = Math.min(elapsed / T, 1);
+      
+      let Bpos = computeChainPositions(polylineConfig.Bchain, polylineConfig.Bsegments, Math.PI, progress);
+      let Apos = computeChainPositions(polylineConfig.Achain, polylineConfig.Asegments, 0, progress);
+      let polyline = [];
+      for (let i = Bpos.length - 1; i >= 0; i--) {
+        polyline.push(Bpos[i]);
+      }
+      for (let i = 0; i < Apos.length; i++) {
+        polyline.push(Apos[i]);
+      }
+      let mirror = polyline.map(p => ({ x: p.x, y: 2 * polylineConfig.cy - p.y }));
+      
+      let redPolyline = polyline.map(p => ({ x: p.x + redOffset.x, y: p.y + redOffset.y }));
+      let bluePolyline = mirror.map(p => ({ x: p.x + blueOffset.x, y: p.y + blueOffset.y }));
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      ctx.arc(polylineConfig.cx, polylineConfig.cy, r, 0, 2 * Math.PI);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = "gray";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      for (let i = 0; i < redPolyline.length - 1; i++) {
+        drawSector(redPolyline[i], redPolyline[i + 1], "255,0,0");
+      }
+      for (let i = 0; i < bluePolyline.length - 1; i++) {
+        drawSector(bluePolyline[i], bluePolyline[i + 1], "0,0,255");
+      }
+      
+      if (elapsed < T) {
+        animationRequest = requestAnimationFrame(animate);
+      } else {
+        animationRequest = null;
+        animationStart = null;
+        dragEnabled = true;
+        drawExpanded();
+      }
+    }
+    
+    /********** 绘制初始状态 **********/
+    function drawInitial() {
+      let V = polylineConfig.V;
+      let polyline;
+      if (polylineConfig.creaseType === "even") {
+        let B = polylineConfig.Bchain.slice();
+        let A = polylineConfig.Achain.slice();
+        B.reverse();
+        if (Math.abs(B[B.length - 1].x - A[0].x) < 1e-6 &&
+            Math.abs(B[B.length - 1].y - A[0].y) < 1e-6) {
+          A.shift();
+        }
+        polyline = B.concat(A);
+      } else {
+        let B = polylineConfig.Bchain.slice();
+        B.reverse();
+        polyline = B.concat(polylineConfig.Achain);
+      }
+      let mirror = polyline.map(p => ({ x: p.x, y: 2 * polylineConfig.cy - p.y }));
+      
+      let redPolyline = polyline.map(p => ({ x: p.x + redOffset.x, y: p.y + redOffset.y }));
+      let bluePolyline = mirror.map(p => ({ x: p.x + blueOffset.x, y: p.y + blueOffset.y }));
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      ctx.arc(polylineConfig.cx, polylineConfig.cy, r, 0, 2 * Math.PI);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = "gray";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      for (let i = 0; i < redPolyline.length - 1; i++) {
+        drawSector(redPolyline[i], redPolyline[i + 1], "255,0,0");
+      }
+      for (let i = 0; i < bluePolyline.length - 1; i++) {
+        drawSector(bluePolyline[i], bluePolyline[i + 1], "0,0,255");
+      }
+    }
+    
+    /********** 拖拽相关事件处理 **********/
+    function getEventPos(e) {
+      let rect = canvas.getBoundingClientRect();
+      if (e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+      } else {
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }
+    }
+    
+    // 拖拽开始时，根据鼠标点击位置是否落在红/蓝扇形内来确定拖拽目标
+    function onDragStart(e) {
+      if (!dragEnabled) return;
+      e.preventDefault();
+      let pos = getEventPos(e);
+      
+      // 计算当前展开状态（progress=1）下的红色和蓝色扇形组的不可见折线
+      let Bpos = computeChainPositions(polylineConfig.Bchain, polylineConfig.Bsegments, Math.PI, 1);
+      let Apos = computeChainPositions(polylineConfig.Achain, polylineConfig.Asegments, 0, 1);
+      let polyline = [];
+      for (let i = Bpos.length - 1; i >= 0; i--) {
+        polyline.push(Bpos[i]);
+      }
+      for (let i = 0; i < Apos.length; i++) {
+        polyline.push(Apos[i]);
+      }
+      let mirror = polyline.map(p => ({ x: p.x, y: 2 * polylineConfig.cy - p.y }));
+      let redPolyline = polyline.map(p => ({ x: p.x + redOffset.x, y: p.y + redOffset.y }));
+      let bluePolyline = mirror.map(p => ({ x: p.x + blueOffset.x, y: p.y + blueOffset.y }));
+      
+      // 检查点击位置是否落在任一红色扇形内
+      let targetGroup = null;
+      for (let i = 0; i < redPolyline.length - 1; i++) {
+        if (isPointInSector(redPolyline[i], redPolyline[i+1], "255,0,0", pos)) {
+          targetGroup = "red";
+          break;
+        }
+      }
+      // 如果没有命中红色，再检查蓝色
+      if (!targetGroup) {
+        for (let i = 0; i < bluePolyline.length - 1; i++) {
+          if (isPointInSector(bluePolyline[i], bluePolyline[i+1], "0,0,255", pos)) {
+            targetGroup = "blue";
+            break;
+          }
+        }
+      }
+      
+      // 只有点击命中某一扇形时，才启动拖拽
+      if (targetGroup) {
+        draggingGroup = targetGroup;
+        lastDragPos = pos;
+        if (e.type === "touchstart") {
+          window.addEventListener("touchmove", onDragMove, { passive: false });
+          window.addEventListener("touchend", onDragEnd);
+        } else {
+          window.addEventListener("mousemove", onDragMove);
+          window.addEventListener("mouseup", onDragEnd);
+        }
+      }
+    }
+    
+    function onDragMove(e) {
+      if (!draggingGroup) return;
+      e.preventDefault();
+      let pos = getEventPos(e);
+      let dx = pos.x - lastDragPos.x;
+      let dy = pos.y - lastDragPos.y;
+      
+      // 更新偏移量
+      if (draggingGroup === "red") {
+        redOffset.x += dx;
+        redOffset.y += dy;
+      } else if (draggingGroup === "blue") {
+        blueOffset.x += dx;
+        blueOffset.y += dy;
+      }
+      
+      // 吸附逻辑：针对拖拽组，对每个扇形的后端点检查（只检查一处，满足条件立即调整）
+      let Bpos = computeChainPositions(polylineConfig.Bchain, polylineConfig.Bsegments, Math.PI, 1);
+      let Apos = computeChainPositions(polylineConfig.Achain, polylineConfig.Asegments, 0, 1);
+      let polyline = [];
+      for (let i = Bpos.length - 1; i >= 0; i--) {
+        polyline.push(Bpos[i]);
+      }
+      for (let i = 0; i < Apos.length; i++) {
+        polyline.push(Apos[i]);
+      }
+      let mirror = polyline.map(p => ({ x: p.x, y: 2 * polylineConfig.cy - p.y }));
+      let redPolyline = polyline.map(p => ({ x: p.x + redOffset.x, y: p.y + redOffset.y }));
+      let bluePolyline = mirror.map(p => ({ x: p.x + blueOffset.x, y: p.y + blueOffset.y }));
+      
+      if (draggingGroup === "red") {
+        let snapped = false;
+        // 动态吸附范围：根据圆的半径调整，最小30像素，最大60像素
+        let snapDistance = Math.max(30, Math.min(60, r * 0.2));
+        for (let i = 0; i < redPolyline.length - 1 && !snapped; i++) {
+          let redEndpoint = redPolyline[i+1];
+          for (let j = 0; j < bluePolyline.length - 1; j++) {
+            let blueCenter = computeSectorCenter(bluePolyline[j], bluePolyline[j+1], "0,0,255");
+            if (!blueCenter) continue;
+            let dist = Math.hypot(redEndpoint.x - blueCenter.x, redEndpoint.y - blueCenter.y);
+            if (dist < snapDistance) {
+              redOffset.x += (blueCenter.x - redEndpoint.x);
+              redOffset.y += (blueCenter.y - redEndpoint.y);
+              snapped = true;
+              break;
+            }
+          }
+        }
+      } else if (draggingGroup === "blue") {
+        let snapped = false;
+        // 动态吸附范围：根据圆的半径调整，最小30像素，最大60像素
+        let snapDistance = Math.max(30, Math.min(60, r * 0.2));
+        for (let i = 0; i < bluePolyline.length - 1 && !snapped; i++) {
+          let blueEndpoint = bluePolyline[i+1];
+          for (let j = 0; j < redPolyline.length - 1; j++) {
+            let redCenter = computeSectorCenter(redPolyline[j], redPolyline[j+1], "255,0,0");
+            if (!redCenter) continue;
+            let dist = Math.hypot(blueEndpoint.x - redCenter.x, blueEndpoint.y - redCenter.y);
+            if (dist < snapDistance) {
+              blueOffset.x += (redCenter.x - blueEndpoint.x);
+              blueOffset.y += (redCenter.y - blueEndpoint.y);
+              snapped = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      lastDragPos = pos;
+      drawExpanded();
+    }
+    
+    function onDragEnd(e) {
+      draggingGroup = null;
+      if (e.type === "touchend") {
+        window.removeEventListener("touchmove", onDragMove);
+        window.removeEventListener("touchend", onDragEnd);
+      } else {
+        window.removeEventListener("mousemove", onDragMove);
+        window.removeEventListener("mouseup", onDragEnd);
+      }
+    }
+    
+    /********** 初始化及事件绑定 **********/
+    
+    // 调整画布尺寸以适应容器
+    function resizeCanvas() {
+      const container = document.getElementById("canvasContainer");
+      const containerRect = container.getBoundingClientRect();
+      const containerWidth = containerRect.width - 6; // 减去边框宽度
+      const containerHeight = containerRect.height - 6;
+      
+      canvas.width = containerWidth;
+      canvas.height = containerHeight;
+      
+      // 重新生成配置以适应新的画布尺寸
+      generateConfig();
+      
+      // 重绘当前状态
+      if (dragEnabled) {
+        drawExpanded();
+      } else {
+        drawInitial();
+      }
+    }
+    
+    window.onload = function() {
+      canvas = document.getElementById("canvas");
+      ctx = canvas.getContext("2d");
+      
+      // 初始化画布尺寸
+      resizeCanvas();
+      
+      // 监听窗口大小变化
+      window.addEventListener('resize', function() {
+        clearTimeout(window.resizeTimeout);
+        window.resizeTimeout = setTimeout(resizeCanvas, 100);
+      });
+      
+      document.getElementById("segmentCount").addEventListener("input", function() {
+        let value = parseInt(this.value);
+        
+        // 滑块已经确保了偶数值和范围限制，直接更新显示
+        document.getElementById("segmentValue").textContent = value;
+        
+        if (animationRequest) {
+          cancelAnimationFrame(animationRequest);
+          animationRequest = null;
+          animationStart = null;
+        }
+        dragEnabled = false;
+        redOffset = { x: 0, y: 0 };
+        blueOffset = { x: 0, y: 0 };
+        generateConfig();
+        drawInitial();
+      });
+      
+      document.getElementById("unfoldButton").addEventListener("click", function() {
+        if (animationRequest) return;
+        dragEnabled = false;
+        animationStart = null;
+        animationRequest = requestAnimationFrame(animate);
+      });
+      
+      canvas.addEventListener("mousedown", onDragStart);
+      canvas.addEventListener("touchstart", onDragStart, { passive: false });
+    };
+  </script>
+</body>
+</html>
