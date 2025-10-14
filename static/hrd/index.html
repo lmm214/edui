@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>华容道游戏</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: radial-gradient(29% 54% at 84% 95%, #f1f1f5 28%, #eff2f9 77%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .game-container {
+            background: #f5f5dc;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 5px 30px rgba(0,0,0,0.3);
+        }
+
+        .game-board {
+            position: relative;
+            width: 400px;
+            height: 700px;
+            background: #786143;
+            border: 3px solid #8b4513;
+            margin: 0 auto 20px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(7, 1fr);
+            gap: 2px;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .grid-cell,.grid-cell.exit {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            border: 1px solid rgba(139, 69, 19, 0.3);
+        }
+
+        .grid-cell.exit {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #bbbbbb;
+            font-size: 34px;
+            user-select: none;
+            margin: 5px 0 0 0;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+
+        .grid-cell.empty-exit {
+            background: #f5f5dc;
+            border: none;
+            border-radius: 0;
+            margin: 6px 6px -9px -9px;
+        }
+        .grid-cell.empty-exit.exit-rt {
+            margin: 6px -9px -9px 6px;
+        }
+        .piece {
+            position: absolute;
+            background-size: cover;
+            background-position: center;
+            cursor: move;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .piece.drag-preview {
+            opacity: 0.3;
+            border: 3px dashed #ff6b6b;
+        }
+        .caocao,.guanyu,.zhaoyun,.bing{
+            border: 1px solid #fff;
+            border-radius: 5px;
+        }
+        /* 曹操 - 1x2 (纵向2格) */
+        .caocao {
+            width: 95px;
+            height: 192px;
+            background-image: url('曹操.jpeg');
+        }
+
+        /* 关羽 - 2x1 (横向2格) */
+        .guanyu {
+            width: 195px;
+            height: 95px;
+            background-image: url('关羽.jpeg');
+        }
+
+        /* 赵云 - 1x2 (纵向2格) */
+        .zhaoyun {
+            width: 95px;
+            height: 195px;
+            background-image: url('赵云.jpeg');
+        }
+
+        /* 兵 - 1x1 */
+        .bing {
+            width: 95px;
+            height: 95px;
+            background-image: url('兵.jpeg');
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .btn {
+            background: #8b4513;
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            margin: 0 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #a0522d;
+        }
+
+        .status {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #8b4513;
+            color: white;
+            text-align: center;
+            padding: 10px 20px;
+            font-size: 24px;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .win-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #ffd700;
+            color: #8b4513;
+            padding: 30px;
+            border-radius: 15px;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 2000;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-board" id="gameBoard">
+            <!-- 网格背景 -->
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell"></div>
+            <div class="grid-cell empty-exit"></div>
+            <div class="grid-cell empty-exit"></div>
+            <div class="grid-cell exit">出</div>
+            <div class="grid-cell empty-exit exit-rt"></div>
+            <div class="grid-cell empty-exit"></div>
+            <div class="grid-cell empty-exit"></div>
+            <div class="grid-cell exit">口</div>
+            <div class="grid-cell empty-exit exit-rt"></div>
+            
+            <!-- 游戏棋子 -->
+            <div class="piece caocao" id="caocao" data-x="3" data-y="0"></div>
+            <div class="piece guanyu" id="guanyu" data-x="2" data-y="4"></div>
+            <div class="piece zhaoyun" id="zhaoyun" data-x="1" data-y="3"></div>
+            <div class="piece bing" id="bing" data-x="2" data-y="3"></div>
+        </div>
+
+        <div class="controls">
+            <button class="btn" onclick="resetGame()">重新开始</button>
+        </div>
+
+        <div class="status" id="status">拖动棋子移动，让曹操到达出口！</div>
+    </div>
+
+    <div class="win-message" id="winMessage">
+        🎉 恭喜！曹操成功逃脱！🎉
+    </div>
+
+    <script>
+        class HuarongdaoGame {
+            constructor() {
+                this.board = Array(7).fill().map(() => Array(4).fill(0));
+                this.pieces = {};
+                this.cellSize = 100;
+                this.isDragging = false;
+                this.currentPiece = null;
+                this.moves = 0;
+                this.exitX = 2; // 出口在第3格（从0开始计数）
+                
+                this.initGame();
+                this.setupEventListeners();
+            }
+
+            initGame() {
+                // 初始化棋盘状态
+                this.resetBoard();
+                this.updatePiecePositions();
+            }
+
+            resetBoard() {
+                // 清空棋盘
+                this.board = Array(7).fill().map(() => Array(4).fill(0));
+                
+                // 设置初始位置
+                const initialPositions = {
+                    caocao: {x: 3, y: 0, width: 1, height: 2, id: 1},
+                    guanyu: {x: 2, y: 4, width: 2, height: 1, id: 2},
+                    zhaoyun: {x: 1, y: 3, width: 1, height: 2, id: 3},
+                    bing: {x: 2, y: 3, width: 1, height: 1, id: 4}
+                };
+
+                // 在棋盘上标记棋子位置
+                for (let [pieceId, pos] of Object.entries(initialPositions)) {
+                    this.pieces[pieceId] = pos;
+                    for (let i = 0; i < pos.height; i++) {
+                        for (let j = 0; j < pos.width; j++) {
+                            this.board[pos.y + i][pos.x + j] = pos.id;
+                        }
+                    }
+                }
+            }
+
+            updatePiecePositions() {
+                for (let [pieceId, pos] of Object.entries(this.pieces)) {
+                    const element = document.getElementById(pieceId);
+                    if (element) {
+                        element.style.left = (pos.x * this.cellSize + 7) + 'px';
+                        element.style.top = (pos.y * this.cellSize + 7) + 'px';
+                        element.setAttribute('data-x', pos.x);
+                        element.setAttribute('data-y', pos.y);
+                    }
+                }
+            }
+
+            setupEventListeners() {
+                const pieces = document.querySelectorAll('.piece');
+                
+                pieces.forEach(piece => {
+                    // 鼠标事件
+                    piece.addEventListener('mousedown', (e) => this.startDrag(e, piece));
+                    
+                    // 触摸事件
+                    piece.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        this.startDrag(e, piece);
+                    });
+                });
+
+                // 全局事件
+                document.addEventListener('mousemove', (e) => this.drag(e));
+                document.addEventListener('mouseup', (e) => this.endDrag(e));
+                document.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    this.drag(e);
+                });
+                document.addEventListener('touchend', (e) => this.endDrag(e));
+            }
+
+            startDrag(e, piece) {
+                this.isDragging = true;
+                this.currentPiece = piece;
+                piece.classList.add('dragging');
+                
+                const rect = piece.getBoundingClientRect();
+                const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+                const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+                
+                this.dragOffset = {
+                    x: clientX - rect.left,
+                    y: clientY - rect.top
+                };
+                
+                // 记录拖拽开始位置
+                this.dragStartPos = {
+                    x: clientX,
+                    y: clientY
+                };
+            }
+
+            drag(e) {
+                if (!this.isDragging || !this.currentPiece) return;
+                
+                const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+                const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+                
+                // 计算拖动距离，但不直接移动棋子
+                const deltaX = clientX - this.dragStartPos.x;
+                const deltaY = clientY - this.dragStartPos.y;
+                
+                // 计算可能的移动方向
+                const minDragDistance = 20;
+                const pieceId = this.currentPiece.id;
+                const pieceData = this.pieces[pieceId];
+                const currentX = pieceData.x;
+                const currentY = pieceData.y;
+                
+                let targetX = currentX;
+                let targetY = currentY;
+                
+                // 确定移动方向
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minDragDistance) {
+                    // 水平移动
+                    if (deltaX > 0) targetX = currentX + 1;
+                    else targetX = currentX - 1;
+                } else if (Math.abs(deltaY) > minDragDistance) {
+                    // 垂直移动
+                    if (deltaY > 0) targetY = currentY + 1;
+                    else targetY = currentY - 1;
+                }
+                
+                // 显示移动预览效果
+                //this.showMovePreview(pieceId, targetX, targetY);
+            }
+
+            clearMovePreview() {
+                const preview = document.getElementById('move-preview');
+                if (preview) {
+                    preview.remove();
+                }
+            }
+
+            endDrag(e) {
+                if (!this.isDragging || !this.currentPiece) return;
+                
+                // 清除预览效果
+                this.clearMovePreview();
+                
+                const piece = this.currentPiece;
+                const pieceId = piece.id;
+                const pieceData = this.pieces[pieceId];
+                
+                // 获取当前鼠标/触摸位置
+                const clientX = e.clientX || (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : this.dragStartPos.x);
+                const clientY = e.clientY || (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientY : this.dragStartPos.y);
+                
+                // 计算移动方向和距离
+                const deltaX = clientX - this.dragStartPos.x;
+                const deltaY = clientY - this.dragStartPos.y;
+                
+                const currentX = pieceData.x;
+                const currentY = pieceData.y;
+                
+                // 限制移动距离为一格
+                let newX = currentX;
+                let newY = currentY;
+                
+                // 只允许水平或垂直移动一格，需要足够的拖拽距离
+                const minDragDistance = 20; // 最小拖拽距离
+                
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minDragDistance) {
+                    // 水平移动
+                    if (deltaX > 0) newX = currentX + 1;
+                    else newX = currentX - 1;
+                } else if (Math.abs(deltaY) > minDragDistance) {
+                    // 垂直移动
+                    if (deltaY > 0) newY = currentY + 1;
+                    else newY = currentY - 1;
+                }
+                
+                // 检查移动是否有效
+                if ((newX !== currentX || newY !== currentY) && this.isValidMove(pieceId, newX, newY)) {
+                    this.movePiece(pieceId, newX, newY);
+                    this.moves++;
+                    this.updateMoveStatus(pieceId, currentX, currentY, newX, newY);
+                    this.checkWin();
+                } else {
+                    // 恢复原位置
+                    this.updatePiecePositions();
+                    this.updateStatus('移动无效，请重试');
+                }
+                
+                piece.classList.remove('dragging');
+                this.isDragging = false;
+                this.currentPiece = null;
+            }
+
+            isValidMove(pieceId, newX, newY) {
+                const piece = this.pieces[pieceId];
+                
+                // 检查边界 - 允许曹操移动到第7行（出口区域）
+                if (newX < 0 || newY < 0 || 
+                    newX + piece.width > 4 || 
+                    newY + piece.height > 7) {
+                    return false;
+                }
+                
+                // 检查是否与其他棋子重叠
+                for (let i = 0; i < piece.height; i++) {
+                    for (let j = 0; j < piece.width; j++) {
+                        const checkY = newY + i;
+                        const checkX = newX + j;
+                        
+                        if (this.board[checkY][checkX] !== 0 && 
+                            this.board[checkY][checkX] !== piece.id) {
+                            return false;
+                        }
+                    }
+                }
+                
+                return true;
+            }
+
+            movePiece(pieceId, newX, newY) {
+                const piece = this.pieces[pieceId];
+                
+                // 清除原位置
+                for (let i = 0; i < piece.height; i++) {
+                    for (let j = 0; j < piece.width; j++) {
+                        this.board[piece.y + i][piece.x + j] = 0;
+                    }
+                }
+                
+                // 设置新位置
+                piece.x = newX;
+                piece.y = newY;
+                
+                for (let i = 0; i < piece.height; i++) {
+                    for (let j = 0; j < piece.width; j++) {
+                        this.board[newY + i][newX + j] = piece.id;
+                    }
+                }
+                
+                this.updatePiecePositions();
+            }
+
+            checkWin() {
+                const caocao = this.pieces.caocao;
+                // 曹操是纵向2格的棋子，需要检查两个格子都在出口位置
+                // 出口位置在第6行和第7行的第3格（x=2）
+                // 曹操的两个格子应该分别在 (y=5, x=2) 和 (y=6, x=2)
+                if (caocao.y === 5 && caocao.x === 2) {
+                    setTimeout(() => {
+                        document.getElementById('winMessage').style.display = 'block';
+                        document.getElementById('status').textContent = `🎉 恭喜过关！共移动 ${this.moves} 步 🎉`;
+                    }, 300);
+                }
+            }
+
+            updateMoveStatus(pieceId, oldX, oldY, newX, newY) {
+                const pieceNames = {
+                    'caocao': '曹操',
+                    'guanyu': '关羽', 
+                    'zhaoyun': '赵云',
+                    'bing': '兵'
+                };
+
+                const pieceName = pieceNames[pieceId] || '棋子';
+                let direction = '';
+                
+                if (newX > oldX) {
+                    direction = '向右';
+                } else if (newX < oldX) {
+                    direction = '向左';
+                } else if (newY > oldY) {
+                    direction = '向下';
+                } else if (newY < oldY) {
+                    direction = '向上';
+                }
+
+                const distance = Math.abs(newX - oldX) + Math.abs(newY - oldY);
+                const statusText = `第 ${this.moves} 步：“${pieceName}”  ${direction} 移动 ${distance} 格`;
+                this.updateStatus(statusText);
+            }
+
+            updateStatus(text) {
+                document.getElementById('status').textContent = text;
+            }
+        }
+
+        // 全局函数
+        let game;
+
+        function resetGame() {
+            game = new HuarongdaoGame();
+            document.getElementById('winMessage').style.display = 'none';
+            game.updateStatus('拖动棋子移动，让曹操到达出口！');
+        }
+
+        function showHint() {
+            alert('提示：先移动小兵为大将让路，逐步将曹操向下移动到出口位置！');
+        }
+
+        // 初始化游戏
+        window.onload = function() {
+            resetGame();
+        };
+    </script>
+</body>
+</html>
