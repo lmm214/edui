@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>平行四边形的面积</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background-color: #fff;
+        }
+        
+        #canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        
+        /* 剪一剪按钮样式 */
+        #cutButton {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            user-select: none;
+        }
+        
+        #cutButton:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        #cutButton:active {
+            transform: translateY(0);
+        }
+        
+        #cutButton.active {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        }
+        
+        /* 裁切模式下的光标样式 */
+        #canvas.cut-mode {
+            cursor: crosshair;
+        }
+        
+        /* 拖动模式下的光标样式 */
+        #canvas.drag-mode {
+            cursor: grab;
+        }
+        
+        #canvas.drag-mode:active {
+            cursor: grabbing;
+        }
+        
+        /* 操作按钮样式 */
+        .action-buttons {
+            position: absolute;
+            display: flex;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+        }
+        
+        .action-button {
+            background: transparent;
+            width: 48px;
+            height: 48px;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            transition: all 0.2s ease;
+        }
+        
+        .action-button:hover {
+            background: #e0e0e0;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button id="cutButton">✂️ 剪一剪</button>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const cutButton = document.getElementById('cutButton');
+        
+        // 网格参数
+        const gridSize = 80; // 网格大小
+        
+        // 裁切模式状态
+        let isCutMode = false;
+        let cutLine = null; // 存储裁切线的起点和终点
+        let isDrawing = false; // 是否正在绘制裁切线
+        let isSplit = false; // 是否已经分割
+        let splitParts = []; // 分割后的图形部分
+        let partDragStates = []; // 记录每个部分的拖动状态存储每个部分的拖动状态 {hasBeenDragged: boolean}
+        let isDragMode = false; // 是否处于拖动模式
+        let draggedPart = null; // 当前被拖动的部分
+        let selectedPart = null; // 当前选中的部分
+        
+        // 吸附距离阈值
+        const snapDistance = 40;
+        
+        // 设置 canvas 尺寸为全屏
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            drawGrid();
+            drawParallelogram();
+        }
+        
+        // 绘制网格线
+        function drawGrid() {
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1;
+            
+            // 绘制垂直线
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            // 绘制水平线
+            for (let y = 0; y <= canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+        
+        // 绘制平行四边形
+        function drawParallelogram() {
+            // 计算画布中心位置，并对齐到网格交点
+            const centerX = Math.floor(canvas.width / 2 / gridSize) * gridSize ;
+            const centerY = Math.floor(canvas.height / 2 / gridSize) * gridSize;
+            
+            // 平行四边形的尺寸（以网格为单位）
+            const width = gridSize * 6; // 宽度为6个网格
+            const height = gridSize * 4; // 高度为4个网格
+            const skew = gridSize * -2; // 倾斜偏移量
+            
+            // 计算四个顶点坐标，确保都在网格交点上
+            const x1 = centerX - width / 2;
+            const y1 = centerY - height / 2;
+            const x2 = centerX + width / 2;
+            const y2 = centerY - height / 2;
+            const x3 = centerX + width / 2 + skew;
+            const y3 = centerY + height / 2;
+            const x4 = centerX - width / 2 + skew;
+            const y4 = centerY + height / 2;
+            
+            // 始终绘制底层淡灰色虚线边框（不受分割影响）
+            ctx.fillStyle = 'rgba(200, 200, 200, 0.3)'; // 淡灰色填充
+            ctx.strokeStyle = '#999'; // 灰色边框
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]); // 虚线样式
+            
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.lineTo(x3, y3);
+            ctx.lineTo(x4, y4);
+            ctx.closePath();
+            
+            ctx.fill();
+            ctx.stroke();
+            ctx.setLineDash([]); // 重置为实线
+            
+            if (isSplit && splitParts.length === 2) {
+                // 绘制分割后的两部分，使用不同颜色
+                drawSplitPart(splitParts[0], 'rgba(152, 177, 228, 0.6)', '#2563eb', 0);
+                drawSplitPart(splitParts[1], 'rgba(255, 182, 193, 0.6)', '#dc2626', 1);
+            } else {
+                // 绘制完整的上层正常平行四边形
+                ctx.fillStyle = 'rgba(152, 177, 228, 0.8)';
+                ctx.strokeStyle = '#2563eb';
+                ctx.lineWidth = 4;
+                
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.lineTo(x3, y3);
+                ctx.lineTo(x4, y4);
+                ctx.closePath();
+                
+                ctx.fill();
+                ctx.stroke();
+                
+                // 绘制顶点标记
+                ctx.fillStyle = '#2563eb';
+                const pointRadius = 4;
+                
+                [
+                    [x1, y1], [x2, y2], [x3, y3], [x4, y4]
+                ].forEach(([x, y]) => {
+                    ctx.beginPath();
+                    ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+        }
+        
+        // 绘制分割后的部分
+        function drawSplitPart(vertices, fillColor, strokeColor, partIndex) {
+            if (vertices.length < 3) return;
+            
+            // 始终使用原始的填充色和边框色，不因拖动而改变
+            ctx.fillStyle = fillColor;
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 4;
+            
+            ctx.beginPath();
+            ctx.moveTo(vertices[0].x, vertices[0].y);
+            for (let i = 1; i < vertices.length; i++) {
+                ctx.lineTo(vertices[i].x, vertices[i].y);
+            }
+            ctx.closePath();
+            
+            ctx.fill();
+            ctx.stroke();
+            
+            // 绘制顶点标记
+            ctx.fillStyle = strokeColor;
+            const pointRadius = 4;
+            
+            vertices.forEach(vertex => {
+                ctx.beginPath();
+                ctx.arc(vertex.x, vertex.y, pointRadius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+        
+        // 绘制裁切线
+        function drawCutLine() {
+            if (!cutLine) return;
+            
+            ctx.save();
+            ctx.strokeStyle = '#ff4444';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 5]); // 虚线样式
+            
+            ctx.beginPath();
+            ctx.moveTo(cutLine.startX, cutLine.startY);
+            ctx.lineTo(cutLine.endX, cutLine.endY);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        // 切换裁切模式
+        function toggleCutMode() {
+            // 如果当前处于拖动模式或已分割状态，点击按钮重置到初始状态
+            if (isDragMode || isSplit) {
+                // 重置所有状态
+                isCutMode = true; // 重置后自动进入剪一剪模式
+                isDragMode = false;
+                isSplit = false;
+                splitParts = [];
+                partDragStates = []; // 清除拖动状态
+                cutLine = null;
+                
+                // 设置按钮为剪一剪模式状态
+                cutButton.classList.add('active');
+                cutButton.textContent = '✂️ 退出裁切';
+                canvas.classList.remove('drag-mode');
+                canvas.classList.add('cut-mode');
+                
+                // 隐藏操作按钮
+                hideActionButtons();
+                
+                redraw();
+                return;
+            }
+            
+            // 正常的切换裁切模式逻辑
+            isCutMode = !isCutMode;
+            
+            if (isCutMode) {
+                cutButton.classList.add('active');
+                cutButton.textContent = '✂️ 退出裁切';
+                canvas.classList.add('cut-mode');
+            } else {
+                cutButton.classList.remove('active');
+                cutButton.textContent = '✂️ 剪一剪';
+                canvas.classList.remove('cut-mode');
+                cutLine = null; // 清除裁切线
+                isSplit = false; // 重置分割状态
+                splitParts = []; // 清除分割部分
+                partDragStates = []; // 清除拖动状态
+                isDragMode = false; // 退出拖动模式
+                redraw(); // 重新绘制
+            }
+        }
+        
+        // 重新绘制整个画布
+        function redraw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            
+            drawParallelogram();
+            if (cutLine) {
+                drawCutLine();
+            }
+        }
+        
+        // 初始化
+        resizeCanvas();
+        
+        // 窗口大小改变时重新绘制
+        window.addEventListener('resize', resizeCanvas);
+        
+        // 添加按钮点击事件
+        cutButton.addEventListener('click', toggleCutMode);
+        
+        // 获取鼠标/触摸位置的辅助函数
+        function getEventPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+        
+        // 鼠标事件处理
+        canvas.addEventListener('mousedown', function(e) {
+            const pos = getEventPos(e);
+            
+            if (isCutMode) {
+                // 裁剪模式
+                const snappedPos = applySnap(pos.x, pos.y);
+                
+                isDrawing = true;
+                cutLine = {
+                    startX: snappedPos.x,
+                    startY: snappedPos.y,
+                    endX: snappedPos.x,
+                    endY: snappedPos.y
+                };
+            } else if (isDragMode) {
+                // 拖动模式
+                hideActionButtons();
+                const partIndex = getClickedPart(pos.x, pos.y);
+                if (partIndex !== null) {
+                    draggedPart = partIndex;
+                    selectedPart = partIndex;
+                    
+                    // 标记该部分已被拖动（仅在第一次拖动时）
+                    if (!partDragStates[partIndex].hasBeenDragged) {
+                        partDragStates[partIndex].hasBeenDragged = true;
+                    }
+                }
+            }
+        });
+        
+        canvas.addEventListener('mousemove', function(e) {
+            const pos = getEventPos(e);
+            
+            if (isCutMode && isDrawing) {
+                // 裁剪模式下绘制虚线
+                const snappedPos = applySnap(pos.x, pos.y);
+                
+                cutLine.endX = snappedPos.x;
+                cutLine.endY = snappedPos.y;
+                
+                redraw();
+            } else if (isDragMode && draggedPart !== null) {
+                // 拖动模式下移动图形 - 基于顶点吸附
+                const part = splitParts[draggedPart];
+                const currentCenterX = part.reduce((sum, v) => sum + v.x, 0) / part.length;
+                const currentCenterY = part.reduce((sum, v) => sum + v.y, 0) / part.length;
+                
+                // 计算鼠标相对于图形中心的偏移
+                const deltaX = pos.x - currentCenterX;
+                const deltaY = pos.y - currentCenterY;
+                
+                // 尝试移动图形并找到最佳吸附位置
+                const bestSnapResult = findBestSnapForPart(draggedPart, deltaX, deltaY);
+                
+                if (bestSnapResult) {
+                    // 应用最佳吸附位置
+                    movePart(draggedPart, bestSnapResult.deltaX, bestSnapResult.deltaY);
+                    redraw();
+                }
+            }
+         });
+         
+         // 显示分割后图形的坐标信息
+         function displaySplitCoordinates() {
+             if (!isSplit || splitParts.length !== 2) return;
+             
+             console.log('=== 分割后图形坐标信息 ===');
+             splitParts.forEach((part, index) => {
+                 console.log(`第${index + 1}部分顶点坐标:`);
+                 part.forEach((vertex, vertexIndex) => {
+                     console.log(`  顶点${vertexIndex + 1}: (${vertex.x.toFixed(1)}, ${vertex.y.toFixed(1)})`);
+                 });
+                 
+                 // 计算中心点
+                 const centerX = part.reduce((sum, v) => sum + v.x, 0) / part.length;
+                 const centerY = part.reduce((sum, v) => sum + v.y, 0) / part.length;
+                 console.log(`  中心点: (${centerX.toFixed(1)}, ${centerY.toFixed(1)})`);
+                 console.log('---');
+             });
+         }
+        
+        canvas.addEventListener('mouseup', function(e) {
+            if (isCutMode && isDrawing) {
+                // 裁剪模式
+                isDrawing = false;
+                // 执行分割逻辑
+                if (splitParallelogram()) {
+                    // 分割成功后自动退出裁剪模式并进入拖动模式
+                    isCutMode = false;
+                    isDragMode = true;
+                    cutButton.classList.remove('active');
+                    cutButton.textContent = '✂️ 剪一剪';
+                    canvas.classList.remove('cut-mode');
+                    canvas.classList.add('drag-mode');
+                    redraw();
+                }
+            } else if (isDragMode && draggedPart !== null) {
+                // 拖动模式
+                const pos = getEventPos(e);
+                
+                // 显示操作按钮
+                const part = splitParts[draggedPart];
+                const centerX = part.reduce((sum, v) => sum + v.x, 0) / part.length;
+                const centerY = part.reduce((sum, v) => sum + v.y, 0) / part.length;
+                
+                const rect = canvas.getBoundingClientRect();
+                showActionButtons(draggedPart, rect.left + centerX, rect.top + centerY - 50);
+                
+                draggedPart = null;
+            }
+        });
+        
+        // 触摸事件处理
+        canvas.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            const pos = getEventPos(e);
+            
+            if (isCutMode) {
+                // 裁剪模式
+                const snappedPos = applySnap(pos.x, pos.y);
+                
+                isDrawing = true;
+                cutLine = {
+                    startX: snappedPos.x,
+                    startY: snappedPos.y,
+                    endX: snappedPos.x,
+                    endY: snappedPos.y
+                };
+            } else if (isDragMode) {
+                // 拖动模式
+                hideActionButtons();
+                const partIndex = getClickedPart(pos.x, pos.y);
+                if (partIndex !== null) {
+                    draggedPart = partIndex;
+                    selectedPart = partIndex;
+                    
+                    // 标记该部分已被拖动（仅在第一次拖动时）
+                    if (!partDragStates[partIndex].hasBeenDragged) {
+                        partDragStates[partIndex].hasBeenDragged = true;
+                    }
+                }
+            }
+        });
+        
+        canvas.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+            const pos = getEventPos(e);
+            
+            if (isCutMode && isDrawing) {
+                // 裁剪模式下绘制虚线
+                const snappedPos = applySnap(pos.x, pos.y);
+                
+                cutLine.endX = snappedPos.x;
+                cutLine.endY = snappedPos.y;
+                
+                redraw();
+            } else if (isDragMode && draggedPart !== null) {
+                // 拖动模式下移动图形 - 基于顶点吸附
+                const part = splitParts[draggedPart];
+                const currentCenterX = part.reduce((sum, v) => sum + v.x, 0) / part.length;
+                const currentCenterY = part.reduce((sum, v) => sum + v.y, 0) / part.length;
+                
+                // 计算触摸相对于图形中心的偏移
+                const deltaX = pos.x - currentCenterX;
+                const deltaY = pos.y - currentCenterY;
+                
+                // 尝试移动图形并找到最佳吸附位置
+                const bestSnapResult = findBestSnapForPart(draggedPart, deltaX, deltaY);
+                
+                if (bestSnapResult) {
+                    // 应用最佳吸附位置
+                    movePart(draggedPart, bestSnapResult.deltaX, bestSnapResult.deltaY);
+                    redraw();
+                }
+            }
+        });
+        
+        canvas.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            
+            if (isCutMode && isDrawing) {
+                // 裁剪模式
+                isDrawing = false;
+                // 执行分割逻辑
+                if (splitParallelogram()) {
+                    // 分割成功后自动退出裁剪模式并进入拖动模式
+                    isCutMode = false;
+                    isDragMode = true;
+                    cutButton.classList.remove('active');
+                    cutButton.textContent = '✂️ 剪一剪';
+                    canvas.classList.remove('cut-mode');
+                    canvas.classList.add('drag-mode');
+                    redraw();
+                }
+            } else if (isDragMode && draggedPart !== null) {
+                // 拖动模式
+                // 显示操作按钮
+                const part = splitParts[draggedPart];
+                const centerX = part.reduce((sum, v) => sum + v.x, 0) / part.length;
+                const centerY = part.reduce((sum, v) => sum + v.y, 0) / part.length;
+                
+                const rect = canvas.getBoundingClientRect();
+                showActionButtons(draggedPart, rect.left + centerX, rect.top + centerY - 50);
+                
+                draggedPart = null;
+            }
+        });
+        
+        // 线段相交检测
+        function lineIntersection(p1, p2, p3, p4) {
+            const x1 = p1.x, y1 = p1.y;
+            const x2 = p2.x, y2 = p2.y;
+            const x3 = p3.x, y3 = p3.y;
+            const x4 = p4.x, y4 = p4.y;
+            
+            const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+            if (Math.abs(denom) < 1e-10) return null; // 平行线
+            
+            const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+            const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+            
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                return {
+                    x: x1 + t * (x2 - x1),
+                    y: y1 + t * (y2 - y1)
+                };
+            }
+            return null;
+        }
+        
+        // 分割平行四边形
+        function splitParallelogram() {
+            if (!cutLine) return;
+            
+            // 获取平行四边形的顶点
+            const centerX = Math.floor(canvas.width / 2 / gridSize) * gridSize;
+            const centerY = Math.floor(canvas.height / 2 / gridSize) * gridSize;
+            const width = gridSize * 6;
+            const height = gridSize * 4;
+            const skew = gridSize * -2;
+            
+            const vertices = [
+                { x: centerX - width / 2, y: centerY - height / 2 },
+                { x: centerX + width / 2, y: centerY - height / 2 },
+                { x: centerX + width / 2 + skew, y: centerY + height / 2 },
+                { x: centerX - width / 2 + skew, y: centerY + height / 2 }
+            ];
+            
+            // 检测裁切线与平行四边形边的交点
+            const intersections = [];
+            const cutLineStart = { x: cutLine.startX, y: cutLine.startY };
+            const cutLineEnd = { x: cutLine.endX, y: cutLine.endY };
+            
+            for (let i = 0; i < vertices.length; i++) {
+                const j = (i + 1) % vertices.length;
+                const intersection = lineIntersection(
+                    cutLineStart, cutLineEnd,
+                    vertices[i], vertices[j]
+                );
+                if (intersection) {
+                    intersections.push({
+                        point: intersection,
+                        edgeIndex: i
+                    });
+                }
+            }
+            
+            // 需要至少两个交点才能分割
+            if (intersections.length >= 2) {
+                // 按边的顺序排序交点
+                intersections.sort((a, b) => a.edgeIndex - b.edgeIndex);
+                
+                const int1 = intersections[0];
+                const int2 = intersections[1];
+                
+                // 创建两个分割部分
+                const part1 = [];
+                const part2 = [];
+                
+                // 第一部分：从第一个交点到第二个交点（顺时针）
+                part1.push(int1.point);
+                
+                let currentIndex = (int1.edgeIndex + 1) % vertices.length;
+                while (currentIndex !== (int2.edgeIndex + 1) % vertices.length) {
+                    part1.push(vertices[currentIndex]);
+                    currentIndex = (currentIndex + 1) % vertices.length;
+                }
+                part1.push(int2.point);
+                
+                // 第二部分：从第二个交点到第一个交点（顺时针）
+                part2.push(int2.point);
+                
+                currentIndex = (int2.edgeIndex + 1) % vertices.length;
+                while (currentIndex !== (int1.edgeIndex + 1) % vertices.length) {
+                    part2.push(vertices[currentIndex]);
+                    currentIndex = (currentIndex + 1) % vertices.length;
+                }
+                part2.push(int1.point);
+                
+                splitParts = [part1, part2];
+                // 初始化拖动状态
+                partDragStates = [
+                    { hasBeenDragged: false },
+                    { hasBeenDragged: false }
+                ];
+                isSplit = true;
+                    
+                    // 显示分割后的坐标信息
+                    displaySplitCoordinates();
+                
+                return true;
+            }
+            
+            return false;
+        }
+        
+        // 获取所有可吸附的点（网格交点和平行四边形顶点）
+        // 为图形部分寻找最佳吸附位置
+        function findBestSnapForPart(partIndex, deltaX, deltaY) {
+            if (partIndex < 0 || partIndex >= splitParts.length) return null;
+            
+            const part = splitParts[partIndex];
+            let bestSnapResult = null;
+            let minSnapDistance = snapDistance;
+            
+            // 计算移动后的顶点位置
+            const movedVertices = part.map(vertex => ({
+                x: vertex.x + deltaX,
+                y: vertex.y + deltaY
+            }));
+            
+            // 获取所有可吸附的点
+            const snapPoints = getSnapPoints();
+            
+            // 对每个移动后的顶点，寻找最近的吸附点
+            movedVertices.forEach((movedVertex, vertexIndex) => {
+                snapPoints.forEach(snapPoint => {
+                    const distance = Math.sqrt(
+                        (movedVertex.x - snapPoint.x) ** 2 + 
+                        (movedVertex.y - snapPoint.y) ** 2
+                    );
+                    
+                    if (distance < minSnapDistance) {
+                        // 计算为了让这个顶点吸附到目标点需要的偏移量
+                        const snapDeltaX = snapPoint.x - part[vertexIndex].x;
+                        const snapDeltaY = snapPoint.y - part[vertexIndex].y;
+                        
+                        bestSnapResult = {
+                            deltaX: snapDeltaX,
+                            deltaY: snapDeltaY,
+                            snapPoint: snapPoint,
+                            vertexIndex: vertexIndex,
+                            distance: distance
+                        };
+                        minSnapDistance = distance;
+                    }
+                });
+            });
+            
+            // 如果没有找到吸附点，但用户仍在拖动，则使用平滑的移动
+            if (!bestSnapResult) {
+                // 检查是否有任何顶点接近吸附阈值，如果有则进行部分吸附
+                let hasPartialSnap = false;
+                const partialSnapThreshold = snapDistance * 1.5; // 扩大检测范围
+                
+                movedVertices.forEach((movedVertex, vertexIndex) => {
+                    snapPoints.forEach(snapPoint => {
+                        const distance = Math.sqrt(
+                            (movedVertex.x - snapPoint.x) ** 2 + 
+                            (movedVertex.y - snapPoint.y) ** 2
+                        );
+                        
+                        if (distance < partialSnapThreshold && !hasPartialSnap) {
+                            // 使用渐进式吸附，距离越近吸附力越强
+                            const snapStrength = 1 - (distance / partialSnapThreshold);
+                            const snapDeltaX = snapPoint.x - part[vertexIndex].x;
+                            const snapDeltaY = snapPoint.y - part[vertexIndex].y;
+                            
+                            bestSnapResult = {
+                                deltaX: deltaX + (snapDeltaX - deltaX) * snapStrength * 0.3,
+                                deltaY: deltaY + (snapDeltaY - deltaY) * snapStrength * 0.3
+                            };
+                            hasPartialSnap = true;
+                        }
+                    });
+                });
+                
+                // 如果没有部分吸附，返回原始移动
+                if (!hasPartialSnap) {
+                    return {
+                        deltaX: deltaX,
+                        deltaY: deltaY
+                    };
+                }
+            }
+            
+            return bestSnapResult;
+        }
+        
+        // 获取所有吸附点（只包括网格交点和图形顶点）
+        function getSnapPoints() {
+            const snapPoints = [];
+            
+            // 添加网格交点
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                for (let y = 0; y <= canvas.height; y += gridSize) {
+                    snapPoints.push({ x, y, type: 'grid' });
+                }
+            }
+            
+            // 如果处于拖动模式，添加分割后图形的顶点
+            if (isDragMode && splitParts.length > 0) {
+                splitParts.forEach((part, partIndex) => {
+                    // 跳过当前正在拖动的部分
+                    if (partIndex === draggedPart) return;
+                    
+                    // 添加顶点
+                    part.forEach(vertex => {
+                        snapPoints.push({ x: vertex.x, y: vertex.y, type: 'vertex' });
+                    });
+                });
+            } else {
+                // 添加原始平行四边形顶点
+                const centerX = Math.floor(canvas.width / 2 / gridSize) * gridSize;
+                const centerY = Math.floor(canvas.height / 2 / gridSize) * gridSize;
+                const width = gridSize * 6;
+                const height = gridSize * 4;
+                const skew = gridSize * -2;
+                
+                const vertices = [
+                    { x: centerX - width / 2, y: centerY - height / 2 },
+                    { x: centerX + width / 2, y: centerY - height / 2 },
+                    { x: centerX + width / 2 + skew, y: centerY + height / 2 },
+                    { x: centerX - width / 2 + skew, y: centerY + height / 2 }
+                ];
+                
+                vertices.forEach(vertex => {
+                    snapPoints.push({ x: vertex.x, y: vertex.y, type: 'vertex' });
+                });
+            }
+            
+            return snapPoints;
+        }
+        
+        // 寻找最近的吸附点
+        function findNearestSnapPoint(x, y) {
+            const snapPoints = getSnapPoints();
+            let nearestPoint = null;
+            let minDistance = snapDistance;
+            
+            snapPoints.forEach(point => {
+                const distance = Math.sqrt((x - point.x) ** 2 + (y - point.y) ** 2);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestPoint = point;
+                }
+            });
+            
+            return nearestPoint;
+        }
+        
+        // 应用吸附
+        function applySnap(x, y) {
+            const snapPoint = findNearestSnapPoint(x, y);
+            return snapPoint ? { x: snapPoint.x, y: snapPoint.y } : { x, y };
+        }
+        
+        // 检测点是否在多边形内
+        function isPointInPolygon(point, vertices) {
+            let inside = false;
+            for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+                if (((vertices[i].y > point.y) !== (vertices[j].y > point.y)) &&
+                    (point.x < (vertices[j].x - vertices[i].x) * (point.y - vertices[i].y) / (vertices[j].y - vertices[i].y) + vertices[i].x)) {
+                    inside = !inside;
+                }
+            }
+            return inside;
+        }
+        
+        // 获取被点击的分割部分
+        function getClickedPart(x, y) {
+            if (!isSplit || splitParts.length !== 2) return null;
+            
+            for (let i = 0; i < splitParts.length; i++) {
+                if (isPointInPolygon({ x, y }, splitParts[i])) {
+                    return i;
+                }
+            }
+            return null;
+        }
+        
+        // 移动分割部分
+        function movePart(partIndex, deltaX, deltaY) {
+            if (partIndex < 0 || partIndex >= splitParts.length) return;
+            
+            splitParts[partIndex] = splitParts[partIndex].map(vertex => ({
+                x: vertex.x + deltaX,
+                y: vertex.y + deltaY
+            }));
+        }
+        
+        // 旋转分割部分
+        function rotatePart(partIndex) {
+            if (partIndex < 0 || partIndex >= splitParts.length) return;
+            
+            const part = splitParts[partIndex];
+            // 计算中心点
+            const centerX = part.reduce((sum, v) => sum + v.x, 0) / part.length;
+            const centerY = part.reduce((sum, v) => sum + v.y, 0) / part.length;
+            
+            // 绕中心点旋转90度
+            splitParts[partIndex] = part.map(vertex => {
+                const dx = vertex.x - centerX;
+                const dy = vertex.y - centerY;
+                return {
+                    x: centerX - dy,
+                    y: centerY + dx
+                };
+            });
+        }
+        
+        // 左右对称交换分割部分
+        function flipPart(partIndex) {
+            if (partIndex < 0 || partIndex >= splitParts.length) return;
+            
+            const part = splitParts[partIndex];
+            // 计算中心点
+            const centerX = part.reduce((sum, v) => sum + v.x, 0) / part.length;
+            
+            // 左右对称
+            splitParts[partIndex] = part.map(vertex => ({
+                x: 2 * centerX - vertex.x,
+                y: vertex.y
+            }));
+        }
+        
+        // 显示操作按钮
+        function showActionButtons(partIndex, x, y) {
+            hideActionButtons(); // 先隐藏之前的按钮
+            
+            const buttonsContainer = document.createElement('div');
+            buttonsContainer.className = 'action-buttons';
+            buttonsContainer.style.position = 'absolute';
+            buttonsContainer.style.left = x + 'px';
+            buttonsContainer.style.top = y + 'px';
+            buttonsContainer.style.transform = 'translateX(-50%)';
+            
+            // 旋转按钮
+            const rotateButton = document.createElement('button');
+            rotateButton.className = 'action-button';
+            rotateButton.innerHTML = '🔄';
+            rotateButton.title = '旋转90度';
+            rotateButton.onclick = function(e) {
+                e.stopPropagation();
+                rotatePart(partIndex);
+                redraw();
+                hideActionButtons();
+            };
+            
+            // 水平翻转按钮
+            const flipButton = document.createElement('button');
+            flipButton.className = 'action-button';
+            flipButton.innerHTML = '↔️';
+            flipButton.title = '水平翻转';
+            flipButton.onclick = function(e) {
+                e.stopPropagation();
+                flipPart(partIndex);
+                redraw();
+                hideActionButtons();
+            };
+            
+            buttonsContainer.appendChild(rotateButton);
+            buttonsContainer.appendChild(flipButton);
+            document.body.appendChild(buttonsContainer);
+        }
+        
+        // 隐藏操作按钮
+        function hideActionButtons() {
+            const existingButtons = document.querySelector('.action-buttons');
+            if (existingButtons) {
+                existingButtons.remove();
+            }
+        }
+        
+        // 计算图形边线与网格线对齐的吸附点
+        // 计算线段与网格线的交点
+        function getLineGridIntersection(start, end, gridValue, direction) {
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            
+            if (direction === 'vertical') {
+                // 与垂直网格线 x = gridValue 的交点
+                if (dx === 0) return null; // 线段本身是垂直的
+                
+                const t = (gridValue - start.x) / dx;
+                if (t >= 0 && t <= 1) {
+                    const y = start.y + t * dy;
+                    // 确保交点在画布范围内
+                    if (y >= 0 && y <= canvas.height) {
+                        return { x: gridValue, y: y };
+                    }
+                }
+            } else if (direction === 'horizontal') {
+                // 与水平网格线 y = gridValue 的交点
+                if (dy === 0) return null; // 线段本身是水平的
+                
+                const t = (gridValue - start.y) / dy;
+                if (t >= 0 && t <= 1) {
+                    const x = start.x + t * dx;
+                    // 确保交点在画布范围内
+                    if (x >= 0 && x <= canvas.width) {
+                        return { x: x, y: gridValue };
+                    }
+                }
+            }
+            
+            return null;
+        }
+        
+        // 点击画布其他区域隐藏操作按钮
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.action-buttons') && !e.target.closest('canvas')) {
+                hideActionButtons();
+            }
+        });
+    </script>
+</body>
+</html>
