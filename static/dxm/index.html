@@ -29,16 +29,16 @@
             gap: 15px;
             background: rgba(255, 255, 255, 0.9);
             backdrop-filter: blur(10px);
-            padding: 15px 25px;
-            border-radius: 25px;
+            padding: 3px;
+            border-radius: 15px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
         }
 
         .btn {
-            padding: 10px 20px;
+            padding: 15px 25px;
             border: none;
-            border-radius: 20px;
-            font-size: 14px;
+            border-radius: 12px;
+            font-size: 16px;
             font-weight: 400;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -58,6 +58,18 @@
 
         .btn-primary:hover {
             background: #0056CC;
+        }
+
+        .btn:disabled {
+            background: #d1d1d1;
+            color: #999;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn:disabled:hover {
+            background: #d1d1d1;
+            transform: none;
         }
 
         .canvas-container {
@@ -88,7 +100,7 @@
         }
 
         .dimension-info h3 {
-            font-size: 1.1rem;
+            font-size: 2rem;
             font-weight: 500;
             color: #333;
             margin-bottom: 10px;
@@ -128,7 +140,7 @@
 
     <div class="dimension-info" id="dimensionInfo">
         <h3>当前阶段：准备开始</h3>
-        <p>点击"开始演示"按钮，观看从零维到三维的完整变换过程。</p>
+        <p>点击"开始"按钮，观看从零维到三维的完整变换过程。</p>
     </div>
 
     <div class="controls">
@@ -145,14 +157,19 @@
             isPaused: false,
             currentStage: 0, // 0: 点, 1: 线, 2: 面, 3: 体
             progress: 0,
-            speed: 1,
-            animationId: null
+            speed: 0.5,
+            animationId: null,
+            breathingTime: 0, // 呼吸效果时间
+            isBreathing: false // 是否正在呼吸
         };
 
-        // 速度设置
-        const speeds = [0.5, 1, 2];
         let currentSpeedIndex = 0;
 
+        // 呼吸效果函数
+        function getBreathingOpacity(time) {
+            return 0.3 + 0.7 * (Math.sin(time * 0.05) + 1) / 3;
+        }
+        
         // 设置画布尺寸
         function setupCanvas() {
             const rect = canvas.getBoundingClientRect();
@@ -175,8 +192,8 @@
             const stages = [
                 { title: '点 (0维)', desc: '一个没有长度、宽度、高度的几何对象，只有位置。' },
                 { title: '点动成线 (1维)', desc: '点在空间中移动，轨迹形成具有长度的线段。' },
-                { title: '线动成面 (2维)', desc: '线段垂直移动，扫过的区域形成具有面积的平面。' },
-                { title: '面动成体 (3维)', desc: '平面垂直移动，扫过的空间形成具有体积的立体。' }
+                { title: '线动成面 (2维)', desc: '线段移动，扫过的区域形成具有面积的平面。' },
+                { title: '面动成体 (3维)', desc: '平面移动，扫过的空间形成具有体积的立体。' }
             ];
             
             if (stages[stage]) {
@@ -189,27 +206,43 @@
 
         // 主动画函数
         function animate() {
-            if (!animationState.isRunning || animationState.isPaused) return;
+            // 更新呼吸效果时间（无论是否暂停都要更新）
+            animationState.breathingTime++;
+            
+            if (!animationState.isRunning) {
+                animationState.animationId = requestAnimationFrame(animate);
+                return;
+            }
 
             clearCanvas();
             
             const centerX = canvas.width / (2 * window.devicePixelRatio);
             const centerY = canvas.height / (2 * window.devicePixelRatio);
             
+            // 设置新的起始位置：中心偏左200px，下100px
+            const startX = centerX - 200;
+            const startY = centerY + 100;
+            
             // 根据当前阶段和进度绘制
             switch (animationState.currentStage) {
-                case 0: // 点阶段
-                    drawPoint(centerX, centerY);
+                case 0: // 点阶段 - 显示呼吸效果的点
+                    drawBreathingPoint(startX, startY);
                     break;
                 case 1: // 点动成线
-                    drawPointToLine(centerX, centerY, animationState.progress);
+                    drawPointToLine(startX, startY, animationState.progress);
                     break;
                 case 2: // 线动成面
-                    drawLineToSurface(centerX, centerY, animationState.progress);
+                    drawLineToSurface(startX, startY, animationState.progress);
                     break;
                 case 3: // 面动成体
-                    drawSurfaceToVolume(centerX, centerY, animationState.progress);
+                    drawSurfaceToVolume(startX, startY, animationState.progress);
                     break;
+            }
+
+            // 如果暂停，不更新进度
+            if (animationState.isPaused) {
+                animationState.animationId = requestAnimationFrame(animate);
+                return;
             }
 
             // 更新进度
@@ -220,16 +253,23 @@
                 animationState.progress = 0;
                 animationState.currentStage++;
                 
-                // 在点变线（阶段1）和线变面（阶段2）完成后自动暂停
+                // 启用按钮并更新文本
+                const mainBtn = document.getElementById('mainBtn');
+                mainBtn.disabled = false;
+                
                 if (animationState.currentStage === 2 || animationState.currentStage === 3) {
                     animationState.isPaused = true;
-                    // 按钮文本保持为"继续"，等待用户点击
+                    mainBtn.textContent = '继续';
+                    // 开始呼吸效果
+                    animationState.isBreathing = true;
+                    animationState.breathingTime = 0;
                 }
                 
                 if (animationState.currentStage > 3) {
                     // 动画完成，重置按钮为"开始"
                     animationState.isRunning = false;
-                    document.getElementById('mainBtn').textContent = '开始';
+                    mainBtn.textContent = '开始';
+                    mainBtn.disabled = false;
                     return;
                 }
                 
@@ -243,76 +283,124 @@
         function drawPoint(x, y) {
             ctx.fillStyle = '#007AFF';
             ctx.beginPath();
-            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
             ctx.fill();
             
             // 添加发光效果
             ctx.shadowColor = '#007AFF';
-            ctx.shadowBlur = 20;
+            ctx.shadowBlur = 10;
             ctx.beginPath();
-            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
             ctx.fill();
             ctx.shadowBlur = 0;
         }
 
+        // 绘制呼吸效果的点
+        function drawBreathingPoint(x, y) {
+            const opacity = animationState.isBreathing ? getBreathingOpacity(animationState.breathingTime) : 1;
+            ctx.fillStyle = `rgba(0, 122, 255, ${opacity})`;
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 添加发光效果
+            ctx.shadowColor = `rgba(0, 122, 255, ${opacity})`;
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // 绘制呼吸效果的线
+        function drawBreathingLine(startX, startY) {
+            const lineLength = 400;
+            const opacity = animationState.isBreathing ? getBreathingOpacity(animationState.breathingTime) : 0.8;
+            
+            ctx.strokeStyle = `rgba(0, 122, 255, ${opacity})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(startX + lineLength, startY);
+            ctx.stroke();
+        }
+
+        // 绘制呼吸效果的面
+        function drawBreathingSurface(startX, startY) {
+            const lineLength = 400;
+            const surfaceHeight = 200;
+            const faceStartY = startY - surfaceHeight;
+            const opacity = animationState.isBreathing ? getBreathingOpacity(animationState.breathingTime) : 0.3;
+            
+            // 绘制面
+            ctx.fillStyle = `rgba(0, 122, 255, ${opacity})`;
+            ctx.fillRect(startX, faceStartY, lineLength, surfaceHeight);
+            
+            // 绘制面的边框
+            ctx.strokeStyle = `rgba(0, 122, 255, ${opacity})`;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(startX, faceStartY, lineLength, surfaceHeight);
+        }
+
         // 绘制点动成线
-        function drawPointToLine(centerX, centerY, progress) {
-            const lineLength = 300;  // 增加线段长度
-            const startX = centerX - 100;  // 点向左偏移100像素
-            const endX = startX + lineLength;  // 向右移动形成线段
-            const currentX = startX + (endX - startX) * progress;
+        function drawPointToLine(startX, startY, progress) {
+            const lineLength = 400;  // 线段长度400px
+            const endX = startX + lineLength;  // 向右移动400px形成线段
+            const currentX = startX + lineLength * progress;
             
             // 绘制已形成的线段
             if (progress > 0) {
-                ctx.strokeStyle = '#34C759';
+                ctx.strokeStyle = 'rgba(0, 122, 255, 0.8)';  // #007AFF with 80% opacity
                 ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.moveTo(startX, centerY);
-                ctx.lineTo(currentX, centerY);
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(currentX, startY);
                 ctx.stroke();
             }
             
             // 绘制移动的点
-            drawPoint(currentX, centerY);
+            drawPoint(currentX, startY);
         }
 
         // 绘制线动成面
-        function drawLineToSurface(centerX, centerY, progress) {
-            const lineLength = 300;  // 与点动成线保持一致的长度
-            const surfaceHeight = 150;  // 增加面的高度
-            const startX = centerX - 100;  // 保持与线段相同的起始位置
+        function drawLineToSurface(startX, startY, progress) {
+            const lineLength = 400;  // 与点动成线保持一致的长度
+            const surfaceHeight = 200;  // 面的高度为200px
             const endX = startX + lineLength;
-            const startY = centerY + surfaceHeight / 2;
-            const currentY = startY - surfaceHeight * progress;
+            const currentY = startY - surfaceHeight * progress;  // 线段向上移动
             
             // 绘制已扫过的面
             if (progress > 0) {
-                ctx.fillStyle = 'rgba(52, 199, 89, 0.3)';
+                ctx.fillStyle = 'rgba(0, 122, 255, 0.3)';  // #007AFF with 30% opacity
                 ctx.fillRect(startX, currentY, lineLength, startY - currentY);
                 
                 // 绘制面的边框
-                ctx.strokeStyle = 'rgba(52, 199, 89, 0.6)';
+                ctx.strokeStyle = 'rgba(0, 122, 255, 0.6)';  // #007AFF with 60% opacity
                 ctx.lineWidth = 1;
                 ctx.strokeRect(startX, currentY, lineLength, startY - currentY);
             }
             
             // 绘制移动的线
-            ctx.strokeStyle = '#34C759';
+            ctx.strokeStyle = 'rgba(0, 122, 255, 0.7)';  // #007AFF with 80% opacity
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.moveTo(startX, currentY);
             ctx.lineTo(endX, currentY);
             ctx.stroke();
+            
+            // 如果动画暂停且处于呼吸状态，绘制呼吸效果的线
+            if (animationState.isPaused && animationState.isBreathing && animationState.currentStage === 2) {
+                drawBreathingLine(startX, startY);
+            }
         }
 
         // 绘制面动成体
-        function drawSurfaceToVolume(centerX, centerY, progress) {
-            const surfaceWidth = 300;  // 与线段保持一致的宽度
-            const surfaceHeight = 150;  // 与面保持一致的高度
-            const depth = 100 * progress;  // 增加体的深度
+        function drawSurfaceToVolume(startX, startY, progress) {
+            const surfaceWidth = 400;  // 与线段保持一致的宽度
+            const surfaceHeight = 200;  // 与面保持一致的高度
+            const depth = 160 * progress;  // 增加体的深度
             
-            const startX = centerX - 100;  // 保持与前面阶段相同的起始位置
-            const startY = centerY - surfaceHeight / 2;
+            const faceStartY = startY - surfaceHeight;  // 面的起始Y位置
             
             // 3D效果的偏移
             const offsetX = depth * 0.5;
@@ -320,55 +408,60 @@
             
             // 绘制立体的后面和侧面
             if (progress > 0) {
-                // 后面 - 保持绿色
-                ctx.fillStyle = 'rgba(52, 199, 89, 0.4)';
-                ctx.fillRect(startX + offsetX, startY - offsetY, surfaceWidth, surfaceHeight);
+                // 后面 - 使用#007AFF
+                ctx.fillStyle = 'rgba(0, 122, 255, 0.4)';  // #007AFF with 40% opacity
+                ctx.fillRect(startX + offsetX, faceStartY - offsetY, surfaceWidth, surfaceHeight);
                 
-                // 顶面 - 保持绿色
-                ctx.fillStyle = 'rgba(52, 199, 89, 0.6)';
+                // 顶面 - 使用#007AFF
+                ctx.fillStyle = 'rgba(0, 122, 255, 0.5)';  // #007AFF with 60% opacity
                 ctx.beginPath();
-                ctx.moveTo(startX, startY);
-                ctx.lineTo(startX + offsetX, startY - offsetY);
-                ctx.lineTo(startX + surfaceWidth + offsetX, startY - offsetY);
-                ctx.lineTo(startX + surfaceWidth, startY);
+                ctx.moveTo(startX, faceStartY);
+                ctx.lineTo(startX + offsetX, faceStartY - offsetY);
+                ctx.lineTo(startX + surfaceWidth + offsetX, faceStartY - offsetY);
+                ctx.lineTo(startX + surfaceWidth, faceStartY);
                 ctx.closePath();
                 ctx.fill();
                 
-                // 右侧面 - 保持绿色
-                ctx.fillStyle = 'rgba(52, 199, 89, 0.5)';
+                // 右侧面 - 使用#007AFF
+                ctx.fillStyle = 'rgba(0, 122, 255, 0.4)';  // #007AFF with 50% opacity
                 ctx.beginPath();
-                ctx.moveTo(startX + surfaceWidth, startY);
-                ctx.lineTo(startX + surfaceWidth + offsetX, startY - offsetY);
-                ctx.lineTo(startX + surfaceWidth + offsetX, startY + surfaceHeight - offsetY);
-                ctx.lineTo(startX + surfaceWidth, startY + surfaceHeight);
+                ctx.moveTo(startX + surfaceWidth, faceStartY);
+                ctx.lineTo(startX + surfaceWidth + offsetX, faceStartY - offsetY);
+                ctx.lineTo(startX + surfaceWidth + offsetX, faceStartY + surfaceHeight - offsetY);
+                ctx.lineTo(startX + surfaceWidth, faceStartY + surfaceHeight);
                 ctx.closePath();
                 ctx.fill();
                 
-                // 绘制边框线 - 保持绿色
-                ctx.strokeStyle = 'rgba(52, 199, 89, 0.8)';
+                // 绘制边框线 - 使用#007AFF
+                ctx.strokeStyle = 'rgba(0, 122, 255, 0.7)';  // #007AFF with 80% opacity
                 ctx.lineWidth = 1;
                 
                 // 连接线
                 ctx.beginPath();
-                ctx.moveTo(startX, startY);
-                ctx.lineTo(startX + offsetX, startY - offsetY);
-                ctx.moveTo(startX + surfaceWidth, startY);
-                ctx.lineTo(startX + surfaceWidth + offsetX, startY - offsetY);
-                ctx.moveTo(startX, startY + surfaceHeight);
-                ctx.lineTo(startX + offsetX, startY + surfaceHeight - offsetY);
-                ctx.moveTo(startX + surfaceWidth, startY + surfaceHeight);
-                ctx.lineTo(startX + surfaceWidth + offsetX, startY + surfaceHeight - offsetY);
+                ctx.moveTo(startX, faceStartY);
+                ctx.lineTo(startX + offsetX, faceStartY - offsetY);
+                ctx.moveTo(startX + surfaceWidth, faceStartY);
+                ctx.lineTo(startX + surfaceWidth + offsetX, faceStartY - offsetY);
+                ctx.moveTo(startX, faceStartY + surfaceHeight);
+                ctx.lineTo(startX + offsetX, faceStartY + surfaceHeight - offsetY);
+                ctx.moveTo(startX + surfaceWidth, faceStartY + surfaceHeight);
+                ctx.lineTo(startX + surfaceWidth + offsetX, faceStartY + surfaceHeight - offsetY);
                 ctx.stroke();
             }
             
-            // 绘制前面（移动的面）
-            ctx.fillStyle = '#FF9500';
-            ctx.fillRect(startX, startY, surfaceWidth, surfaceHeight);
+            // 绘制前面（移动的面）- 保持#007AFF但不透明以突出显示
+            ctx.fillStyle = 'rgba(0, 122, 255, 0.7)';
+            ctx.fillRect(startX, faceStartY, surfaceWidth, surfaceHeight);
             
             // 前面边框
-            ctx.strokeStyle = '#FF9500';
+            ctx.strokeStyle = '#007AFF';
             ctx.lineWidth = 2;
-            ctx.strokeRect(startX, startY, surfaceWidth, surfaceHeight);
+            ctx.strokeRect(startX, faceStartY, surfaceWidth, surfaceHeight);
+            
+            // 如果动画暂停且处于呼吸状态，绘制呼吸效果的面
+            if (animationState.isPaused && animationState.isBreathing && animationState.currentStage === 3) {
+                drawBreathingSurface(startX, startY);
+            }
         }
 
         // 开始动画
@@ -382,9 +475,13 @@
                 // 第一次开始
                 resetAnimation();
                 mainBtn.textContent = '继续';
+                mainBtn.disabled = true; // 禁用按钮
+                animationState.isBreathing = true; // 开始呼吸效果
+                animationState.breathingTime = 0;
             } else if (animationState.isPaused) {
                 // 继续动画
-                mainBtn.textContent = '继续';
+                mainBtn.disabled = true; // 禁用按钮
+                animationState.isBreathing = false; // 停止呼吸效果
             }
             
             animationState.isRunning = true;
@@ -398,6 +495,8 @@
             animationState.isPaused = false;
             animationState.currentStage = 0;
             animationState.progress = 0;
+            animationState.isBreathing = false;
+            animationState.breathingTime = 0;
             
             if (animationState.animationId) {
                 cancelAnimationFrame(animationState.animationId);
@@ -407,12 +506,16 @@
             updateDimensionInfo(0, 0);
             
             // 重置按钮文本为"开始"
-            document.getElementById('mainBtn').textContent = '开始';
+            const mainBtn = document.getElementById('mainBtn');
+            mainBtn.textContent = '开始';
+            mainBtn.disabled = false;
             
             // 显示初始点
             const centerX = canvas.width / (2 * window.devicePixelRatio);
             const centerY = canvas.height / (2 * window.devicePixelRatio);
-            drawPoint(centerX, centerY);
+            const startX = centerX - 200;
+            const startY = centerY + 100;
+            drawPoint(startX, startY);
         }
 
         // 窗口大小改变时重新设置画布
