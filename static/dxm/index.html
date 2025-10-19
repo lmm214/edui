@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>点动成线，线动成面，面动成体</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #fafafa;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 25px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 400;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .btn:hover {
+            background: #e8e8e8;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: #007AFF;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056CC;
+        }
+
+        .canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            background: transparent;
+        }
+
+        .dimension-info {
+            position: fixed;
+            top: 20px;
+            right: 30px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            min-width: 200px;
+        }
+
+        .dimension-info h3 {
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .dimension-info p {
+            font-size: 0.85rem;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.4rem;
+            }
+            
+            .dimension-info {
+                position: fixed;
+                top: auto;
+                bottom: 150px;
+                right: 20px;
+                left: 20px;
+                min-width: auto;
+            }
+            
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="canvas-container">
+        <canvas id="mainCanvas" width="1100" height="800"></canvas>
+    </div>
+
+    <div class="dimension-info" id="dimensionInfo">
+        <h3>当前阶段：准备开始</h3>
+        <p>点击"开始演示"按钮，观看从零维到三维的完整变换过程。</p>
+    </div>
+
+    <div class="controls">
+        <button class="btn btn-primary" onclick="startAnimation()" id="mainBtn">开始</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 动画状态
+        let animationState = {
+            isRunning: false,
+            isPaused: false,
+            currentStage: 0, // 0: 点, 1: 线, 2: 面, 3: 体
+            progress: 0,
+            speed: 1,
+            animationId: null
+        };
+
+        // 速度设置
+        const speeds = [0.5, 1, 2];
+        let currentSpeedIndex = 0;
+
+        // 设置画布尺寸
+        function setupCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+        }
+
+        // 清除画布
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // 更新阶段指示器
+        // 更新维度信息
+        function updateDimensionInfo(stage, progress) {
+            const info = document.getElementById('dimensionInfo');
+            const stages = [
+                { title: '点 (0维)', desc: '一个没有长度、宽度、高度的几何对象，只有位置。' },
+                { title: '点动成线 (1维)', desc: '点在空间中移动，轨迹形成具有长度的线段。' },
+                { title: '线动成面 (2维)', desc: '线段垂直移动，扫过的区域形成具有面积的平面。' },
+                { title: '面动成体 (3维)', desc: '平面垂直移动，扫过的空间形成具有体积的立体。' }
+            ];
+            
+            if (stages[stage]) {
+                info.innerHTML = `
+                    <h3>${stages[stage].title}</h3>
+                    <p>${stages[stage].desc}</p>
+                `;
+            }
+        }
+
+        // 主动画函数
+        function animate() {
+            if (!animationState.isRunning || animationState.isPaused) return;
+
+            clearCanvas();
+            
+            const centerX = canvas.width / (2 * window.devicePixelRatio);
+            const centerY = canvas.height / (2 * window.devicePixelRatio);
+            
+            // 根据当前阶段和进度绘制
+            switch (animationState.currentStage) {
+                case 0: // 点阶段
+                    drawPoint(centerX, centerY);
+                    break;
+                case 1: // 点动成线
+                    drawPointToLine(centerX, centerY, animationState.progress);
+                    break;
+                case 2: // 线动成面
+                    drawLineToSurface(centerX, centerY, animationState.progress);
+                    break;
+                case 3: // 面动成体
+                    drawSurfaceToVolume(centerX, centerY, animationState.progress);
+                    break;
+            }
+
+            // 更新进度
+            animationState.progress += 0.008 * animationState.speed;
+            
+            // 检查阶段转换
+            if (animationState.progress >= 1) {
+                animationState.progress = 0;
+                animationState.currentStage++;
+                
+                // 在点变线（阶段1）和线变面（阶段2）完成后自动暂停
+                if (animationState.currentStage === 2 || animationState.currentStage === 3) {
+                    animationState.isPaused = true;
+                    // 按钮文本保持为"继续"，等待用户点击
+                }
+                
+                if (animationState.currentStage > 3) {
+                    // 动画完成，重置按钮为"开始"
+                    animationState.isRunning = false;
+                    document.getElementById('mainBtn').textContent = '开始';
+                    return;
+                }
+                
+                updateDimensionInfo(animationState.currentStage, 0);
+            }
+            
+            animationState.animationId = requestAnimationFrame(animate);
+        }
+
+        // 绘制点
+        function drawPoint(x, y) {
+            ctx.fillStyle = '#007AFF';
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 添加发光效果
+            ctx.shadowColor = '#007AFF';
+            ctx.shadowBlur = 20;
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // 绘制点动成线
+        function drawPointToLine(centerX, centerY, progress) {
+            const lineLength = 300;  // 增加线段长度
+            const startX = centerX - 100;  // 点向左偏移100像素
+            const endX = startX + lineLength;  // 向右移动形成线段
+            const currentX = startX + (endX - startX) * progress;
+            
+            // 绘制已形成的线段
+            if (progress > 0) {
+                ctx.strokeStyle = '#34C759';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(startX, centerY);
+                ctx.lineTo(currentX, centerY);
+                ctx.stroke();
+            }
+            
+            // 绘制移动的点
+            drawPoint(currentX, centerY);
+        }
+
+        // 绘制线动成面
+        function drawLineToSurface(centerX, centerY, progress) {
+            const lineLength = 300;  // 与点动成线保持一致的长度
+            const surfaceHeight = 150;  // 增加面的高度
+            const startX = centerX - 100;  // 保持与线段相同的起始位置
+            const endX = startX + lineLength;
+            const startY = centerY + surfaceHeight / 2;
+            const currentY = startY - surfaceHeight * progress;
+            
+            // 绘制已扫过的面
+            if (progress > 0) {
+                ctx.fillStyle = 'rgba(52, 199, 89, 0.3)';
+                ctx.fillRect(startX, currentY, lineLength, startY - currentY);
+                
+                // 绘制面的边框
+                ctx.strokeStyle = 'rgba(52, 199, 89, 0.6)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(startX, currentY, lineLength, startY - currentY);
+            }
+            
+            // 绘制移动的线
+            ctx.strokeStyle = '#34C759';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(startX, currentY);
+            ctx.lineTo(endX, currentY);
+            ctx.stroke();
+        }
+
+        // 绘制面动成体
+        function drawSurfaceToVolume(centerX, centerY, progress) {
+            const surfaceWidth = 300;  // 与线段保持一致的宽度
+            const surfaceHeight = 150;  // 与面保持一致的高度
+            const depth = 100 * progress;  // 增加体的深度
+            
+            const startX = centerX - 100;  // 保持与前面阶段相同的起始位置
+            const startY = centerY - surfaceHeight / 2;
+            
+            // 3D效果的偏移
+            const offsetX = depth * 0.5;
+            const offsetY = depth * 0.3;
+            
+            // 绘制立体的后面和侧面
+            if (progress > 0) {
+                // 后面 - 保持绿色
+                ctx.fillStyle = 'rgba(52, 199, 89, 0.4)';
+                ctx.fillRect(startX + offsetX, startY - offsetY, surfaceWidth, surfaceHeight);
+                
+                // 顶面 - 保持绿色
+                ctx.fillStyle = 'rgba(52, 199, 89, 0.6)';
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(startX + offsetX, startY - offsetY);
+                ctx.lineTo(startX + surfaceWidth + offsetX, startY - offsetY);
+                ctx.lineTo(startX + surfaceWidth, startY);
+                ctx.closePath();
+                ctx.fill();
+                
+                // 右侧面 - 保持绿色
+                ctx.fillStyle = 'rgba(52, 199, 89, 0.5)';
+                ctx.beginPath();
+                ctx.moveTo(startX + surfaceWidth, startY);
+                ctx.lineTo(startX + surfaceWidth + offsetX, startY - offsetY);
+                ctx.lineTo(startX + surfaceWidth + offsetX, startY + surfaceHeight - offsetY);
+                ctx.lineTo(startX + surfaceWidth, startY + surfaceHeight);
+                ctx.closePath();
+                ctx.fill();
+                
+                // 绘制边框线 - 保持绿色
+                ctx.strokeStyle = 'rgba(52, 199, 89, 0.8)';
+                ctx.lineWidth = 1;
+                
+                // 连接线
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(startX + offsetX, startY - offsetY);
+                ctx.moveTo(startX + surfaceWidth, startY);
+                ctx.lineTo(startX + surfaceWidth + offsetX, startY - offsetY);
+                ctx.moveTo(startX, startY + surfaceHeight);
+                ctx.lineTo(startX + offsetX, startY + surfaceHeight - offsetY);
+                ctx.moveTo(startX + surfaceWidth, startY + surfaceHeight);
+                ctx.lineTo(startX + surfaceWidth + offsetX, startY + surfaceHeight - offsetY);
+                ctx.stroke();
+            }
+            
+            // 绘制前面（移动的面）
+            ctx.fillStyle = '#FF9500';
+            ctx.fillRect(startX, startY, surfaceWidth, surfaceHeight);
+            
+            // 前面边框
+            ctx.strokeStyle = '#FF9500';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(startX, startY, surfaceWidth, surfaceHeight);
+        }
+
+        // 开始动画
+        // 开始/继续动画
+        function startAnimation() {
+            const mainBtn = document.getElementById('mainBtn');
+            
+            if (animationState.isRunning && !animationState.isPaused) return;
+            
+            if (!animationState.isRunning) {
+                // 第一次开始
+                resetAnimation();
+                mainBtn.textContent = '继续';
+            } else if (animationState.isPaused) {
+                // 继续动画
+                mainBtn.textContent = '继续';
+            }
+            
+            animationState.isRunning = true;
+            animationState.isPaused = false;
+            animate();
+        }
+
+        // 重置动画
+        function resetAnimation() {
+            animationState.isRunning = false;
+            animationState.isPaused = false;
+            animationState.currentStage = 0;
+            animationState.progress = 0;
+            
+            if (animationState.animationId) {
+                cancelAnimationFrame(animationState.animationId);
+            }
+            
+            clearCanvas();
+            updateDimensionInfo(0, 0);
+            
+            // 重置按钮文本为"开始"
+            document.getElementById('mainBtn').textContent = '开始';
+            
+            // 显示初始点
+            const centerX = canvas.width / (2 * window.devicePixelRatio);
+            const centerY = canvas.height / (2 * window.devicePixelRatio);
+            drawPoint(centerX, centerY);
+        }
+
+        // 窗口大小改变时重新设置画布
+        window.addEventListener('resize', () => {
+            setupCanvas();
+            if (!animationState.isRunning) {
+                resetAnimation();
+            }
+        });
+
+        // 初始化
+        window.addEventListener('load', () => {
+            setupCanvas();
+            resetAnimation();
+        });
+    </script>
+</body>
+</html>
