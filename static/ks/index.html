@@ -28,7 +28,7 @@
             max-width: 1100px;
             text-align: center;
             padding: 20px;
-            margin-top: -100px;
+            margin-top: -200px;
         }
         
         h1 {
@@ -182,11 +182,44 @@
             left: 50%;
             transform: translate(-50%, -50%);
             z-index: 10;
-            background-color: rgb(255 255 255 / 50%);
-            padding: 30px;
+            background-color: rgb(255 255 255 / 95%);
+            padding: 10px;
             border-radius: 15px;
-            width: 40%;
-            max-width: 300px;
+            width: 80%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .equations-summary {
+            margin: 20px 0;
+            text-align: left;
+        }
+        
+        .equations-summary h3 {
+            color: #4a6fa5;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .equations-list {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .equation-item {
+            background-color: #f0f8ff;
+            padding: 8px 0;
+            border-radius: 8px;
+            font-size: 2.8rem;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .equation-answer {
+            color: #2196f3;
+            font-weight: bold;
         }
         
         .hidden {
@@ -273,13 +306,14 @@
         max-width: 250px;
         transition: all 0.3s ease;
         overflow: hidden;
+        cursor: pointer;
     }
     
-    .equation-types:hover {
+    .equation-types.expanded {
         max-height: 500px;
     }
     
-    .equation-types:not(:hover) .equation-type-btn:not(.active) {
+    .equation-types:not(.expanded) .equation-type-btn:not(.active) {
         display: none;
     }
     
@@ -309,7 +343,7 @@
         opacity: 1;
     }
     
-    .equation-types:hover .equation-type-btn {
+    .equation-types.expanded .equation-type-btn {
         opacity: 1;
     }
 
@@ -533,10 +567,14 @@
         
         <div id="completion-container" class="completion-container hidden">
             <h2>挑战成功！🎉🎉🎉</h2>
+            <div id="equations-summary" class="equations-summary">
+                <h3>本组算式：</h3>
+                <div id="equations-list" class="equations-list"></div>
+            </div>
             <button id="restart-btn" class="btn restart">再来一组</button>
         </div>
         
-        <div class="equation-types">
+        <div class="equation-types" id="equation-types">
             <button class="equation-type-btn active" data-type="add-sub-20">20以内加减法</button>
             <button class="equation-type-btn" data-type="add-100">百以内加法</button>
             <button class="equation-type-btn" data-type="sub-100">百以内减法</button>
@@ -545,6 +583,7 @@
             <button class="equation-type-btn" data-type="divide-99">表内除法</button>
             <button class="equation-type-btn" data-type="multiply-divide-99">表内乘除法</button>
             <button class="equation-type-btn" data-type="multiply">两位数乘一位数</button>
+            <button class="equation-type-btn" data-type="multiply5">两位数乘一位数（5）</button>
         </div>
         <!-- 积分显示 -->
         <div class="score-container">
@@ -590,7 +629,7 @@
             const currentCountElement = document.getElementById('current-count');
             
             // 配置
-            const TOTAL_QUESTIONS = 20;
+            const TOTAL_QUESTIONS = 12;
             let remainingQuestions = TOTAL_QUESTIONS; // 剩余题目数量
             let currentQuestionIndex = 0;
             let confettiInterval = null;
@@ -727,6 +766,20 @@
                             const [smallerMul, biggerMul] = [multiplyNum1, multiplyNum2].sort((a, b) => a - b);
                             equationKey = `${smallerMul}×${biggerMul}`;
                             break;
+
+                        case 'multiply5':
+                            // 两位数乘一位数 (第一位是两位数,第二位是2-9)
+                            let multiplyNum51 = Math.floor(Math.random() * 40) + 10; // 10-49
+                            let multiplyNum52 = Math.floor(Math.random() * 8) + 2; // 2-9
+                            // 随机决定是否交换顺序
+                            if (Math.random() > 0.5) {
+                                [multiplyNum51, multiplyNum52] = [multiplyNum52, multiplyNum51];
+                            }
+                            equation = { num1: multiplyNum51, num2: multiplyNum52, operator: '×' };
+                            // 乘法 equationKey 需要排序以避免重复
+                            const [smallerMul5, biggerMul5] = [multiplyNum51, multiplyNum52].sort((a, b) => a - b);
+                            equationKey = `${smallerMul5}×${biggerMul5}`;
+                            break;
                             
                         case 'multiply-99':
                             // 九九乘法
@@ -847,11 +900,48 @@
                 correctBtn.style.display = 'none';
                 wrongBtn.style.display = 'none';
                 
+                // 生成算式列表
+                generateEquationsList();
+                
                 // 触发烟花特效
                 triggerConfetti();
                 
                 // 立即显示完成界面
                 completionContainer.classList.remove('hidden');
+            }
+            
+            // 生成算式列表
+            function generateEquationsList() {
+                const equationsList = document.getElementById('equations-list');
+                equationsList.innerHTML = '';
+                
+                equations.forEach(equation => {
+                    const equationItem = document.createElement('div');
+                    equationItem.className = 'equation-item';
+                    
+                    // 计算结果
+                    let result;
+                    switch (equation.operator) {
+                        case '+':
+                            result = equation.num1 + equation.num2;
+                            break;
+                        case '-':
+                            result = equation.num1 - equation.num2;
+                            break;
+                        case '×':
+                            result = equation.num1 * equation.num2;
+                            break;
+                        case '÷':
+                            result = equation.num1 / equation.num2;
+                            break;
+                        default:
+                            result = 0;
+                    }
+                    
+                    // 创建算式内容，答案部分用特殊样式
+                    equationItem.innerHTML = `${equation.num1} ${equation.operator} ${equation.num2} = <span class="equation-answer">${result}</span>`;
+                    equationsList.appendChild(equationItem);
+                });
             }
             
             // 触发烟花特效
@@ -953,6 +1043,25 @@
             
             // 算式类型切换按钮事件监听
             const equationTypeButtons = document.querySelectorAll('.equation-type-btn');
+            const equationTypesContainer = document.getElementById('equation-types');
+            
+            // 题库选择器展开/收缩功能
+            equationTypesContainer.addEventListener('click', function(e) {
+                // 如果点击的是按钮，不处理展开/收缩
+                if (e.target.classList.contains('equation-type-btn')) {
+                    return;
+                }
+                // 切换展开状态
+                this.classList.toggle('expanded');
+            });
+            
+            // 点击其他地方收缩题库选择器
+            document.addEventListener('click', function(e) {
+                if (!equationTypesContainer.contains(e.target)) {
+                    equationTypesContainer.classList.remove('expanded');
+                }
+            });
+            
             equationTypeButtons.forEach(button => {
                 button.addEventListener('click', function() {
                     // 移除所有按钮的active类
@@ -969,6 +1078,9 @@
                     
                     // 重新初始化题目
                     initialize();
+                    
+                    // 收缩题库选择器
+                    equationTypesContainer.classList.remove('expanded');
                 });
             });
             
