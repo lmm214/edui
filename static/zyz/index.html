@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎲 虚拟实验室：双骰子实验</title>
+    <script src="https://fastly.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            background-image: linear-gradient(45deg, #93a5cf 0%, #e4efe9 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            color: #6b7280;
+        }
+
+        .main-content {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 10px;
+            display: flex;
+            gap: 30px;
+            min-height: 600px;
+            align-items: center;
+        }
+
+        .chart-section {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #374151;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .chart-container {
+            flex: 1;
+            min-height: 500px;
+        }
+
+        .control-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 12px;
+        }
+
+        .mode-switch {
+            display: flex;
+            background: #f1f5f9;
+            border-radius: 8px;
+            padding: 4px;
+        }
+
+        .mode-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: transparent;
+            color: #64748b;
+        }
+
+        .mode-btn.active {
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+        }
+
+        .dice-display {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        /* 3D骰子样式 */
+        :root {
+            --dice-size: 100px;
+            --trans-z-face: calc(var(--dice-size) / 2);
+            --trans-z-show: calc(var(--trans-z-face) * -1);
+        }
+        
+        .dice-scene {
+            display: inline-block;
+            width: var(--dice-size);
+            height: var(--dice-size);
+            perspective: calc(var(--dice-size) * 4);
+        }
+        
+        .dice-cube {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transform: translateZ(var(--trans-z-show));
+            transition: transform 0.2s ease-out;
+        }
+        
+        .dice-face {
+            position: absolute;
+            width: var(--dice-size);
+            height: var(--dice-size);
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border: none;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.1);
+            backface-visibility: visible;
+        }
+        
+        .dice-dot {
+            width: 12px;
+            height: 12px;
+            background: #555;
+            border-radius: 50%;
+            position: absolute;
+        }
+        
+        /* 骰子面定位 */
+        .dice-face--front  { transform: rotateY(0deg) translateZ(var(--trans-z-face)); }
+        .dice-face--right  { transform: rotateY(90deg) translateZ(var(--trans-z-face)); }
+        .dice-face--back   { transform: rotateY(180deg) translateZ(var(--trans-z-face)); }
+        .dice-face--left   { transform: rotateY(-90deg) translateZ(var(--trans-z-face)); }
+        .dice-face--top    { transform: rotateX(90deg) translateZ(var(--trans-z-face)); }
+        .dice-face--bottom { transform: rotateX(-90deg) translateZ(var(--trans-z-face)); }
+        
+        /* 点数布局 */
+        .dice-face.one .dice-dot {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .dice-face.two .dice-dot:nth-child(1) {
+            top: 25%;
+            left: 25%;
+        }
+        .dice-face.two .dice-dot:nth-child(2) {
+            bottom: 25%;
+            right: 25%;
+        }
+        
+        .dice-face.three .dice-dot:nth-child(1) {
+            top: 25%;
+            left: 25%;
+        }
+        .dice-face.three .dice-dot:nth-child(2) {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .dice-face.three .dice-dot:nth-child(3) {
+            bottom: 25%;
+            right: 25%;
+        }
+        
+        .dice-face.four .dice-dot:nth-child(1) {
+            top: 25%;
+            left: 25%;
+        }
+        .dice-face.four .dice-dot:nth-child(2) {
+            top: 25%;
+            right: 25%;
+        }
+        .dice-face.four .dice-dot:nth-child(3) {
+            bottom: 25%;
+            left: 25%;
+        }
+        .dice-face.four .dice-dot:nth-child(4) {
+            bottom: 25%;
+            right: 25%;
+        }
+        
+        .dice-face.five .dice-dot:nth-child(1) {
+            top: 25%;
+            left: 25%;
+        }
+        .dice-face.five .dice-dot:nth-child(2) {
+            top: 25%;
+            right: 25%;
+        }
+        .dice-face.five .dice-dot:nth-child(3) {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .dice-face.five .dice-dot:nth-child(4) {
+            bottom: 25%;
+            left: 25%;
+        }
+        .dice-face.five .dice-dot:nth-child(5) {
+            bottom: 25%;
+            right: 25%;
+        }
+        
+        .dice-face.six .dice-dot:nth-child(1) {
+            top: 25%;
+            left: 25%;
+        }
+        .dice-face.six .dice-dot:nth-child(2) {
+            top: 25%;
+            right: 25%;
+        }
+        .dice-face.six .dice-dot:nth-child(3) {
+            top: 50%;
+            left: 25%;
+            transform: translateY(-50%);
+        }
+        .dice-face.six .dice-dot:nth-child(4) {
+            top: 50%;
+            right: 25%;
+            transform: translateY(-50%);
+        }
+        .dice-face.six .dice-dot:nth-child(5) {
+            bottom: 25%;
+            left: 25%;
+        }
+        .dice-face.six .dice-dot:nth-child(6) {
+            bottom: 25%;
+            right: 25%;
+        }
+        
+        /* 骰子显示状态 */
+        .dice-cube.show-front  { transform: translateZ(var(--trans-z-show)) rotateY(0deg); }
+        .dice-cube.show-right  { transform: translateZ(var(--trans-z-show)) rotateY(-90deg); }
+        .dice-cube.show-back   { transform: translateZ(var(--trans-z-show)) rotateY(-180deg); }
+        .dice-cube.show-left   { transform: translateZ(var(--trans-z-show)) rotateY(90deg); }
+        .dice-cube.show-top    { transform: translateZ(var(--trans-z-show)) rotateX(-90deg); }
+        .dice-cube.show-bottom { transform: translateZ(var(--trans-z-show)) rotateX(90deg); }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+        }
+
+        .btn-small {
+            padding: 12px 16px;
+            font-size: 0.9rem;
+        }
+
+        .stats-display {
+            background: #f8fafc;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stats-grid {
+             display: grid;
+             grid-template-columns: repeat(2, 1fr);
+             gap: 10px;
+             margin-bottom: 15px;
+         }
+
+         .stat-item {
+             background: white;
+             padding: 10px;
+             border-radius: 6px;
+             border: 2px solid #e5e7eb;
+         }
+
+         .stat-item-single {
+             background: white;
+             padding: 10px;
+             border-radius: 8px;
+             border: 2px solid #e5e7eb;
+             text-align: center;
+         }
+
+         .custom-roll-container {
+             display: flex;
+             gap: 8px;
+             width: 100%;
+         }
+
+         .custom-input {
+             flex: 1;
+             padding: 8px 12px;
+             border: 2px solid #e5e7eb;
+             border-radius: 6px;
+             font-size: 0.9rem;
+             text-align: center;
+         }
+
+         .custom-input:focus {
+             outline: none;
+             border-color: #3b82f6;
+             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+         }
+
+        .multi-roll-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            width: 100%;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #3b82f6;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+                gap: 20px;
+                justify-content: center;
+            }
+            
+            .chart-section {
+                order: 2;
+            }
+            
+            .control-section {
+                order: 1;
+            }
+            
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h2>🎲 虚拟实验室：骰子实验</h2>
+        </header>
+
+        <div class="main-content">
+            <!-- 左侧：统计图表区域 -->
+            <div class="chart-section">
+                <div id="chart-container" class="chart-container"></div>
+            </div>
+
+            <!-- 右侧：功能控制区域 -->
+            <div class="control-section">
+
+                <!-- 统计信息 -->
+                <div class="stats-display">
+                    <div class="stat-item-single">
+                        <div class="stat-label">投掷总次数</div>
+                        <div id="total-count" class="stat-value">0</div>
+                    </div>
+                </div>
+                <!-- 骰子显示 -->
+                <div class="dice-display">
+                    <div class="dice-scene">
+                        <div id="dice-1-cube" class="dice-cube">
+                            <div class="dice-face dice-face--front one"><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--right three"><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--back six"><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--left four"><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--top two"><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--bottom five"><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                        </div>
+                    </div>
+                    <div class="dice-scene">
+                        <div id="dice-2-cube" class="dice-cube">
+                            <div class="dice-face dice-face--front one"><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--right three"><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--back six"><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--left four"><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--top two"><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                            <div class="dice-face dice-face--bottom five"><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div><div class="dice-dot"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 控制按钮 -->
+                <div class="controls">
+                    <button id="roll-dice" class="btn btn-primary">🎲 掷骰子</button>
+                    <div class="multi-roll-container">
+                        <button id="roll-10-times" class="btn btn-secondary btn-small">连掷10次</button>
+                        <button id="roll-100-times" class="btn btn-secondary btn-small">连掷100次</button>
+                        <button id="roll-1000-times" class="btn btn-secondary btn-small">连掷1000次</button>
+                    </div>
+                    
+                    <!-- 自定义投掷次数 -->
+                    <div class="custom-roll-container">
+                        <input type="number" id="custom-roll-input" class="custom-input" placeholder="输入次数" min="1" max="10000000" value="10000">
+                        <button id="custom-roll-btn" class="btn btn-secondary btn-small">自定义投掷</button>
+                    </div>
+                    
+                    <button id="reset-stats" class="btn btn-secondary btn-small">🔄 重置统计</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let chart;
+        let sumStats = Array(11).fill(0); // 索引0对应点数2，索引10对应点数12
+        let totalRolls = 0;
+        let lastSum = 0;
+
+        // 骰子面映射
+        const faces = ['front', 'top', 'right', 'left', 'bottom', 'back'];
+        const oppositeFaces = {
+            front: 'back',
+            right: 'left', 
+            back: 'front',
+            left: 'right',
+            top: 'bottom',
+            bottom: 'top'
+        };
+
+        // 骰子类
+        class DiceCube {
+            constructor(element) {
+                this.element = element;
+                this.face = 'front';
+                this.prevFace = '';
+            }
+            
+            get points() {
+                return faces.indexOf(this.face) + 1;
+            }
+            
+            roll(face) {
+                this.element.className = 'dice-cube';
+                this.element.classList.add(`show-${face}`);
+                this.prevFace = this.face;
+                this.face = face;
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve();
+                    }, 180);
+                });
+            }
+            
+            randomFace() {
+                return faces[Math.floor(Math.random() * faces.length)];
+            }
+            
+            async throw() {
+                const times = 3;
+                
+                for (let i = 0; i < times; i++) {
+                    let nextFace;
+                    do {
+                        nextFace = this.randomFace();
+                    } while (nextFace === this.face || 
+                             nextFace === this.prevFace || 
+                             nextFace === oppositeFaces[this.face]);
+                    await this.roll(nextFace);
+                }
+                // 最终结果
+                await this.roll(this.randomFace());
+            }
+        }
+
+        // 初始化ECharts图表
+        function initChart() {
+            const chartContainer = document.getElementById('chart-container');
+            chart = echarts.init(chartContainer);
+            
+            const option = {
+                title: {
+                    text: '双骰子点数和分布',
+                    left: 'center',
+                    textStyle: {
+                        fontSize: 18,
+                        fontWeight: 'bold'
+                    }
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    },
+                    formatter: function(params) {
+                        const data = params[0];
+                        const sum = data.name;
+                        const count = data.value;
+                        return `点数和: ${sum}<br/>次数: ${count}`;
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+                    name: '点数和',
+                    nameGap: 20,
+                    axisLabel: {
+                        fontSize: 24
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '出现次数',
+                    nameGap: 30,
+                    min: 0,
+                    max: 10,
+                    interval: 1,
+                    minInterval: 1,
+                    splitNumber: 10,
+                    axisLabel: {
+                        fontSize: 24,
+                        formatter: function(value) {
+                            return Math.floor(value);
+                        }
+                    }
+                },
+                series: [{
+                    name: '次数',
+                    type: 'bar',
+                    data: sumStats,
+                    itemStyle: {
+                        color: function(params) {
+                            // 根据点数和设置不同颜色
+                            const colors = [
+                                '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
+                                '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6'
+                            ];
+                            return colors[params.dataIndex];
+                        }
+                    },
+                    label: {
+                        show: true,
+                        position: 'top',
+                        fontSize: 12,
+                        color: '#333',
+                        formatter: function(params) {
+                            return params.value > 0 ? params.value : '';
+                        }
+                    },
+                    emphasis: {
+                        itemStyle: {
+                            shadowBlur: 10,
+                            shadowOffsetX: 0,
+                            shadowColor: 'rgba(0, 0, 0, 0.5)'
+                        }
+                    }
+                }],
+                grid: {
+                    left: '15%',
+                    right: '10%',
+                    bottom: '10%',
+                    top: '15%'
+                }
+            };
+            
+            chart.setOption(option);
+            
+            // 响应式调整
+            window.addEventListener('resize', function() {
+                chart.resize();
+            });
+        }
+
+        // 更新图表数据
+        function updateChart() {
+            const dynamicMax = Math.max(10, Math.ceil(Math.max(...sumStats)));
+            let tickInterval = 1;
+            if (dynamicMax > 10) {
+                const raw = dynamicMax / 10;
+                const magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+                const residual = raw / magnitude;
+                let step;
+                if (residual <= 1) step = 1;
+                else if (residual <= 2) step = 2;
+                else if (residual <= 5) step = 5;
+                else step = 10;
+                tickInterval = step * magnitude;
+            }
+            chart.setOption({
+                yAxis: {
+                    type: 'value',
+                    min: 0,
+                    max: dynamicMax,
+                    interval: tickInterval,
+                    minInterval: 1,
+                    axisLabel: {
+                        fontSize: 24,
+                        formatter: function(value) {
+                            return Math.floor(value);
+                        }
+                    }
+                },
+                series: [{
+                    data: sumStats,
+                    label: {
+                        show: true,
+                        position: 'top',
+                        fontSize: 18,
+                        color: '#333',
+                        formatter: function(params) {
+                            return params.value > 0 ? params.value : '';
+                        }
+                    }
+                }]
+            });
+        }
+
+        // 更新统计显示
+         function updateStats() {
+             document.getElementById('total-count').textContent = totalRolls;
+         }
+
+         // 设置骰子显示结果
+         function setDiceResult(diceElement, result) {
+             const face = faces[result - 1];
+             diceElement.className = 'dice-cube';
+             diceElement.classList.add(`show-${face}`);
+             if (diceElement.diceInstance) {
+                 diceElement.diceInstance.face = face;
+             }
+         }
+
+         // 单次掷骰子（带动画）
+         async function rollSingleDice() {
+             const dice1 = document.getElementById('dice-1-cube');
+             const dice2 = document.getElementById('dice-2-cube');
+             
+             // 同时开始两个骰子的旋转动画
+             await Promise.all([
+                 dice1.diceInstance.throw(),
+                 dice2.diceInstance.throw()
+             ]);
+             
+             // 获取最终结果并更新统计
+             const result1 = dice1.diceInstance.points;
+             const result2 = dice2.diceInstance.points;
+             const sum = result1 + result2;
+             
+             // 更新统计数据
+             sumStats[sum - 2]++;
+             totalRolls++;
+             lastSum = sum;
+             
+             // 更新显示
+             updateChart();
+             updateStats();
+         }
+
+         // 单次掷骰子（无动画，用于连续掷骰子）
+         function rollSingleDiceNoAnimation() {
+             const result1 = Math.floor(Math.random() * 6) + 1;
+             const result2 = Math.floor(Math.random() * 6) + 1;
+             const sum = result1 + result2;
+             
+             // 更新统计数据
+             sumStats[sum - 2]++;
+             totalRolls++;
+             lastSum = sum;
+             
+             return { result1, result2, sum };
+         }
+
+         // 连续掷骰子
+         async function rollMultipleTimes(times) {
+             if (times >= 100) {
+                 // 大于等于100次时，批量处理，不显示动画
+                 for (let i = 0; i < times; i++) {
+                     rollSingleDiceNoAnimation();
+                 }
+                 
+                 // 设置最后一次的骰子显示结果
+                 const lastRoll = rollSingleDiceNoAnimation();
+                 const dice1 = document.getElementById('dice-1-cube');
+                 const dice2 = document.getElementById('dice-2-cube');
+                 setDiceResult(dice1, lastRoll.result1);
+                 setDiceResult(dice2, lastRoll.result2);
+                 
+                 // 一次性更新显示
+                 updateChart();
+                 updateStats();
+             } else {
+                 // 小于100次时，保持原有的逐步动画
+                 for (let i = 0; i < times; i++) {
+                     const rollResult = rollSingleDiceNoAnimation();
+                     
+                     // 设置骰子显示结果（无动画）
+                     const dice1 = document.getElementById('dice-1-cube');
+                     const dice2 = document.getElementById('dice-2-cube');
+                     setDiceResult(dice1, rollResult.result1);
+                     setDiceResult(dice2, rollResult.result2);
+                     
+                     // 短暂延迟以避免过快执行
+                     await new Promise(resolve => setTimeout(resolve, 20));
+                 }
+                 
+                 // 批量更新显示
+                 updateChart();
+                 updateStats();
+             }
+         }
+
+         // 自定义投掷次数
+         function customRoll() {
+             const input = document.getElementById('custom-roll-input');
+             const times = parseInt(input.value);
+             
+             if (isNaN(times) || times < 1 ) {
+                 //alert('请输入1-10000之间的有效数字');
+                 return;
+             }
+             
+             rollMultipleTimes(times);
+         }
+
+        // 重置统计
+        function resetStats() {
+            sumStats = Array(11).fill(0);
+            totalRolls = 0;
+            lastSum = 0;
+            
+            // 重置骰子显示
+            const dice1 = document.getElementById('dice-1-cube');
+            const dice2 = document.getElementById('dice-2-cube');
+            setDiceResult(dice1, 1);
+            setDiceResult(dice2, 1);
+            
+            // 更新显示
+            updateChart();
+            updateStats();
+        }
+
+        // 初始化骰子
+        function initializeDice() {
+            const dice1 = document.getElementById('dice-1-cube');
+            const dice2 = document.getElementById('dice-2-cube');
+            
+            dice1.diceInstance = new DiceCube(dice1);
+            dice2.diceInstance = new DiceCube(dice2);
+            
+            // 设置初始显示为1点
+            setDiceResult(dice1, 1);
+            setDiceResult(dice2, 1);
+        }
+
+        // 事件监听器
+        document.getElementById('roll-dice').addEventListener('click', rollSingleDice);
+        document.getElementById('roll-10-times').addEventListener('click', () => rollMultipleTimes(10));
+        document.getElementById('roll-100-times').addEventListener('click', () => rollMultipleTimes(100));
+        document.getElementById('roll-1000-times').addEventListener('click', () => rollMultipleTimes(1000));
+        document.getElementById('custom-roll-btn').addEventListener('click', customRoll);
+        document.getElementById('reset-stats').addEventListener('click', resetStats);
+
+        // 页面加载完成后初始化
+        window.onload = function() {
+            initChart();
+            initializeDice();
+            updateStats();
+        };
+    </script>
+</body>
+</html>
