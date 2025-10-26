@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>垂直线段</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+            background: white;
+        }
+        
+        #canvas {
+            display: block;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            font-size: 14px;
+            color: #333;
+            z-index: 100;
+        }
+
+        .clear-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 100;
+            transition: background 0.2s;
+        }
+
+        .clear-btn:hover {
+            background: #dc2626;
+        }
+
+        .shoot-btn {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 100;
+            transition: background 0.2s;
+        }
+
+        .shoot-btn:hover {
+            background: #059669;
+        }
+
+        .compare-btn {
+            position: fixed;
+            top: 120px;
+            right: 20px;
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 100;
+            transition: background 0.2s;
+            display: none; /* 默认隐藏 */
+        }
+
+        .compare-btn:hover {
+            background: #7c3aed;
+        }
+
+        .compare-btn.show {
+            display: block;
+        }
+
+        .restore-btn {
+            position: fixed;
+            top: 170px;
+            right: 20px;
+            background: #f59e0b;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 100;
+            transition: background 0.2s;
+            display: none; /* 默认隐藏 */
+        }
+
+        .restore-btn:hover {
+            background: #d97706;
+        }
+
+        .restore-btn.show {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .info-panel {
+                font-size: 12px;
+                padding: 10px;
+                top: 10px;
+                left: 10px;
+            }
+            
+            .clear-btn {
+                top: 10px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+            
+            .shoot-btn {
+                top: 55px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+            
+            .compare-btn {
+                top: 100px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+            
+            .restore-btn {
+                top: 145px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button class="clear-btn" onclick="clearAllLines()">清除所有</button>
+     <button class="shoot-btn" onclick="autoShoot()">一键发射</button>
+     <button class="compare-btn" id="compareBtn" onclick="compareAllLines()">一键比较</button>
+     <button class="restore-btn" id="restoreBtn" onclick="restoreAllLines()">一键复原</button>
+    
+    <script>
+    class VerticalLineCanvas {
+        constructor(canvasId) {
+            this.canvas = document.getElementById(canvasId);
+            this.ctx = this.canvas.getContext('2d');
+            this.gridSize = window.innerWidth <= 768 ? 80 : 100;
+            
+            // 画布尺寸
+            this.width = 0;
+            this.height = 0;
+            
+            // 绘制状态
+            this.isDrawing = false;
+            this.startPoint = null;
+            this.currentPoint = null;
+            this.previewLine = null;
+            
+            // 旋转状态
+            this.isRotating = false;
+            this.rotatingLineIndex = -1;
+            this.rotatingLine = null;
+            this.rotationStartAngle = 0;
+            this.rotationStartPos = null;
+            this.lastClickTime = 0;
+            
+            // 元素位置
+            this.centerPoint = { x: 0, y: 0, radius: 8 };
+            this.horizontalLine = { y: 0, startX: 0, endX: 0 };
+            
+            // 存储已绘制的线段
+            this.lines = [];
+            this.nonVerticalLines = [];
+            
+            // 存储线段的原始位置（用于复原功能）
+            this.originalPositions = [];
+            this.isCompared = false;
+            
+            // 颜色配置 - 24种不同颜色（完全不包含红色系，红色专用于垂直线段）
+            this.colors = [
+                '#3b82f6', // 蓝色
+                '#10b981', // 绿色
+                '#f59e0b', // 橙色
+                '#8b5cf6', // 紫色
+                '#06b6d4', // 青色
+                '#84cc16', // 青绿色
+                '#14b8a6', // 青绿色（深）
+                '#a855f7', // 紫罗兰色
+                '#22c55e', // 翠绿色
+                '#eab308', // 黄色
+                '#6366f1', // 靛蓝色
+                '#64748b', // 石板灰
+                '#059669', // 祖母绿
+                '#7c3aed', // 紫罗兰（深）
+                '#0891b2', // 天蓝色（深）
+                '#9333ea', // 紫色（亮）
+                '#16a34a', // 绿色（深）
+                '#ca8a04', // 黄色（深）
+                '#0369a1', // 蓝色（深）
+                '#7e22ce', // 紫色（更深）
+                '#0d9488', // 青绿色（更深）
+                '#1e40af', // 蓝色（更深）
+                '#365314', // 绿色（橄榄）
+                '#92400e'  // 棕色
+            ];
+            this.colorIndex = 0;
+            
+            // 设备像素比
+            this.pixelRatio = window.devicePixelRatio || 1;
+            
+            this.init();
+        }
+        
+        init() {
+            this.setupCanvas();
+            this.setupEventListeners();
+            this.calculatePositions();
+            this.draw();
+        }
+        
+        setupCanvas() {
+            // 设置画布尺寸
+            this.width = window.innerWidth;
+            this.height = window.innerHeight;
+            
+            // 设置实际画布尺寸（考虑设备像素比）
+            this.canvas.width = this.width * this.pixelRatio;
+            this.canvas.height = this.height * this.pixelRatio;
+            
+            // 设置CSS尺寸
+            this.canvas.style.width = this.width + 'px';
+            this.canvas.style.height = this.height + 'px';
+            
+            // 缩放上下文以匹配设备像素比
+            this.ctx.scale(this.pixelRatio, this.pixelRatio);
+            
+            // 监听窗口大小变化
+            window.addEventListener('resize', () => {
+                this.setupCanvas();
+                this.calculatePositions();
+                this.draw();
+            });
+        }
+        
+        calculatePositions() {
+            // 计算网格对齐的中心点位置
+            const gridCenterX = Math.round(this.width / 2 / this.gridSize) * this.gridSize;
+            const gridCenterY = Math.round(this.height / 2 / this.gridSize) * this.gridSize;
+            
+            this.centerPoint.x = gridCenterX;
+            this.centerPoint.y = gridCenterY - this.gridSize * 2;
+            this.centerPoint.radius = window.innerWidth <= 768 ? 6 : 8;
+            
+            // 计算水平线位置，对齐到网格线
+            this.horizontalLine.y = gridCenterY + this.gridSize;
+            this.horizontalLine.startX = this.width * 0.2;
+            this.horizontalLine.endX = this.width * 0.8;
+        }
+        
+        setupEventListeners() {
+            // 鼠标事件
+            this.canvas.addEventListener('mousedown', (e) => this.handleStart(e));
+            this.canvas.addEventListener('mousemove', (e) => this.handleMove(e));
+            this.canvas.addEventListener('mouseup', (e) => this.handleEnd(e));
+            
+            // 触摸事件
+            this.canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.handleStart(e.touches[0]);
+            });
+            
+            this.canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                this.handleMove(e.touches[0]);
+            });
+            
+            this.canvas.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                this.handleEnd();
+            });
+            
+            // 点击事件（用于删除线段或开始旋转）
+            this.canvas.addEventListener('click', (e) => this.handleClick(e));
+        }
+        
+        getMousePos(e) {
+            const rect = this.canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+        
+        handleStart(e) {
+            const pos = this.getMousePos(e);
+            
+            // 检查是否点击在中心点附近（开始绘制新线段）
+            const centerDistance = Math.sqrt(
+                Math.pow(pos.x - this.centerPoint.x, 2) + 
+                Math.pow(pos.y - this.centerPoint.y, 2)
+            );
+            
+            if (centerDistance <= this.centerPoint.radius + 10) {
+                this.isDrawing = true;
+                this.startPoint = { x: this.centerPoint.x, y: this.centerPoint.y };
+                this.currentPoint = pos;
+                return;
+            }
+            
+            // 检查是否点击在已有线段上（开始旋转）
+            for (let i = this.lines.length - 1; i >= 0; i--) {
+                const line = this.lines[i];
+                if (this.isPointOnLine(pos, line.start, line.end, 15)) {
+                    this.isRotating = true;
+                    this.rotatingLineIndex = i;
+                    this.rotatingLine = line;
+                    this.rotationStartAngle = Math.atan2(
+                        line.end.y - line.start.y,
+                        line.end.x - line.start.x
+                    );
+                    this.rotationStartPos = pos;
+                    return;
+                }
+            }
+        }
+        
+        handleMove(e) {
+            const pos = this.getMousePos(e);
+            
+            if (this.isDrawing) {
+                // 绘制新线段
+                this.currentPoint = pos;
+                this.previewLine = this.calculateIntersection(this.startPoint, pos);
+                this.draw();
+            } else if (this.isRotating && this.rotatingLine) {
+                // 旋转已有线段
+                const currentAngle = Math.atan2(
+                    pos.y - this.centerPoint.y,
+                    pos.x - this.centerPoint.x
+                );
+                
+                // 计算线段长度
+                const lineLength = Math.sqrt(
+                    Math.pow(this.rotatingLine.end.x - this.rotatingLine.start.x, 2) +
+                    Math.pow(this.rotatingLine.end.y - this.rotatingLine.start.y, 2)
+                );
+                
+                // 计算新的终点位置
+                const newEndX = this.centerPoint.x + Math.cos(currentAngle) * lineLength;
+                const newEndY = this.centerPoint.y + Math.sin(currentAngle) * lineLength;
+                
+                // 检查是否接近垂直位置（自动吸附）
+                const verticalAngle = Math.PI / 2; // 90度
+                const snapTolerance = 0.1; // 约5.7度的容差
+                
+                let finalAngle = currentAngle;
+                if (Math.abs(currentAngle - verticalAngle) < snapTolerance) {
+                    finalAngle = verticalAngle;
+                } else if (Math.abs(currentAngle + verticalAngle) < snapTolerance) {
+                    finalAngle = -verticalAngle;
+                }
+                
+                // 更新线段位置
+                this.lines[this.rotatingLineIndex] = {
+                    ...this.rotatingLine,
+                    end: {
+                        x: this.centerPoint.x + Math.cos(finalAngle) * lineLength,
+                        y: this.centerPoint.y + Math.sin(finalAngle) * lineLength
+                    }
+                };
+                
+                this.draw();
+            }
+        }
+        
+        handleEnd(e) {
+            if (this.isDrawing) {
+                // 完成新线段绘制
+                if (this.previewLine) {
+                    // 检查是否为垂直线段
+                    const isVertical = Math.abs(this.previewLine.end.x - this.previewLine.start.x) < 5;
+                    
+                    const newLine = {
+                        start: { x: this.previewLine.start.x, y: this.previewLine.start.y },
+                        end: { x: this.previewLine.end.x, y: this.previewLine.end.y },
+                        color: isVertical ? '#ef4444' : this.colors[this.colorIndex % this.colors.length],
+                        isVertical: isVertical,
+                        id: Date.now() + Math.random()
+                    };
+                    
+                    // 先加入主线集合，保证可见
+                    this.lines.push(newLine);
+                    
+                    // 如果不是垂直线段，记录并递增颜色索引
+                    if (!isVertical) {
+                        this.nonVerticalLines.push(newLine);
+                        this.colorIndex++;
+                    }
+                }
+                
+                this.isDrawing = false;
+                this.startPoint = null;
+                this.currentPoint = null;
+                this.previewLine = null;
+            } else if (this.isRotating) {
+                // 完成线段旋转
+                this.isRotating = false;
+                this.rotatingLineIndex = -1;
+                this.rotatingLine = null;
+                this.rotationStartAngle = 0;
+                this.rotationStartPos = null;
+            }
+            
+            this.draw();
+        }
+        
+        handleClick(e) {
+            if (this.isDrawing || this.isRotating) return;
+            
+            const pos = this.getMousePos(e);
+            
+            // 检查是否点击在某条线段上（删除功能）
+            for (let i = this.lines.length - 1; i >= 0; i--) {
+                const line = this.lines[i];
+                if (this.isPointOnLine(pos, line.start, line.end, 10)) {
+                    // 双击删除，单击选择旋转
+                    if (this.lastClickTime && Date.now() - this.lastClickTime < 300) {
+                        this.nonVerticalLines = this.nonVerticalLines.filter(l => l.id !== line.id);
+                        this.lines.splice(i, 1);
+                        this.draw();
+                    }
+                    this.lastClickTime = Date.now();
+                    break;
+                }
+            }
+        }
+        
+        calculateIntersection(start, current) {
+            // 计算从起点到当前点的方向向量
+            const dx = current.x - start.x;
+            const dy = current.y - start.y;
+            
+            // 如果方向向量为零，返回null
+            if (dx === 0 && dy === 0) return null;
+            
+            // 计算与水平线的交点
+            const lineY = this.horizontalLine.y;
+            
+            // 如果起点就在水平线上，直接返回
+            if (Math.abs(start.y - lineY) < 1) {
+                return {
+                    start: start,
+                    end: { x: start.x, y: lineY }
+                };
+            }
+            
+            // 计算交点的x坐标
+            let intersectionX;
+            
+            if (Math.abs(dy) < 0.001) {
+                // 水平拖动，交点就是当前x坐标
+                intersectionX = current.x;
+            } else {
+                // 计算直线与水平线的交点
+                const t = (lineY - start.y) / dy;
+                intersectionX = start.x + t * dx;
+            }
+            
+            // 限制交点在水平线范围内
+            intersectionX = Math.max(this.horizontalLine.startX, 
+                           Math.min(this.horizontalLine.endX, intersectionX));
+            
+            // 垂直线段自动吸附功能
+            const verticalSnapTolerance = 15; // 吸附容差（像素）
+            if (Math.abs(intersectionX - start.x) < verticalSnapTolerance) {
+                // 如果接近垂直，自动吸附为完全垂直
+                intersectionX = start.x;
+            }
+            
+            return {
+                start: start,
+                end: { x: intersectionX, y: lineY }
+            };
+        }
+        
+        isPointOnLine(point, lineStart, lineEnd, tolerance = 5) {
+            // 计算点到线段的距离
+            const A = point.x - lineStart.x;
+            const B = point.y - lineStart.y;
+            const C = lineEnd.x - lineStart.x;
+            const D = lineEnd.y - lineStart.y;
+            
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            
+            if (lenSq === 0) return Math.sqrt(A * A + B * B) <= tolerance;
+            
+            const param = dot / lenSq;
+            
+            let xx, yy;
+            
+            if (param < 0) {
+                xx = lineStart.x;
+                yy = lineStart.y;
+            } else if (param > 1) {
+                xx = lineEnd.x;
+                yy = lineEnd.y;
+            } else {
+                xx = lineStart.x + param * C;
+                yy = lineStart.y + param * D;
+            }
+            
+            const dx = point.x - xx;
+            const dy = point.y - yy;
+            
+            return Math.sqrt(dx * dx + dy * dy) <= tolerance;
+        }
+        
+        draw() {
+            // 清空画布
+            this.ctx.clearRect(0, 0, this.width, this.height);
+            
+            // 绘制网格
+            this.drawGrid();
+            
+            // 绘制水平线
+            this.drawHorizontalLine();
+            
+            // 绘制中心点
+            this.drawCenterPoint();
+            
+            // 先绘制预览线（避免遮挡红色垂直线）
+            if (this.previewLine) {
+                this.drawPreviewLine();
+            }
+            
+            // 绘制已有线段（内部按层级顺序）
+            this.drawLines();
+            
+            // 更新比较按钮显示状态
+            this.updateCompareButtonVisibility();
+        }
+        
+        drawGrid() {
+            this.ctx.strokeStyle = '#e5e5e5';
+            this.ctx.lineWidth = 1;
+            this.ctx.beginPath();
+            
+            // 垂直线
+            for (let x = 0; x <= this.width; x += this.gridSize) {
+                this.ctx.moveTo(x, 0);
+                this.ctx.lineTo(x, this.height);
+            }
+            
+            // 水平线
+            for (let y = 0; y <= this.height; y += this.gridSize) {
+                this.ctx.moveTo(0, y);
+                this.ctx.lineTo(this.width, y);
+            }
+            
+            this.ctx.stroke();
+        }
+        
+        drawHorizontalLine() {
+            this.ctx.strokeStyle = '#374151';
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            this.ctx.moveTo(this.horizontalLine.startX, this.horizontalLine.y);
+            this.ctx.lineTo(this.horizontalLine.endX, this.horizontalLine.y);
+            this.ctx.stroke();
+        }
+        
+        drawCenterPoint() {
+            this.ctx.fillStyle = '#ef4444';
+            this.ctx.beginPath();
+            this.ctx.arc(this.centerPoint.x, this.centerPoint.y, this.centerPoint.radius, 0, 2 * Math.PI);
+            this.ctx.fill();
+        }
+        
+        drawLines() {
+            // 非垂直线段
+            this.lines.filter(line => !line.isVertical).forEach(line => {
+                this.ctx.strokeStyle = line.color || '#3b82f6';
+                this.ctx.lineWidth = 3;
+                this.ctx.beginPath();
+                this.ctx.moveTo(line.start.x, line.start.y);
+                this.ctx.lineTo(line.end.x, line.end.y);
+                this.ctx.stroke();
+            });
+        
+            // 垂直线段中非红色的（先画）
+            this.lines.filter(line => line.isVertical && line.color !== '#ef4444').forEach(line => {
+                this.ctx.strokeStyle = line.color || '#ef4444';
+                this.ctx.lineWidth = 4;
+                this.ctx.beginPath();
+                this.ctx.moveTo(line.start.x, line.start.y);
+                this.ctx.lineTo(line.end.x, line.end.y);
+                this.ctx.stroke();
+            });
+        
+            // 红色垂直线段（最高层最后画）
+            this.lines.filter(line => line.isVertical && line.color === '#ef4444').forEach(line => {
+                this.ctx.strokeStyle = '#ef4444';
+                this.ctx.lineWidth = 4;
+                this.ctx.beginPath();
+                this.ctx.moveTo(line.start.x, line.start.y);
+                this.ctx.lineTo(line.end.x, line.end.y);
+                this.ctx.stroke();
+            });
+        }
+        
+        drawPreviewLine() {
+            this.ctx.strokeStyle = '#3b82f6';
+            this.ctx.lineWidth = 2;
+            this.ctx.setLineDash([5, 5]);
+            this.ctx.globalAlpha = 0.6;
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(this.previewLine.start.x, this.previewLine.start.y);
+            this.ctx.lineTo(this.previewLine.end.x, this.previewLine.end.y);
+            this.ctx.stroke();
+            
+            // 重置样式
+            this.ctx.setLineDash([]);
+            this.ctx.globalAlpha = 1.0;
+        }
+        
+        clearAllLines() {
+            this.lines = [];
+            this.colorIndex = 0; // 重置颜色索引
+            this.nonVerticalLines = [];
+            this.originalPositions = [];
+            this.isCompared = false;
+            this.updateRestoreButtonVisibility();
+            this.draw();
+        }
+        
+        updateCompareButtonVisibility() {
+            const compareBtn = document.getElementById('compareBtn');
+            if (compareBtn) {
+                // 当有多条线段时显示比较按钮
+                if (this.lines.length > 1) {
+                    compareBtn.classList.add('show');
+                } else {
+                    compareBtn.classList.remove('show');
+                }
+            }
+        }
+        
+        updateRestoreButtonVisibility() {
+            const restoreBtn = document.getElementById('restoreBtn');
+            if (restoreBtn) {
+                if (this.isCompared && this.originalPositions.length > 0) {
+                    restoreBtn.classList.add('show');
+                } else {
+                    restoreBtn.classList.remove('show');
+                }
+            }
+        }
+        
+        restoreAllLines() {
+            if (!this.isCompared || this.originalPositions.length === 0) return;
+            
+            // 恢复所有线段到原始位置
+            this.originalPositions.forEach(originalLine => {
+                const currentLineIndex = this.lines.findIndex(line => line.id === originalLine.id);
+                if (currentLineIndex !== -1) {
+                    this.animateLineRestore(this.lines[currentLineIndex], originalLine, () => {
+                        // 恢复完成后更新状态
+                        this.lines[currentLineIndex].isVertical = originalLine.isVertical;
+                        if (!originalLine.isVertical) {
+                            this.nonVerticalLines.push(this.lines[currentLineIndex]);
+                        }
+                    });
+                }
+            });
+            
+            // 重置状态
+            this.isCompared = false;
+            this.originalPositions = [];
+            this.updateRestoreButtonVisibility();
+        }
+        
+        animateLineRestore(line, originalLine, onDone) {
+            const startTime = Date.now();
+            const duration = 400;
+            const startAngle = Math.atan2(
+                line.end.y - line.start.y,
+                line.end.x - line.start.x
+            );
+            const targetAngle = Math.atan2(
+                originalLine.end.y - originalLine.start.y,
+                originalLine.end.x - originalLine.start.x
+            );
+            const lineLength = Math.sqrt(
+                Math.pow(originalLine.end.x - originalLine.start.x, 2) +
+                Math.pow(originalLine.end.y - originalLine.start.y, 2)
+            );
+            
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const currentAngle = startAngle + (targetAngle - startAngle) * progress;
+                
+                line.end = {
+                    x: line.start.x + Math.cos(currentAngle) * lineLength,
+                    y: line.start.y + Math.sin(currentAngle) * lineLength
+                };
+                
+                this.draw();
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    if (typeof onDone === 'function') onDone();
+                }
+            };
+            animate();
+        }
+        compareAllLines() {
+            if (this.nonVerticalLines.length === 0) return;
+            
+            // 保存原始位置
+            this.originalPositions = this.nonVerticalLines.map(line => ({
+                id: line.id,
+                start: { x: line.start.x, y: line.start.y },
+                end: { x: line.end.x, y: line.end.y },
+                color: line.color,
+                isVertical: line.isVertical
+            }));
+            
+            const queue = this.nonVerticalLines.slice();
+            const rotateNext = (k) => {
+                if (k >= queue.length) {
+                    // 所有线段旋转完成后显示复原按钮
+                    this.isCompared = true;
+                    this.updateRestoreButtonVisibility();
+                    return;
+                }
+                this.animateLineRotation(queue[k], () => {
+                    // 完成后从队列和记录中移除
+                    queue[k].isVertical = true;
+                    this.nonVerticalLines = this.nonVerticalLines.filter(l => l.id !== queue[k].id);
+                    rotateNext(k + 1);
+                });
+            };
+            rotateNext(0);
+        }
+        
+        animateLineRotation(line, onDone) {
+            if (!line || line.isVertical) {
+                if (typeof onDone === 'function') onDone();
+                return;
+            }
+            const startTime = Date.now();
+            const duration = 400;
+            const originalAngle = Math.atan2(
+                line.end.y - line.start.y,
+                line.end.x - line.start.x
+            );
+            const targetA = Math.PI / 2;
+            const targetB = -Math.PI / 2;
+            const targetAngle = (Math.abs(targetA - originalAngle) <= Math.abs(targetB - originalAngle)) ? targetA : targetB;
+            const lineLength = Math.sqrt(
+                Math.pow(line.end.x - line.start.x, 2) +
+                Math.pow(line.end.y - line.start.y, 2)
+            );
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const currentAngle = originalAngle + (targetAngle - originalAngle) * progress;
+                line.end = {
+                    x: line.start.x + Math.cos(currentAngle) * lineLength,
+                    y: line.start.y + Math.sin(currentAngle) * lineLength
+                };
+                if (progress >= 1) {
+                    line.isVertical = true;
+                }
+                this.draw();
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    if (typeof onDone === 'function') onDone();
+                }
+            };
+            animate();
+        }
+        
+        autoShoot() {
+            // 计算水平线上的所有网格交点
+            const lineY = this.horizontalLine.y;
+            const startX = Math.ceil(this.horizontalLine.startX / this.gridSize) * this.gridSize;
+            const endX = Math.floor(this.horizontalLine.endX / this.gridSize) * this.gridSize;
+            
+            // 清除现有线段
+            this.clearAllLines();
+            
+            // 收集所有目标点（包括中心垂直线段）
+            const targets = [];
+            
+            // 添加所有网格交点（包括中心点）
+            for (let x = startX; x <= endX; x += this.gridSize) {
+                const isVertical = Math.abs(x - this.centerPoint.x) < 5;
+                
+                targets.push({
+                    x: x,
+                    y: lineY,
+                    isVertical: isVertical,
+                    color: isVertical ? '#ef4444' : this.colors[this.colorIndex % this.colors.length]
+                });
+                
+                // 如果不是垂直线段，递增颜色索引
+                if (!isVertical) {
+                    this.colorIndex++;
+                }
+            }
+            
+            // 动态发射线段
+            this.shootLinesSequentially(targets, 0);
+        }
+        
+        shootLinesSequentially(targets, index) {
+            if (index >= targets.length) return;
+            
+            const target = targets[index];
+            
+            // 使用动画绘制线段
+            this.animateLineDrawing(target, () => {
+                // 动画完成后继续下一条线段
+                setTimeout(() => {
+                    this.shootLinesSequentially(targets, index + 1);
+                }, 50); // 短暂间隔后绘制下一条
+            });
+        }
+        
+        animateLineDrawing(target, callback) {
+            const startTime = Date.now();
+            const duration = 200; // 动画持续300毫秒
+            const startPoint = { x: this.centerPoint.x, y: this.centerPoint.y };
+            const endPoint = { x: target.x, y: target.y };
+            const animId = 'anim-' + target.x + '-' + target.y; // 稳定 ID，避免每帧新增
+            
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // 使用缓动函数让动画更自然
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                
+                // 计算当前终点位置
+                const currentEnd = {
+                    x: startPoint.x + (endPoint.x - startPoint.x) * easeProgress,
+                    y: startPoint.y + (endPoint.y - startPoint.y) * easeProgress
+                };
+                
+                // 单实例动画线：首帧创建，其后按 ID 覆盖
+                const animatingLine = {
+                    start: startPoint,
+                    end: currentEnd,
+                    color: target.color,
+                    isVertical: target.isVertical,
+                    id: animId,
+                    isAnimating: true
+                };
+                const existingIndex = this.lines.findIndex(line => line.id === animId);
+                if (existingIndex === -1) {
+                    this.lines.push(animatingLine);
+                } else {
+                    this.lines[existingIndex] = animatingLine;
+                }
+                
+                // 重绘画布
+                this.draw();
+                
+                if (progress < 1) {
+                    // 继续动画
+                    requestAnimationFrame(animate);
+                } else {
+                    // 动画完成，替换为最终线段（去掉 isAnimating）
+                    const finalLine = {
+                        start: startPoint,
+                        end: endPoint,
+                        color: target.color,
+                        isVertical: target.isVertical,
+                        id: Date.now() + Math.random()
+                    };
+                    const finalIndex = this.lines.findIndex(line => line.id === animId);
+                    if (finalIndex !== -1) {
+                        this.lines[finalIndex] = finalLine;
+                    } else {
+                        this.lines.push(finalLine);
+                    }
+                    if (!finalLine.isVertical) {
+                        this.nonVerticalLines.push(finalLine);
+                    }
+                    
+                    this.draw();
+                    if (callback) callback();
+                }
+            };
+            
+            animate();
+        }
+    }
+    
+    // 全局变量和函数
+    let canvasApp;
+    
+    function clearAllLines() {
+        if (canvasApp) {
+            canvasApp.clearAllLines();
+        }
+    }
+    
+    function autoShoot() {
+        if (canvasApp) {
+            canvasApp.autoShoot();
+        }
+    }
+    
+    function compareAllLines() {
+        if (canvasApp) {
+            canvasApp.compareAllLines();
+        }
+    }
+    
+    function restoreAllLines() {
+        if (canvasApp) {
+            canvasApp.restoreAllLines();
+        }
+    }
+    
+    // 初始化应用
+    document.addEventListener('DOMContentLoaded', () => {
+        canvasApp = new VerticalLineCanvas('canvas');
+    });
+    </script>
+</body>
+</html>
