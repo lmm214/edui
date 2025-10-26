@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>垂直线段</title>
+    <title>垂直线段最短</title>
     <style>
         * {
             margin: 0;
@@ -58,7 +58,7 @@
 
         .shoot-btn {
             position: fixed;
-            top: 70px;
+            top: 120px;
             right: 20px;
             background: #10b981;
             color: white;
@@ -78,7 +78,7 @@
 
         .compare-btn {
             position: fixed;
-            top: 120px;
+            top: 170px;
             right: 20px;
             background: #8b5cf6;
             color: white;
@@ -126,6 +126,26 @@
             display: block;
         }
 
+        .random-btn {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            background: #0ea5e9;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 100;
+            transition: background 0.2s;
+        }
+
+        .random-btn:hover {
+            background: #0284c7;
+        }
+
         @media (max-width: 768px) {
             .info-panel {
                 font-size: 12px;
@@ -161,12 +181,20 @@
                 padding: 8px 16px;
                 font-size: 12px;
             }
+
+            .random-btn {
+                top: 190px;
+                right: 10px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }
         }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
     <button class="clear-btn" onclick="clearAllLines()">清除所有</button>
+     <button class="random-btn" id="randomBtn" onclick="randomizePosition()">随机位置</button>
      <button class="shoot-btn" onclick="autoShoot()">一键发射</button>
      <button class="compare-btn" id="compareBtn" onclick="compareAllLines()">一键比较</button>
      <button class="restore-btn" id="restoreBtn" onclick="restoreAllLines()">一键复原</button>
@@ -195,10 +223,16 @@
             this.rotationStartAngle = 0;
             this.rotationStartPos = null;
             this.lastClickTime = 0;
+
+            // 水平参考线拖拽/旋转状态
+            this.isDraggingHorizontal = false;
+            this.draggingHorizontalMode = null; // 'translate' | 'rotateStart' | 'rotateEnd'
+            this.dragStartPos = null;
+            this.originalHorizontalLine = null;
             
             // 元素位置
             this.centerPoint = { x: 0, y: 0, radius: 8 };
-            this.horizontalLine = { y: 0, startX: 0, endX: 0 };
+            this.horizontalLine = { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } };
             
             // 存储已绘制的线段
             this.lines = [];
@@ -283,10 +317,10 @@
             this.centerPoint.y = gridCenterY - this.gridSize * 2;
             this.centerPoint.radius = window.innerWidth <= 768 ? 6 : 8;
             
-            // 计算水平线位置，对齐到网格线
-            this.horizontalLine.y = gridCenterY + this.gridSize;
-            this.horizontalLine.startX = this.width * 0.2;
-            this.horizontalLine.endX = this.width * 0.8;
+            // 计算水平线位置，对齐到网格线（可后续自由拖动/旋转）
+            const lineY = gridCenterY + this.gridSize;
+            this.horizontalLine.start = { x: this.width * 0.2, y: lineY };
+            this.horizontalLine.end = { x: this.width * 0.8, y: lineY };
         }
         
         setupEventListeners() {
@@ -338,6 +372,36 @@
                 this.currentPoint = pos;
                 return;
             }
+
+            // 检查是否点击在水平参考线或其端点（开始拖动/旋转）
+            if (this.lines.length === 0) {
+                const hlStart = this.horizontalLine.start;
+                const hlEnd = this.horizontalLine.end;
+                const handleRadius = 12;
+                const distStart = Math.hypot(pos.x - hlStart.x, pos.y - hlStart.y);
+                const distEnd = Math.hypot(pos.x - hlEnd.x, pos.y - hlEnd.y);
+                if (distStart <= handleRadius) {
+                    this.isDraggingHorizontal = true;
+                    this.draggingHorizontalMode = 'rotateStart';
+                    this.dragStartPos = pos;
+                    this.originalHorizontalLine = { start: { ...hlStart }, end: { ...hlEnd } };
+                    return;
+                }
+                if (distEnd <= handleRadius) {
+                    this.isDraggingHorizontal = true;
+                    this.draggingHorizontalMode = 'rotateEnd';
+                    this.dragStartPos = pos;
+                    this.originalHorizontalLine = { start: { ...hlStart }, end: { ...hlEnd } };
+                    return;
+                }
+                if (this.isPointOnLine(pos, hlStart, hlEnd, 10)) {
+                    this.isDraggingHorizontal = true;
+                    this.draggingHorizontalMode = 'translate';
+                    this.dragStartPos = pos;
+                    this.originalHorizontalLine = { start: { ...hlStart }, end: { ...hlEnd } };
+                    return;
+                }
+            }
             
             // 检查是否点击在已有线段上（开始旋转）
             for (let i = this.lines.length - 1; i >= 0; i--) {
@@ -364,6 +428,42 @@
                 this.currentPoint = pos;
                 this.previewLine = this.calculateIntersection(this.startPoint, pos);
                 this.draw();
+            } else if (this.isDraggingHorizontal && this.originalHorizontalLine) {
+                // 拖动/旋转参考线
+                if (this.draggingHorizontalMode === 'translate') {
+                    const dx = pos.x - this.dragStartPos.x;
+                    const dy = pos.y - this.dragStartPos.y;
+                    this.horizontalLine.start = {
+                        x: this.originalHorizontalLine.start.x + dx,
+                        y: this.originalHorizontalLine.start.y + dy
+                    };
+                    this.horizontalLine.end = {
+                        x: this.originalHorizontalLine.end.x + dx,
+                        y: this.originalHorizontalLine.end.y + dy
+                    };
+                } else {
+                    // 端点旋转：拖动一端时绕另一端旋转，长度保持不变
+                    const length = Math.hypot(
+                        this.originalHorizontalLine.end.x - this.originalHorizontalLine.start.x,
+                        this.originalHorizontalLine.end.y - this.originalHorizontalLine.start.y
+                    );
+                    if (this.draggingHorizontalMode === 'rotateStart') {
+                        const pivot = { x: this.originalHorizontalLine.end.x, y: this.originalHorizontalLine.end.y };
+                        const angle = Math.atan2(pos.y - pivot.y, pos.x - pivot.x);
+                        const dx = Math.cos(angle) * length;
+                        const dy = Math.sin(angle) * length;
+                        this.horizontalLine.end = { x: pivot.x, y: pivot.y };
+                        this.horizontalLine.start = { x: pivot.x + dx, y: pivot.y + dy };
+                    } else {
+                        const pivot = { x: this.originalHorizontalLine.start.x, y: this.originalHorizontalLine.start.y };
+                        const angle = Math.atan2(pos.y - pivot.y, pos.x - pivot.x);
+                        const dx = Math.cos(angle) * length;
+                        const dy = Math.sin(angle) * length;
+                        this.horizontalLine.start = { x: pivot.x, y: pivot.y };
+                        this.horizontalLine.end = { x: pivot.x + dx, y: pivot.y + dy };
+                    }
+                }
+                this.draw();
             } else if (this.isRotating && this.rotatingLine) {
                 // 旋转已有线段
                 const currentAngle = Math.atan2(
@@ -381,15 +481,20 @@
                 const newEndX = this.centerPoint.x + Math.cos(currentAngle) * lineLength;
                 const newEndY = this.centerPoint.y + Math.sin(currentAngle) * lineLength;
                 
-                // 检查是否接近垂直位置（自动吸附）
-                const verticalAngle = Math.PI / 2; // 90度
-                const snapTolerance = 0.1; // 约5.7度的容差
+                // 参考线垂直吸附：靠近参考线的垂线方向时自动吸附
+                const refAngle = Math.atan2(
+                    this.horizontalLine.end.y - this.horizontalLine.start.y,
+                    this.horizontalLine.end.x - this.horizontalLine.start.x
+                );
+                const targetA = refAngle + Math.PI / 2;
+                const targetB = refAngle - Math.PI / 2;
+                const snapTolerance = 0.1;
                 
                 let finalAngle = currentAngle;
-                if (Math.abs(currentAngle - verticalAngle) < snapTolerance) {
-                    finalAngle = verticalAngle;
-                } else if (Math.abs(currentAngle + verticalAngle) < snapTolerance) {
-                    finalAngle = -verticalAngle;
+                const deltaA = Math.abs(currentAngle - targetA);
+                const deltaB = Math.abs(currentAngle - targetB);
+                if (Math.min(deltaA, deltaB) < snapTolerance) {
+                    finalAngle = (deltaA <= deltaB) ? targetA : targetB;
                 }
                 
                 // 更新线段位置
@@ -409,8 +514,14 @@
             if (this.isDrawing) {
                 // 完成新线段绘制
                 if (this.previewLine) {
-                    // 检查是否为垂直线段
-                    const isVertical = Math.abs(this.previewLine.end.x - this.previewLine.start.x) < 5;
+                    // 检查是否为垂直（与参考线成直角）
+                    const vRef = { x: this.horizontalLine.end.x - this.horizontalLine.start.x, y: this.horizontalLine.end.y - this.horizontalLine.start.y };
+                    const vLine = { x: this.previewLine.end.x - this.previewLine.start.x, y: this.previewLine.end.y - this.previewLine.start.y };
+                    const angleRef = Math.atan2(vRef.y, vRef.x);
+                    const angleLine = Math.atan2(vLine.y, vLine.x);
+                    let diff = Math.abs(angleLine - angleRef);
+                    diff = Math.abs(((diff + Math.PI) % (2 * Math.PI)) - Math.PI);
+                    const isVertical = Math.abs(diff - Math.PI / 2) < 0.1;
                     
                     const newLine = {
                         start: { x: this.previewLine.start.x, y: this.previewLine.start.y },
@@ -434,6 +545,12 @@
                 this.startPoint = null;
                 this.currentPoint = null;
                 this.previewLine = null;
+            } else if (this.isDraggingHorizontal) {
+                // 完成参考线拖拽/旋转
+                this.isDraggingHorizontal = false;
+                this.draggingHorizontalMode = null;
+                this.dragStartPos = null;
+                this.originalHorizontalLine = null;
             } else if (this.isRotating) {
                 // 完成线段旋转
                 this.isRotating = false;
@@ -468,50 +585,52 @@
         }
         
         calculateIntersection(start, current) {
-            // 计算从起点到当前点的方向向量
-            const dx = current.x - start.x;
-            const dy = current.y - start.y;
-            
-            // 如果方向向量为零，返回null
-            if (dx === 0 && dy === 0) return null;
-            
-            // 计算与水平线的交点
-            const lineY = this.horizontalLine.y;
-            
-            // 如果起点就在水平线上，直接返回
-            if (Math.abs(start.y - lineY) < 1) {
-                return {
-                    start: start,
-                    end: { x: start.x, y: lineY }
-                };
-            }
-            
-            // 计算交点的x坐标
-            let intersectionX;
-            
-            if (Math.abs(dy) < 0.001) {
-                // 水平拖动，交点就是当前x坐标
-                intersectionX = current.x;
+            // 计算从起点到当前点的方向向量（射线）
+            const dir = { x: current.x - start.x, y: current.y - start.y };
+            if (dir.x === 0 && dir.y === 0) return null;
+
+            // 参考线的两个端点
+            const a = this.horizontalLine.start;
+            const b = this.horizontalLine.end;
+            const v = { x: b.x - a.x, y: b.y - a.y };
+
+            // 线线相交（无限线），随后将交点夹在参考线段范围内
+            const cross = (u, w) => u.x * w.y - u.y * w.x;
+            const denom = cross(v, dir);
+
+            let intersection;
+
+            if (Math.abs(denom) < 1e-6) {
+                // 平行：将起点投影到参考线并夹在端点范围内
+                const ap = { x: start.x - a.x, y: start.y - a.y };
+                const len2 = v.x * v.x + v.y * v.y;
+                const sProj = len2 > 0 ? (ap.x * v.x + ap.y * v.y) / len2 : 0;
+                const s = Math.max(0, Math.min(1, sProj));
+                intersection = { x: a.x + s * v.x, y: a.y + s * v.y };
             } else {
-                // 计算直线与水平线的交点
-                const t = (lineY - start.y) / dy;
-                intersectionX = start.x + t * dx;
+                const ap = { x: start.x - a.x, y: start.y - a.y };
+                const s = (ap.x * dir.y - ap.y * dir.x) / denom;
+                const sClamped = Math.max(0, Math.min(1, s));
+                intersection = { x: a.x + sClamped * v.x, y: a.y + sClamped * v.y };
             }
-            
-            // 限制交点在水平线范围内
-            intersectionX = Math.max(this.horizontalLine.startX, 
-                           Math.min(this.horizontalLine.endX, intersectionX));
-            
-            // 垂直线段自动吸附功能
-            const verticalSnapTolerance = 15; // 吸附容差（像素）
-            if (Math.abs(intersectionX - start.x) < verticalSnapTolerance) {
-                // 如果接近垂直，自动吸附为完全垂直
-                intersectionX = start.x;
+
+            // 垂直吸附：当发射方向接近参考线的垂线方向时，强制使线段与参考线成直角
+            const angleRef = Math.atan2(v.y, v.x);
+            const angleDir = Math.atan2(dir.y, dir.x);
+            let diff = Math.abs(angleDir - angleRef);
+            diff = Math.abs(((diff + Math.PI) % (2 * Math.PI)) - Math.PI); // 归一化到[0, π]
+            const perpTolerance = 0.15; // 约8.6°
+            if (Math.abs(diff - Math.PI / 2) < perpTolerance) {
+                const ap2 = { x: start.x - a.x, y: start.y - a.y };
+                const len2 = v.x * v.x + v.y * v.y;
+                const sProj = len2 > 0 ? (ap2.x * v.x + ap2.y * v.y) / len2 : 0;
+                const sClamped = Math.max(0, Math.min(1, sProj));
+                intersection = { x: a.x + sClamped * v.x, y: a.y + sClamped * v.y };
             }
-            
+
             return {
                 start: start,
-                end: { x: intersectionX, y: lineY }
+                end: intersection
             };
         }
         
@@ -597,8 +716,8 @@
             this.ctx.strokeStyle = '#374151';
             this.ctx.lineWidth = 3;
             this.ctx.beginPath();
-            this.ctx.moveTo(this.horizontalLine.startX, this.horizontalLine.y);
-            this.ctx.lineTo(this.horizontalLine.endX, this.horizontalLine.y);
+            this.ctx.moveTo(this.horizontalLine.start.x, this.horizontalLine.start.y);
+            this.ctx.lineTo(this.horizontalLine.end.x, this.horizontalLine.end.y);
             this.ctx.stroke();
         }
         
@@ -665,6 +784,51 @@
             this.isCompared = false;
             this.updateRestoreButtonVisibility();
             this.draw();
+        }
+
+        randomizeReferenceLine() {
+            // 当已有线段时不允许改变参考线位置
+            if (this.lines.length > 0) return;
+            const length = Math.hypot(
+                this.horizontalLine.end.x - this.horizontalLine.start.x,
+                this.horizontalLine.end.y - this.horizontalLine.start.y
+            );
+            const half = length / 2;
+            const minD = 2 * this.gridSize; // 最小垂直距离：3个网格单位
+            const maxD = 5 * this.gridSize; // 最大垂直距离：6个网格单位
+            const maxAttempts = 200;
+            
+            for (let i = 0; i < maxAttempts; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const ux = Math.cos(angle);
+                const uy = Math.sin(angle);
+                const nx = -Math.sin(angle);
+                const ny = Math.cos(angle);
+                const d = minD + Math.random() * (maxD - minD);
+                
+                // 以中心点为基准，沿线法向量偏移 d，保证垂距满足 3~6 格
+                const cx = this.centerPoint.x - nx * d;
+                const cy = this.centerPoint.y - ny * d;
+                
+                const startX = cx - ux * half;
+                const startY = cy - uy * half;
+                const endX = cx + ux * half;
+                const endY = cy + uy * half;
+                
+                // 端点必须在画布范围内
+                if (
+                    startX >= 0 && startX <= this.width &&
+                    endX   >= 0 && endX   <= this.width &&
+                    startY >= 0 && startY <= this.height &&
+                    endY   >= 0 && endY   <= this.height
+                ) {
+                    this.horizontalLine.start = { x: startX, y: startY };
+                    this.horizontalLine.end = { x: endX, y: endY };
+                    this.draw();
+                    return;
+                }
+            }
+            // 若多次尝试仍不满足条件，则保持参考线不变
         }
         
         updateCompareButtonVisibility() {
@@ -790,8 +954,12 @@
                 line.end.y - line.start.y,
                 line.end.x - line.start.x
             );
-            const targetA = Math.PI / 2;
-            const targetB = -Math.PI / 2;
+            const refAngle = Math.atan2(
+                this.horizontalLine.end.y - this.horizontalLine.start.y,
+                this.horizontalLine.end.x - this.horizontalLine.start.x
+            );
+            const targetA = refAngle + Math.PI / 2;
+            const targetB = refAngle - Math.PI / 2;
             const targetAngle = (Math.abs(targetA - originalAngle) <= Math.abs(targetB - originalAngle)) ? targetA : targetB;
             const lineLength = Math.sqrt(
                 Math.pow(line.end.x - line.start.x, 2) +
@@ -819,35 +987,90 @@
         }
         
         autoShoot() {
-            // 计算水平线上的所有网格交点
-            const lineY = this.horizontalLine.y;
-            const startX = Math.ceil(this.horizontalLine.startX / this.gridSize) * this.gridSize;
-            const endX = Math.floor(this.horizontalLine.endX / this.gridSize) * this.gridSize;
-            
             // 清除现有线段
             this.clearAllLines();
-            
-            // 收集所有目标点（包括中心垂直线段）
-            const targets = [];
-            
-            // 添加所有网格交点（包括中心点）
-            for (let x = startX; x <= endX; x += this.gridSize) {
-                const isVertical = Math.abs(x - this.centerPoint.x) < 5;
-                
-                targets.push({
-                    x: x,
-                    y: lineY,
-                    isVertical: isVertical,
-                    color: isVertical ? '#ef4444' : this.colors[this.colorIndex % this.colors.length]
-                });
-                
-                // 如果不是垂直线段，递增颜色索引
-                if (!isVertical) {
-                    this.colorIndex++;
+
+            // 基于参考线（可能已旋转/移动）计算目标点
+            const a = this.horizontalLine.start;
+            const b = this.horizontalLine.end;
+            const v = { x: b.x - a.x, y: b.y - a.y };
+
+            const rawTargets = [];
+
+            // 计算与网格的交点（包含垂直与水平网格线），并去重
+            const uniqueAdd = (pt, isVertical = false) => {
+                const eps = 1; // 去重容差（像素）
+                const idx = rawTargets.findIndex(p => Math.hypot(p.x - pt.x, p.y - pt.y) < eps);
+                if (idx < 0) rawTargets.push({ x: pt.x, y: pt.y, isVertical });
+                else if (isVertical) rawTargets[idx].isVertical = true;
+            };
+
+            // 与垂直网格线的交点
+            if (Math.abs(v.x) >= 1e-6) {
+                const xMin = Math.min(a.x, b.x);
+                const xMax = Math.max(a.x, b.x);
+                const startX = Math.ceil(xMin / this.gridSize) * this.gridSize;
+                const endX = Math.floor(xMax / this.gridSize) * this.gridSize;
+                for (let x = startX; x <= endX; x += this.gridSize) {
+                    const s = (x - a.x) / v.x;
+                    if (s < 0 || s > 1) continue; // 限制在参考线段范围内
+                    const y = a.y + s * v.y;
+                    uniqueAdd({ x, y }, false);
                 }
             }
-            
-            // 动态发射线段
+
+            // 与水平网格线的交点
+            if (Math.abs(v.y) >= 1e-6) {
+                const yMin = Math.min(a.y, b.y);
+                const yMax = Math.max(a.y, b.y);
+                const startY = Math.ceil(yMin / this.gridSize) * this.gridSize;
+                const endY = Math.floor(yMax / this.gridSize) * this.gridSize;
+                for (let y = startY; y <= endY; y += this.gridSize) {
+                    const s = (y - a.y) / v.y;
+                    if (s < 0 || s > 1) continue; // 限制在参考线段范围内
+                    const x = a.x + s * v.x;
+                    uniqueAdd({ x, y }, false);
+                }
+            }
+
+            // 计算中心点到参考线的垂足
+            const ap = { x: this.centerPoint.x - a.x, y: this.centerPoint.y - a.y };
+            const len2 = v.x * v.x + v.y * v.y;
+            let sPerp = len2 > 0 ? (ap.x * v.x + ap.y * v.y) / len2 : 0;
+            const sPerpClamped = Math.max(0, Math.min(1, sPerp));
+            const perpPoint = { x: a.x + sPerpClamped * v.x, y: a.y + sPerpClamped * v.y };
+
+            // 避开靠近垂直线段终点的附近交点
+            const avoidRadius = this.gridSize * 0.35;
+            for (let i = rawTargets.length - 1; i >= 0; i--) {
+                const d = Math.hypot(rawTargets[i].x - perpPoint.x, rawTargets[i].y - perpPoint.y);
+                if (d < avoidRadius) rawTargets.splice(i, 1);
+            }
+
+            // 加入垂足作为垂直目标
+            uniqueAdd(perpPoint, true);
+
+            // 按从左到右排序（同 x 则按 y 排序）
+            const eps = 1e-6;
+            rawTargets.sort((p, q) => {
+                const dx = p.x - q.x;
+                if (Math.abs(dx) > eps) return dx;
+                return p.y - q.y;
+            });
+
+            // 分配颜色并生成最终目标序列
+            const targets = [];
+            this.colorIndex = 0; // 确保颜色从头开始
+            rawTargets.forEach(p => {
+                if (p.isVertical) {
+                    targets.push({ x: p.x, y: p.y, isVertical: true, color: '#ef4444' });
+                } else {
+                    targets.push({ x: p.x, y: p.y, isVertical: false, color: this.colors[this.colorIndex % this.colors.length] });
+                    this.colorIndex++;
+                }
+            });
+
+            // 动态发射线段（按从左到右的顺序）
             this.shootLinesSequentially(targets, 0);
         }
         
@@ -959,6 +1182,14 @@
     function restoreAllLines() {
         if (canvasApp) {
             canvasApp.restoreAllLines();
+        }
+    }
+
+    function randomizePosition() {
+        if (canvasApp) {
+            // 先清除所有线段，再执行随机位置
+            canvasApp.clearAllLines();
+            canvasApp.randomizeReferenceLine();
         }
     }
     
