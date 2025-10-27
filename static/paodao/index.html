@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>双侧同心圆刻度</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #ffffff; }
+    /* 全屏 Canvas */
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
+    }
+  </style>
+  </head>
+<body>
+  <canvas id="c"></canvas>
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const START_ANGLE = -Math.PI / 2; // 12点方向
+    const SNAP_TOL = 0.15; // 吸附角度阈值（弧度，约8.6°）
+
+    // 左侧状态：角度与拖拽指针ID支持同时拖动
+    const state = {
+      innerAngle: START_ANGLE,
+      outerAngle: START_ANGLE,
+      draggingInnerId: null,
+      draggingOuterId: null,
+      innerTickIndex: 0,
+      outerTickIndex: 0,
+      // 用于方向感知高亮：累计相对12点的步数（可为负）
+      innerTotalSteps: 0,
+      outerTotalSteps: 0,
+      // 右侧独立显示的数字（0-8），与左侧不同步
+      rightCount: 0,
+      // 右侧交互与高亮状态
+      rInnerAngle: START_ANGLE,
+      rOuterAngle: START_ANGLE,
+      rDraggingInnerId: null,
+      rDraggingOuterId: null,
+      rInnerTickIndex: 0,
+      rOuterTickIndex: 0,
+      rInnerTotalSteps: 0,
+      rOuterTotalSteps: 0,
+    };
+
+    function resizeAndDraw() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      // 重置并按 DPR 缩放，保证清晰
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      draw();
+    }
+
+    function drawTicks(cx, cy, radius, divisions, tickIn, tickOut, startAngle = START_ANGLE) {
+      const step = 2 * Math.PI / divisions;
+      ctx.beginPath();
+      for (let i = 0; i < divisions; i++) {
+        const a = startAngle + i * step;
+        const x1 = cx + Math.cos(a) * (radius - tickIn);
+        const y1 = cy + Math.sin(a) * (radius - tickIn);
+        const x2 = cx + Math.cos(a) * (radius + tickOut);
+        const y2 = cy + Math.sin(a) * (radius + tickOut);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+      }
+      ctx.stroke();
+    }
+    function drawArcSegment(cx, cy, radius, fromAngle, toAngle, color, lineWidth = 4) {
+      // 从 fromAngle 到 toAngle 的部分弧线高亮
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      const ccw = toAngle < fromAngle;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, fromAngle, toAngle, ccw);
+      ctx.stroke();
+    }
+
+    function drawSide(cx, cy, outerDiv = 10, innerDiv = 8, opts = {}) {
+      const {
+        innerAngle = START_ANGLE,
+        outerAngle = START_ANGLE,
+        dotOffset = 16,
+        dotRadius = 12,
+        highlightInner = true,
+        highlightOuter = true,
+        drawDots = true,
+        innerHighlightAngle = innerAngle,
+        outerHighlightAngle = outerAngle,
+      } = opts;
+
+      const margin = 150; // 边距
+      const halfW = canvas.clientWidth / 2;
+      const maxRadius = Math.min(halfW, canvas.clientHeight) / 2 - margin;
+      const outerR = Math.max(20, maxRadius);
+      const gap = Math.max(4, outerR * 0.01); // 两圆“紧贴”的视觉间距
+      const innerR = outerR - gap;
+
+      // 基础圆（灰色）
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 刻度线：内圆向内刻度（淡蓝），外圆向外刻度（淡红），起始点为顶部
+      ctx.lineWidth = 3;
+      //ctx.strokeStyle = '#91caff'; // 内圆刻度淡蓝
+      drawTicks(cx, cy, innerR, innerDiv, 12, 0, START_ANGLE);
+      //ctx.strokeStyle = '#ffa39e'; // 外圆刻度淡红
+      drawTicks(cx, cy, outerR, outerDiv, 0, 12, START_ANGLE);
+
+      // 局部弧线高亮：从 12 点方向到当前点位（考虑方向）
+      if (highlightInner) {
+        drawArcSegment(cx, cy, innerR, START_ANGLE, innerHighlightAngle, '#1677ff', 5);
+      }
+      if (highlightOuter) {
+        drawArcSegment(cx, cy, outerR, START_ANGLE, outerHighlightAngle, '#ff4d4f', 5);
+      }
+
+      if (drawDots) {
+        // 以角度沿圆边移动的蓝/红点（保持在内侧/外侧偏移）
+        const innerX = cx + Math.cos(innerAngle) * (innerR - dotOffset);
+        const innerY = cy + Math.sin(innerAngle) * (innerR - dotOffset);
+        const outerX = cx + Math.cos(outerAngle) * (outerR + dotOffset);
+        const outerY = cy + Math.sin(outerAngle) * (outerR + dotOffset);
+
+        // 蓝点
+        ctx.fillStyle = '#1677ff';
+        ctx.beginPath();
+        ctx.arc(innerX, innerY, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 红点
+        ctx.fillStyle = '#ff4d4f';
+        ctx.beginPath();
+        ctx.arc(outerX, outerY, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function nearestSnapAngle(angle, divisions) {
+      const step = 2 * Math.PI / divisions;
+      const k = Math.round((angle - START_ANGLE) / step);
+      const snap = START_ANGLE + k * step;
+      return Math.abs(angle - snap) <= SNAP_TOL ? snap : angle;
+    }
+
+    function angleToTick(angle, divisions) {
+      const step = 2 * Math.PI / divisions;
+      return Math.round((angle - START_ANGLE) / step);
+    }
+    function tickToAngle(k, divisions) {
+      const step = 2 * Math.PI / divisions;
+      return START_ANGLE + k * step;
+    }
+    function mod(n, m) {
+      return ((n % m) + m) % m;
+    }
+
+    function getLeftGeometry() {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      const leftCx = w * 0.25;
+      const cy = h * 0.5;
+      const margin = 150;
+      const halfW = w / 2;
+      const maxRadius = Math.min(halfW, h) / 2 - margin;
+      const outerR = Math.max(20, maxRadius);
+      const gap = Math.max(8, outerR * 0.01);
+      const innerR = outerR - gap;
+      return { leftCx, cy, outerR, innerR };
+    }
+
+    function getRightGeometry() {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      const rightCx = w * 0.75;
+      const cy = h * 0.5;
+      const margin = 150;
+      const halfW = w / 2;
+      const maxRadius = Math.min(halfW, h) / 2 - margin;
+      const outerR = Math.max(20, maxRadius);
+      const gap = Math.max(8, outerR * 0.01);
+      const innerR = outerR - gap;
+      return { rightCx, cy, outerR, innerR };
+    }
+
+    function draw() {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      ctx.clearRect(0, 0, w, h);
+      const leftCx = w * 0.25;
+      const rightCx = w * 0.75;
+      const cy = h * 0.5;
+      const innerStep = 2 * Math.PI / 8;
+      const outerStep = 2 * Math.PI / 10;
+      // 左侧：支持拖拽与局部弧线高亮
+      drawSide(leftCx, cy, 10, 8, {
+        innerAngle: state.innerAngle,
+        outerAngle: state.outerAngle,
+        highlightInner: true,
+        highlightOuter: true,
+        drawDots: true,
+        innerHighlightAngle: START_ANGLE + innerStep * state.innerTotalSteps,
+        outerHighlightAngle: START_ANGLE + outerStep * state.outerTotalSteps,
+      });
+      // 右侧：同向联动拖拽与局部弧线高亮
+      drawSide(rightCx, cy, 10, 8, {
+        innerAngle: state.rInnerAngle,
+        outerAngle: state.rOuterAngle,
+        highlightInner: true,
+        highlightOuter: true,
+        drawDots: true,
+        innerHighlightAngle: START_ANGLE + innerStep * state.rInnerTotalSteps,
+        outerHighlightAngle: START_ANGLE + outerStep * state.rOuterTotalSteps,
+      });
+
+      // 计算用于标签的几何（两侧相同半径）
+      const { outerR } = getLeftGeometry();
+      // 左侧显示内圆累计的大格数（0-8）
+      const leftCount = Math.min(8, Math.abs(state.innerTotalSteps));
+      // 右侧为独立数字（0-50），不与左侧同步
+      const rightCount = Math.max(0, Math.min(50, state.rightCount));
+
+      // 在两侧圆心绘制数字标签（更大字号）
+      drawCenterLabelText(leftCx, cy, leftCount, '#333');
+      drawCenterLabelText(rightCx, cy, rightCount, '#333');
+    }
+
+    window.addEventListener('resize', resizeAndDraw);
+    resizeAndDraw();
+
+    // 拖拽交互（左侧）
+    canvas.addEventListener('pointerdown', (e) => {
+      const { leftCx, cy, outerR, innerR } = getLeftGeometry();
+      const { rightCx, outerR: rOuterR, innerR: rInnerR } = getRightGeometry();
+      const dotOffset = 16;
+      const dotRadius = 12;
+      const innerX = leftCx + Math.cos(state.innerAngle) * (innerR - dotOffset);
+      const innerY = cy + Math.sin(state.innerAngle) * (innerR - dotOffset);
+      const outerX = leftCx + Math.cos(state.outerAngle) * (outerR + dotOffset);
+      const outerY = cy + Math.sin(state.outerAngle) * (outerR + dotOffset);
+      const rInnerX = rightCx + Math.cos(state.rInnerAngle) * (rInnerR - dotOffset);
+      const rInnerY = cy + Math.sin(state.rInnerAngle) * (rInnerR - dotOffset);
+      const rOuterX = rightCx + Math.cos(state.rOuterAngle) * (rOuterR + dotOffset);
+      const rOuterY = cy + Math.sin(state.rOuterAngle) * (rOuterR + dotOffset);
+
+      const dxIn = e.clientX - innerX;
+      const dyIn = e.clientY - innerY;
+      const dxOut = e.clientX - outerX;
+      const dyOut = e.clientY - outerY;
+      const dxRIn = e.clientX - rInnerX;
+      const dyRIn = e.clientY - rInnerY;
+      const dxROut = e.clientX - rOuterX;
+      const dyROut = e.clientY - rOuterY;
+      const hitRadius = dotRadius + 8;
+
+      if (dxIn * dxIn + dyIn * dyIn <= hitRadius * hitRadius) {
+        state.draggingInnerId = e.pointerId;
+        canvas.setPointerCapture(e.pointerId);
+        // 初始化当前刻度索引
+        state.innerTickIndex = mod(angleToTick(state.innerAngle, 8), 8);
+        state.outerTickIndex = mod(angleToTick(state.outerAngle, 10), 10);
+      } else if (dxOut * dxOut + dyOut * dyOut <= hitRadius * hitRadius) {
+        state.draggingOuterId = e.pointerId;
+        canvas.setPointerCapture(e.pointerId);
+        state.innerTickIndex = mod(angleToTick(state.innerAngle, 8), 8);
+        state.outerTickIndex = mod(angleToTick(state.outerAngle, 10), 10);
+      } else if (dxRIn * dxRIn + dyRIn * dyRIn <= hitRadius * hitRadius) {
+        state.rDraggingInnerId = e.pointerId;
+        canvas.setPointerCapture(e.pointerId);
+        state.rInnerTickIndex = mod(angleToTick(state.rInnerAngle, 8), 8);
+        state.rOuterTickIndex = mod(angleToTick(state.rOuterAngle, 10), 10);
+      } else if (dxROut * dxROut + dyROut * dyROut <= hitRadius * hitRadius) {
+        state.rDraggingOuterId = e.pointerId;
+        canvas.setPointerCapture(e.pointerId);
+        state.rInnerTickIndex = mod(angleToTick(state.rInnerAngle, 8), 8);
+        state.rOuterTickIndex = mod(angleToTick(state.rOuterAngle, 10), 10);
+      } else {
+        // 如果点击在右侧圆区域，则独立调整右侧数字（循环 0→8）
+        const dxR = e.clientX - rightCx;
+        const dyR = e.clientY - cy;
+        if (dxR * dxR + dyR * dyR <= rOuterR * rOuterR) {
+          // Shift 点击向下循环，否则向上循环
+          if (e.shiftKey) {
+            state.rightCount = (state.rightCount - 1 + 51) % 51; // 0..50
+          } else {
+            state.rightCount = (state.rightCount + 1) % 51; // 0..50
+          }
+        }
+      }
+      draw();
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      const { leftCx, cy } = getLeftGeometry();
+      const { rightCx } = getRightGeometry();
+      if (state.draggingInnerId === e.pointerId) {
+        const stepIn = 2 * Math.PI / 8;
+        const stepOut = 2 * Math.PI / 10;
+        let angle = Math.atan2(e.clientY - cy, e.clientX - leftCx);
+        angle = nearestSnapAngle(angle, 8); // 内圆吸附到8等分
+        const newK = mod(angleToTick(angle, 8), 8);
+        let deltaK = newK - state.innerTickIndex;
+        // 处理跨越边界时的最短方向差
+        if (deltaK > 4) deltaK -= 8;
+        if (deltaK < -4) deltaK += 8;
+        state.innerTickIndex = newK;
+        state.innerAngle = tickToAngle(newK, 8);
+        // 反向同步移动外圆（每移动内圆一个刻度，外圆也移动一个刻度，反方向）
+        state.outerTickIndex = mod(state.outerTickIndex - deltaK, 10);
+        state.outerAngle = tickToAngle(state.outerTickIndex, 10);
+        // 累计步数用于方向感知高亮
+        state.innerTotalSteps += deltaK;
+        state.outerTotalSteps -= deltaK;
+        draw();
+      }
+      if (state.draggingOuterId === e.pointerId) {
+        const stepIn = 2 * Math.PI / 8;
+        const stepOut = 2 * Math.PI / 10;
+        let angle = Math.atan2(e.clientY - cy, e.clientX - leftCx);
+        angle = nearestSnapAngle(angle, 10); // 外圆吸附到10等分
+        const newK = mod(angleToTick(angle, 10), 10);
+        let deltaK = newK - state.outerTickIndex;
+        if (deltaK > 5) deltaK -= 10;
+        if (deltaK < -5) deltaK += 10;
+        state.outerTickIndex = newK;
+        state.outerAngle = tickToAngle(newK, 10);
+        // 反向同步移动内圆（每移动外圆一个刻度，内圆也移动一个刻度，反方向）
+        state.innerTickIndex = mod(state.innerTickIndex - deltaK, 8);
+        state.innerAngle = tickToAngle(state.innerTickIndex, 8);
+        // 累计步数用于方向感知高亮
+        state.outerTotalSteps += deltaK;
+        state.innerTotalSteps -= deltaK;
+        draw();
+      }
+
+      // 右侧拖拽：同方向同步一大格（红点或蓝点）
+      if (state.rDraggingInnerId === e.pointerId) {
+        let angle = Math.atan2(e.clientY - cy, e.clientX - rightCx);
+        angle = nearestSnapAngle(angle, 8); // 内圆吸附到8等分
+        const newK = mod(angleToTick(angle, 8), 8);
+        let deltaK = newK - state.rInnerTickIndex;
+        if (deltaK > 4) deltaK -= 8;
+        if (deltaK < -4) deltaK += 8;
+        state.rInnerTickIndex = newK;
+        state.rInnerAngle = tickToAngle(newK, 8);
+        // 同向同步外圆（每移动内圆一个刻度，外圆也移动一个刻度，同方向）
+        state.rOuterTickIndex = mod(state.rOuterTickIndex + deltaK, 10);
+        state.rOuterAngle = tickToAngle(state.rOuterTickIndex, 10);
+        // 累计步数用于方向感知高亮
+        state.rInnerTotalSteps += deltaK;
+        state.rOuterTotalSteps += deltaK;
+        // 右侧数字：每跨一大格加1（不区分方向），最多显示到 50
+        state.rightCount = Math.min(50, state.rightCount + Math.abs(deltaK));
+        draw();
+      }
+      if (state.rDraggingOuterId === e.pointerId) {
+        let angle = Math.atan2(e.clientY - cy, e.clientX - rightCx);
+        angle = nearestSnapAngle(angle, 10); // 外圆吸附到10等分
+        const newK = mod(angleToTick(angle, 10), 10);
+        let deltaK = newK - state.rOuterTickIndex;
+        if (deltaK > 5) deltaK -= 10;
+        if (deltaK < -5) deltaK += 10;
+        state.rOuterTickIndex = newK;
+        state.rOuterAngle = tickToAngle(newK, 10);
+        // 同向同步内圆（每移动外圆一个刻度，内圆也移动一个刻度，同方向）
+        state.rInnerTickIndex = mod(state.rInnerTickIndex + deltaK, 8);
+        state.rInnerAngle = tickToAngle(state.rInnerTickIndex, 8);
+        // 累计步数用于方向感知高亮
+        state.rOuterTotalSteps += deltaK;
+        state.rInnerTotalSteps += deltaK;
+        // 右侧数字：每跨一大格加1（不区分方向），最多显示到 50
+        state.rightCount = Math.min(50, state.rightCount + Math.abs(deltaK));
+        draw();
+      }
+    });
+
+    function endDrag(e) {
+      let changed = false;
+      if (state.draggingInnerId === e.pointerId) {
+        state.draggingInnerId = null;
+        changed = true;
+      }
+      if (state.draggingOuterId === e.pointerId) {
+        state.draggingOuterId = null;
+        changed = true;
+      }
+      if (state.rDraggingInnerId === e.pointerId) {
+        state.rDraggingInnerId = null;
+        changed = true;
+      }
+      if (state.rDraggingOuterId === e.pointerId) {
+        state.rDraggingOuterId = null;
+        changed = true;
+      }
+      if (changed) draw();
+    }
+
+    canvas.addEventListener('pointerup', endDrag);
+    canvas.addEventListener('pointercancel', endDrag);
+    canvas.addEventListener('pointerleave', endDrag);
+
+    // 文本标签绘制：在圆正上方居中显示
+    function drawLabelText(cx, cy, outerR, text, color = '#333') {
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.font = '600 28px system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(String(text), cx, cy - outerR - 16);
+      ctx.restore();
+    }
+
+    // 文本标签绘制：在圆心居中显示（更大字号）
+    function drawCenterLabelText(cx, cy, text, color = '#333') {
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.font = '80px system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(text), cx, cy);
+      ctx.restore();
+    }
+  </script>
+</body>
+</html>
