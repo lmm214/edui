@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>认识钟面</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background: #f7f7f7;
+        color: #111;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+      }
+
+      /* 全屏画布 */
+      #clock {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        display: block;
+      }
+
+      /* 展开按钮 */
+      #toggle {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 10;
+        padding: 10px 14px;
+        border: none;
+        border-radius: 9999px;
+        background: #111;
+        color: #fff;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+        cursor: pointer;
+        user-select: none;
+      }
+      #toggle:active { transform: translateY(1px); }
+      #toggle:focus-visible { outline: 2px solid #67b3ff; outline-offset: 2px; }
+    </style>
+  </head>
+  <body>
+    <canvas id="clock"></canvas>
+    <button id="toggle" aria-label="展开为直线">展开为直线</button>
+
+    <script>
+      (function() {
+        const canvas = document.getElementById('clock');
+        const ctx = canvas.getContext('2d');
+        const toggleBtn = document.getElementById('toggle');
+
+        const state = {
+          dpr: Math.max(1, window.devicePixelRatio || 1),
+          u: 0, // 0: 圆盘, 1: 直线
+          animating: false,
+          duration: 1200, // ms
+          W: 0,
+          H: 0,
+          cx: 0,
+          cy: 0,
+          R: 0,
+          lx: 0,
+          ly: 0,
+          lineLen: 0,
+          circleTickMajor: 0,
+          circleTickMinor: 0,
+          lineTickMajor: 0,
+          lineTickMinor: 0,
+          strokeMajor: 0,
+          strokeMinor: 0,
+          ringStroke: 0,
+          margin: 24,
+          // 交互与文本
+          labelHitAreas: [],
+          selectedLabel: null,
+          selectedMinutes: null,
+          centerDotRadius: 0,
+          minuteLabelOffsetDown: 20
+        };
+
+        function setupCanvasSize() {
+          const dpr = state.dpr;
+          const cssW = window.innerWidth;
+          const cssH = window.innerHeight;
+          // 设置实际像素尺寸
+          canvas.width = Math.floor(cssW * dpr);
+          canvas.height = Math.floor(cssH * dpr);
+          // 用 CSS 尺寸保证全屏
+          canvas.style.width = cssW + 'px';
+          canvas.style.height = cssH + 'px';
+          // 将坐标系缩放回 CSS 像素
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          state.W = cssW;
+          state.H = cssH;
+        }
+
+        function computeLayout() {
+          const W = state.W, H = state.H, m = state.margin;
+          // 圆盘居左显示：中心在左侧 22% 处
+          state.cx = Math.max(m + 32, W * 0.22);
+          state.cy = Math.round(H * 0.5);
+
+          // 先确定线的起点，计算可用宽度
+          state.lx = state.cx; // 起点与圆盘 6 点对齐（水平）
+          const availableWidth = Math.max(100, W - state.lx - m);
+
+          // 半径受高度、左侧空间、以及“周长不超过可用宽度”三者限制（更严格以便继续缩小）
+          const R_by_H = H * 0.30;
+          const R_by_W = (W * 0.22) - m; // 左侧留白
+          const R_by_Ctight = (availableWidth * 0.90) / (2 * Math.PI); // 留10%安全边距
+          state.R = Math.max(24, Math.min(R_by_H, R_by_W, R_by_Ctight));
+
+          // 线段垂直位置在圆盘上方（0时接触点）
+          state.ly = Math.max(m, state.cy - state.R);
+
+          // 周长与线段最大长度，确保能完整展开一圈
+          const C = 2 * Math.PI * state.R;
+          // 完全展开后整条线段位于浏览器宽度内
+          state.lineLen = Math.min(C, availableWidth);
+
+          // 刻度长度与线宽
+          state.circleTickMajor = Math.max(8, state.R * 0.14);
+          state.circleTickMinor = Math.max(6, state.R * 0.08);
+          // 直线刻度更短，更轻（仅在基准线上方）
+          state.lineTickMajor = Math.min(16, Math.max(14, H * 0.04));
+          state.lineTickMinor = Math.max(8, state.lineTickMajor * 0.45);
+
+          // 数字标注尺寸与偏移
+          state.labelFontPx = Math.round(Math.max(24, Math.min(18, state.R * 0.20)));
+          state.labelOffsetCircle = Math.max(10, state.R * 0.18); // 圆外侧偏移
+          state.lineLabelOffset = Math.max(state.lineTickMajor + 6, 38); // 直线文字位于刻度之上
+
+          const dpr = state.dpr;
+          state.strokeMajor = Math.max(1.25, 1.5 * (dpr / 2));
+          state.strokeMinor = Math.max(1.0, 1.0 * (dpr / 2));
+          state.ringStroke = Math.max(0.9, 1.0 * (dpr / 2));
+          // 中心点与分钟文本偏移
+          state.centerDotRadius = Math.max(2.5, Math.min(4, state.R * 0.03));
+          state.minuteLabelOffsetDown = Math.max(state.lineTickMajor + 14, 20);
+        }
+
+        function clear() {
+          // 注意：清理需要用实际像素尺寸
+          ctx.clearRect(0, 0, state.W, state.H);
+        }
+
+        // 线性插值工具（保留），当前动画使用长度+角度控制
+        function mix(a, b, t) { return a + (b - a) * t; }
+
+        function easeInOutCubic(t) {
+          return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        function drawRollingPaths(u) {
+          const { cx, cy, R, lx, ly, lineLen, ringStroke } = state;
+          const C = 2 * Math.PI * R;
+          const L = Math.min(lineLen, C) * u; // 已展开的线段长度
+          const sContact = Math.min(1, L / C); // 已展开占比
+          const phi = 2 * Math.PI * sContact; // 轮子滚动角度（无滑动）
+
+          // 1) 直线段（已展开部分）
+          if (L > 0.0001) {
+            ctx.beginPath();
+            ctx.moveTo(lx, ly);
+            ctx.lineTo(lx + L, ly);
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = ringStroke;
+            ctx.lineCap = 'round';
+            ctx.globalAlpha = 0.8;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+
+          // 2) 圆弧（剩余未展开部分），中心向右平移 L，整体顺时针旋转 phi，接触点在 0 时（12 点）
+          if (sContact < 0.9999) {
+            const CCX = cx + L;
+            const CCY = cy;
+            const samples = 200;
+            ctx.beginPath();
+            for (let k = 0; k <= samples; k++) {
+              const s = sContact + (1 - sContact) * (k / samples); // [sContact,1]
+              const theta = 3 * Math.PI / 2 + s * Math.PI * 2 - phi; // 接触点在 0 时（12 点）
+              const px = CCX + Math.cos(theta) * R;
+              const py = CCY + Math.sin(theta) * R;
+              if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = ringStroke;
+            ctx.lineCap = 'round';
+            ctx.globalAlpha = 0.6;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+        }
+
+        function drawRollingTicks(u) {
+          const { cx, cy, R, lx, ly, lineLen, circleTickMajor, circleTickMinor, lineTickMajor, lineTickMinor, strokeMajor, strokeMinor } = state;
+          const C = 2 * Math.PI * R;
+          const L = Math.min(lineLen, C) * u;
+          const sContact = Math.min(1, L / C);
+          const phi = 2 * Math.PI * sContact;
+          const CCX = cx + L;
+          const CCY = cy;
+
+          for (let i = 0; i < 60; i++) {
+            const s = i / 60;
+            const major = (i % 5) === 0;
+            const tLenCircle = major ? circleTickMajor : circleTickMinor;
+            const tLenLine = major ? lineTickMajor : lineTickMinor;
+
+            if (s < sContact - 1e-6) {
+              // 已展开部分：在直线段上画竖刻度（位于基准线之上）
+              const x = lx + s * C; // 映射到线段位置
+              const y1 = ly - tLenLine;
+              const y2 = ly;
+              ctx.beginPath();
+              ctx.moveTo(x, y1);
+              ctx.lineTo(x, y2);
+              ctx.strokeStyle = major ? '#111' : '#444';
+              ctx.lineWidth = major ? strokeMajor : strokeMinor;
+              ctx.lineCap = 'round';
+              ctx.stroke();
+            } else {
+              // 未展开部分：在圆弧上画径向刻度（整体旋转，圆心平移）
+              const theta = 3 * Math.PI / 2 + s * Math.PI * 2 - phi; // 接触点在 0 时（12 点）
+              const rin = R - tLenCircle;
+              const x1 = CCX + Math.cos(theta) * R;   // 从圆周边界开始
+              const y1 = CCY + Math.sin(theta) * R;
+              const x2 = CCX + Math.cos(theta) * rin; // 向内部延伸
+              const y2 = CCY + Math.sin(theta) * rin;
+              ctx.beginPath();
+              ctx.moveTo(x1, y1);
+              ctx.lineTo(x2, y2);
+              ctx.strokeStyle = major ? '#111' : '#444';
+              ctx.lineWidth = major ? strokeMajor : strokeMinor;
+              ctx.lineCap = 'round';
+              ctx.stroke();
+            }
+          }
+
+          // 终点大刻度：在展开线段的末端增加一条大格刻度线
+          if (L > 1e-6) {
+            const xEnd = lx + L;
+            ctx.beginPath();
+            ctx.moveTo(xEnd, ly - lineTickMajor);
+            ctx.lineTo(xEnd, ly);
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = strokeMajor;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+          }
+        }
+
+        // 绘制12个数字：默认圆外显示；展开后仍旧显示并随滚动映射到直线上方
+        function drawLabels(u) {
+          const { cx, cy, R, lx, ly, lineLen, labelFontPx, labelOffsetCircle, lineLabelOffset } = state;
+          const C = 2 * Math.PI * R;
+          const L = Math.min(lineLen, C) * u;
+          const sContact = Math.min(1, L / C);
+          const phi = 2 * Math.PI * sContact;
+          const CCX = cx + L;
+          const CCY = cy;
+
+          // 重建点击区域（仅对直线上方数字）
+          state.labelHitAreas = [];
+
+          ctx.fillStyle = '#222';
+          ctx.font = `${labelFontPx}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          for (let h = 1; h <= 12; h++) {
+            const s = h / 12;
+            const label = String(h);
+            if (s <= sContact + 1e-6) {
+              // 映射到直线段上方
+              const x = lx + s * C;
+              const y = ly - lineLabelOffset;
+              ctx.fillText(label, x, y);
+              // 点击区域
+              const metrics = ctx.measureText(label);
+              const w = metrics.width + 8;
+              const hPx = labelFontPx;
+              state.labelHitAreas.push({
+                label: Number(label), onLine: true,
+                x1: x - w / 2, y1: y - hPx / 2,
+                x2: x + w / 2, y2: y + hPx / 2
+              });
+            } else {
+              // 映射到圆外侧（整体平移与旋转）
+              const theta = 3 * Math.PI / 2 + s * Math.PI * 2 - phi; // 0时在顶部
+              const x = CCX + Math.cos(theta) * (R + labelOffsetCircle);
+              const y = CCY + Math.sin(theta) * (R + labelOffsetCircle);
+              ctx.fillText(label, x, y);
+            }
+          }
+
+          // 起点“0”标注：仅在展开时显示，位于直线起点上方
+          if (L > 1e-6) {
+            const x0 = lx;
+            const y0 = ly - lineLabelOffset;
+            const label = '0';
+            ctx.fillText(label, x0, y0);
+            const metrics = ctx.measureText(label);
+            const w = metrics.width + 8;
+            const hPx = labelFontPx;
+            state.labelHitAreas.push({
+              label: 0, onLine: true,
+              x1: x0 - w / 2, y1: y0 - hPx / 2,
+              x2: x0 + w / 2, y2: y0 + hPx / 2
+            });
+          }
+        }
+
+        // 在直线刻度正下方显示分钟数（点击后）
+        function drawSelectedMinutes() {
+          const { selectedLabel, selectedMinutes, lx, ly } = state;
+          if (selectedLabel === null || selectedMinutes === null) return;
+          // 仅在接近完全展开时显示
+          const C = 2 * Math.PI * state.R;
+          const L = Math.min(state.lineLen, C) * state.u;
+          if (L < C * 0.95) return;
+          const s = selectedLabel / 12;
+          const x = lx + s * C;
+          const y = ly + state.minuteLabelOffsetDown;
+          ctx.fillStyle = '#111';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.font = `${Math.round(state.labelFontPx * 0.95)}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
+          ctx.fillText(String(selectedMinutes), x, y);
+        }
+
+        function render() {
+          setupCanvasSize();
+          computeLayout();
+          clear();
+          // 背景辅助：左侧浅灰区域，强调“在网页左侧显示”
+          ctx.fillStyle = '#f7f7f7';
+          ctx.fillRect(0, 0, Math.max(state.cx + state.R + state.margin, 0), state.H);
+
+          drawRollingPaths(state.u);
+          drawRollingTicks(state.u);
+          drawLabels(state.u);
+          // 圆盘中心点仅在未展开时显示
+          if (!state.animating && state.u < 0.001) {
+            ctx.beginPath();
+            ctx.arc(state.cx, state.cy, state.centerDotRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#111';
+            ctx.fill();
+          }
+          drawSelectedMinutes();
+        }
+
+        function animateTo(target) {
+          if (state.animating) return;
+          const startU = state.u;
+          const delta = target - startU;
+          if (Math.abs(delta) < 1e-6) return;
+          state.animating = true;
+          const start = performance.now();
+
+          function step(now) {
+            const t = Math.min(1, (now - start) / state.duration);
+            const e = easeInOutCubic(t);
+            state.u = startU + delta * e;
+            render();
+            if (t < 1) {
+              requestAnimationFrame(step);
+            } else {
+              state.u = target;
+              state.animating = false;
+              render();
+            }
+          }
+
+          requestAnimationFrame(step);
+        }
+
+        // 交互：展开/还原
+        toggleBtn.addEventListener('click', () => {
+          const toLine = state.u < 0.5;
+          animateTo(toLine ? 1 : 0);
+          toggleBtn.textContent = toLine ? '还原为圆盘' : '展开为直线';
+          toggleBtn.setAttribute('aria-label', toggleBtn.textContent);
+          // 切换时清除选中分钟显示
+          state.selectedLabel = null;
+          state.selectedMinutes = null;
+        });
+
+        // 点击直线上方数字，显示对应分钟（数值×5）
+        canvas.addEventListener('click', (e) => {
+          const rect = canvas.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          // 仅在接近完全展开时响应
+          const C = 2 * Math.PI * state.R;
+          const L = Math.min(state.lineLen, C) * state.u;
+          if (L < C * 0.95) return;
+          for (const a of state.labelHitAreas) {
+            if (!a.onLine) continue;
+            if (x >= a.x1 && x <= a.x2 && y >= a.y1 && y <= a.y2) {
+              state.selectedLabel = a.label;
+              state.selectedMinutes = a.label * 5;
+              render();
+              break;
+            }
+          }
+        });
+
+        // 自适应
+        window.addEventListener('resize', () => {
+          render();
+        });
+
+        // 初始绘制
+        render();
+      })();
+    </script>
+  </body>
+</html>
