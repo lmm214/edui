@@ -12,6 +12,7 @@
       width: 100vw;
       height: 100vh;
       background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
+      touch-action: none; /* 禁用默认触摸滚动/缩放，便于拖动 */
     }
   </style>
   </head>
@@ -244,8 +245,8 @@
     window.addEventListener('resize', resizeAndDraw);
     resizeAndDraw();
 
-    // 拖拽交互（左侧）
-    canvas.addEventListener('pointerdown', (e) => {
+    // 统一的指针事件处理函数（鼠标/触控笔/触摸统一使用）
+    function onPointerDown(e) {
       const { leftCx, cy, outerR, innerR } = getLeftGeometry();
       const { rightCx, outerR: rOuterR, innerR: rInnerR } = getRightGeometry();
       const dotOffset = 16;
@@ -269,33 +270,37 @@
       const dyROut = e.clientY - rOuterY;
       const hitRadius = dotRadius + 8;
 
+      const tryCapture = (pid) => {
+        if (canvas.setPointerCapture && typeof pid === 'number') {
+          try { canvas.setPointerCapture(pid); } catch (_) {}
+        }
+      };
+
       if (dxIn * dxIn + dyIn * dyIn <= hitRadius * hitRadius) {
         state.draggingInnerId = e.pointerId;
-        canvas.setPointerCapture(e.pointerId);
-        // 初始化当前刻度索引
+        tryCapture(e.pointerId);
         state.innerTickIndex = mod(angleToTick(state.innerAngle, 8), 8);
         state.outerTickIndex = mod(angleToTick(state.outerAngle, 10), 10);
       } else if (dxOut * dxOut + dyOut * dyOut <= hitRadius * hitRadius) {
         state.draggingOuterId = e.pointerId;
-        canvas.setPointerCapture(e.pointerId);
+        tryCapture(e.pointerId);
         state.innerTickIndex = mod(angleToTick(state.innerAngle, 8), 8);
         state.outerTickIndex = mod(angleToTick(state.outerAngle, 10), 10);
       } else if (dxRIn * dxRIn + dyRIn * dyRIn <= hitRadius * hitRadius) {
         state.rDraggingInnerId = e.pointerId;
-        canvas.setPointerCapture(e.pointerId);
+        tryCapture(e.pointerId);
         state.rInnerTickIndex = mod(angleToTick(state.rInnerAngle, 8), 8);
         state.rOuterTickIndex = mod(angleToTick(state.rOuterAngle, 10), 10);
       } else if (dxROut * dxROut + dyROut * dyROut <= hitRadius * hitRadius) {
         state.rDraggingOuterId = e.pointerId;
-        canvas.setPointerCapture(e.pointerId);
+        tryCapture(e.pointerId);
         state.rInnerTickIndex = mod(angleToTick(state.rInnerAngle, 8), 8);
         state.rOuterTickIndex = mod(angleToTick(state.rOuterAngle, 10), 10);
       } else {
-        // 如果点击在右侧圆区域，则独立调整右侧数字（循环 0→8）
+        // 如果点击在右侧圆区域，则独立调整右侧数字（循环 0→50）
         const dxR = e.clientX - rightCx;
         const dyR = e.clientY - cy;
         if (dxR * dxR + dyR * dyR <= rOuterR * rOuterR) {
-          // Shift 点击向下循环，否则向上循环
           if (e.shiftKey) {
             state.rightCount = (state.rightCount - 1 + 51) % 51; // 0..50
           } else {
@@ -304,46 +309,37 @@
         }
       }
       draw();
-    });
+    }
 
-    canvas.addEventListener('pointermove', (e) => {
+    function onPointerMove(e) {
       const { leftCx, cy } = getLeftGeometry();
       const { rightCx } = getRightGeometry();
       if (state.draggingInnerId === e.pointerId) {
-        const stepIn = 2 * Math.PI / 8;
-        const stepOut = 2 * Math.PI / 10;
         let angle = Math.atan2(e.clientY - cy, e.clientX - leftCx);
-        angle = nearestSnapAngle(angle, 8); // 内圆吸附到8等分
+        angle = nearestSnapAngle(angle, 8);
         const newK = mod(angleToTick(angle, 8), 8);
         let deltaK = newK - state.innerTickIndex;
-        // 处理跨越边界时的最短方向差
         if (deltaK > 4) deltaK -= 8;
         if (deltaK < -4) deltaK += 8;
         state.innerTickIndex = newK;
         state.innerAngle = tickToAngle(newK, 8);
-        // 反向同步移动外圆（每移动内圆一个刻度，外圆也移动一个刻度，反方向）
         state.outerTickIndex = mod(state.outerTickIndex - deltaK, 10);
         state.outerAngle = tickToAngle(state.outerTickIndex, 10);
-        // 累计步数用于方向感知高亮
         state.innerTotalSteps += deltaK;
         state.outerTotalSteps -= deltaK;
         draw();
       }
       if (state.draggingOuterId === e.pointerId) {
-        const stepIn = 2 * Math.PI / 8;
-        const stepOut = 2 * Math.PI / 10;
         let angle = Math.atan2(e.clientY - cy, e.clientX - leftCx);
-        angle = nearestSnapAngle(angle, 10); // 外圆吸附到10等分
+        angle = nearestSnapAngle(angle, 10);
         const newK = mod(angleToTick(angle, 10), 10);
         let deltaK = newK - state.outerTickIndex;
         if (deltaK > 5) deltaK -= 10;
         if (deltaK < -5) deltaK += 10;
         state.outerTickIndex = newK;
         state.outerAngle = tickToAngle(newK, 10);
-        // 反向同步移动内圆（每移动外圆一个刻度，内圆也移动一个刻度，反方向）
         state.innerTickIndex = mod(state.innerTickIndex - deltaK, 8);
         state.innerAngle = tickToAngle(state.innerTickIndex, 8);
-        // 累计步数用于方向感知高亮
         state.outerTotalSteps += deltaK;
         state.innerTotalSteps -= deltaK;
         draw();
@@ -352,43 +348,41 @@
       // 右侧拖拽：同方向同步一大格（红点或蓝点）
       if (state.rDraggingInnerId === e.pointerId) {
         let angle = Math.atan2(e.clientY - cy, e.clientX - rightCx);
-        angle = nearestSnapAngle(angle, 8); // 内圆吸附到8等分
+        angle = nearestSnapAngle(angle, 8);
         const newK = mod(angleToTick(angle, 8), 8);
         let deltaK = newK - state.rInnerTickIndex;
         if (deltaK > 4) deltaK -= 8;
         if (deltaK < -4) deltaK += 8;
         state.rInnerTickIndex = newK;
         state.rInnerAngle = tickToAngle(newK, 8);
-        // 同向同步外圆（每移动内圆一个刻度，外圆也移动一个刻度，同方向）
         state.rOuterTickIndex = mod(state.rOuterTickIndex + deltaK, 10);
         state.rOuterAngle = tickToAngle(state.rOuterTickIndex, 10);
-        // 累计步数用于方向感知高亮
         state.rInnerTotalSteps += deltaK;
         state.rOuterTotalSteps += deltaK;
-        // 右侧数字：每跨一大格加1（不区分方向），最多显示到 50
         state.rightCount = Math.min(50, state.rightCount + Math.abs(deltaK));
         draw();
       }
       if (state.rDraggingOuterId === e.pointerId) {
         let angle = Math.atan2(e.clientY - cy, e.clientX - rightCx);
-        angle = nearestSnapAngle(angle, 10); // 外圆吸附到10等分
+        angle = nearestSnapAngle(angle, 10);
         const newK = mod(angleToTick(angle, 10), 10);
         let deltaK = newK - state.rOuterTickIndex;
         if (deltaK > 5) deltaK -= 10;
         if (deltaK < -5) deltaK += 10;
         state.rOuterTickIndex = newK;
         state.rOuterAngle = tickToAngle(newK, 10);
-        // 同向同步内圆（每移动外圆一个刻度，内圆也移动一个刻度，同方向）
         state.rInnerTickIndex = mod(state.rInnerTickIndex + deltaK, 8);
         state.rInnerAngle = tickToAngle(state.rInnerTickIndex, 8);
-        // 累计步数用于方向感知高亮
         state.rOuterTotalSteps += deltaK;
         state.rInnerTotalSteps += deltaK;
-        // 右侧数字：每跨一大格加1（不区分方向），最多显示到 50
         state.rightCount = Math.min(50, state.rightCount + Math.abs(deltaK));
         draw();
       }
-    });
+    }
+
+    // 绑定指针事件（鼠标/触控笔/触摸）
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
 
     function endDrag(e) {
       let changed = false;
@@ -414,6 +408,37 @@
     canvas.addEventListener('pointerup', endDrag);
     canvas.addEventListener('pointercancel', endDrag);
     canvas.addEventListener('pointerleave', endDrag);
+
+    // 触摸事件适配：将 touch 事件映射为“伪指针事件”复用同一逻辑
+    function touchToPointerLike(touch, e) {
+      return {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        pointerId: touch.identifier,
+        shiftKey: !!e.shiftKey,
+      };
+    }
+    function onTouchStart(e) {
+      e.preventDefault(); // 禁止滚动，优先拖动
+      for (const t of Array.from(e.changedTouches)) {
+        onPointerDown(touchToPointerLike(t, e));
+      }
+    }
+    function onTouchMove(e) {
+      e.preventDefault();
+      for (const t of Array.from(e.changedTouches)) {
+        onPointerMove(touchToPointerLike(t, e));
+      }
+    }
+    function onTouchEnd(e) {
+      for (const t of Array.from(e.changedTouches)) {
+        endDrag(touchToPointerLike(t, e));
+      }
+    }
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd);
+    canvas.addEventListener('touchcancel', onTouchEnd);
 
     // 文本标签绘制：在圆正上方居中显示
     function drawLabelText(cx, cy, outerR, text, color = '#333') {
