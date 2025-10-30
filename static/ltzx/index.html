@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+    <title>两条直线的位置情况</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #0f1115;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", Arial, sans-serif;
+      }
+      canvas {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        display: block;
+        cursor: crosshair;
+        touch-action: none; /* 启用自定义触控手势 */
+      }
+      .hud {
+        position: fixed;
+        left: 12px;
+        top: 12px;
+        color: #eaeef4;
+        background: rgba(10, 12, 16, 0.6);
+        border: 1px solid rgba(255,255,255,0.12);
+        padding: 10px 12px;
+        border-radius: 10px;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        max-width: 360px;
+        font-size: 20px;
+        line-height: 1.5;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+      }
+      .hud h1 {
+        margin: 0 0 6px 0;
+        font-size: 26px;
+        font-weight: 600;
+      }
+      .hud .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .controls {
+        position: fixed;
+        right: 12px;
+        top: 12px;
+        display: flex;
+        gap: 8px;
+      }
+      button {
+        appearance: none;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+        color: #eaeef4;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 24px;
+        cursor: pointer;
+        transition: transform 0.08s ease, background 0.2s ease, border-color 0.2s ease;
+      }
+      button:hover {
+        transform: translateY(-1px);
+        border-color: rgba(255,255,255,0.25);
+        background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.04));
+      }
+      button:active { transform: translateY(0); }
+      .help {
+        position: fixed;
+        left: 12px;
+        bottom: 12px;
+        color: #b9c2d0;
+        font-size: 24px;
+        background: rgba(10, 12, 16, 0.5);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+      a { color: #8ab4ff; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div class="hud" id="hud">
+      <h1>两条直线的位置情况</h1>
+      <div id="hudText">
+        用两次点击确定一条直线。
+      </div>
+    </div>
+    <div class="controls">
+      <button id="resetBtn">重置</button>
+    </div>
+
+    <script>
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const hudText = document.getElementById('hudText');
+      const resetBtn = document.getElementById('resetBtn');
+      const dpr = window.devicePixelRatio || 1;
+      const EPS = 1e-9;
+
+      const GRID_STEP = 100;           // 网格步长（世界坐标）
+      const SNAP_PX = 12;             // 点击吸附阈值（屏幕像素）
+      const HIT_POINT_PX = 14;        // 端点命中半径（屏幕像素）
+      const HIT_LINE_PX = 8;          // 直线命中距离（屏幕像素）
+      const MIN_SCALE = 1e-6; // 避免缩放为 0（支持近无限缩放）
+      const ANGLE_SNAP_DEG = 6;       // 角度吸附阈值（与另一条线平行/垂直）
+
+      let cssW = 0, cssH = 0;
+      let lines = []; // [{p1:{x,y}, p2:{x,y}}] 世界坐标
+      let tempStart = null; // 当前绘制线的起点（世界坐标）
+      let previewPoint = null; // 预览点（世界坐标）
+      let lastResult = null; // 分类结果
+
+      // 视图变换（屏幕<->世界）
+      let viewScale = 1;
+      let viewOffset = { x: 0, y: 0 }; // 屏幕像素偏移
+      let spaceDown = false;
+      const activePointers = new Map(); // pointerId -> {x,y} 屏幕坐标
+      let drag = null; // 当前拖动状态
+
+      function fitCanvas() {
+        cssW = window.innerWidth;
+        cssH = window.innerHeight;
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(1,0,0,1,0,0);
+        ctx.scale(dpr, dpr);
+        render();
+      }
+
+      function clearCanvas() {
+        ctx.clearRect(0, 0, cssW, cssH);
+        // 背景在屏幕空间绘制
+        ctx.fillStyle = '#0f1115';
+        ctx.fillRect(0, 0, cssW, cssH);
+      }
+
+      function applyWorldTransform() {
+        // 设置到世界坐标：先应用 DPR，再应用视图缩放和平移
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+        ctx.translate(viewOffset.x, viewOffset.y);
+        ctx.scale(viewScale, viewScale);
+      }
+
+      function screenToWorld(pt) {
+        return { x: (pt.x - viewOffset.x) / viewScale, y: (pt.y - viewOffset.y) / viewScale };
+      }
+      function worldToScreen(pt) {
+        return { x: pt.x * viewScale + viewOffset.x, y: pt.y * viewScale + viewOffset.y };
+      }
+
+      function getVisibleWorldBounds() {
+        const tl = screenToWorld({ x: 0, y: 0 });
+        const br = screenToWorld({ x: cssW, y: cssH });
+        return { x0: tl.x, y0: tl.y, x1: br.x, y1: br.y };
+      }
+
+      function drawGridVisible(step, color) {
+        const vis = getVisibleWorldBounds();
+        const startX = Math.floor(vis.x0 / step) * step;
+        const endX = Math.ceil(vis.x1 / step) * step;
+        const startY = Math.floor(vis.y0 / step) * step;
+        const endY = Math.ceil(vis.y1 / step) * step;
+        ctx.save();
+        applyWorldTransform();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1 / viewScale; // 保持屏幕像素线宽
+        ctx.beginPath();
+        for (let x = startX; x <= endX; x += step) {
+          ctx.moveTo(x, vis.y0);
+          ctx.lineTo(x, vis.y1);
+        }
+        for (let y = startY; y <= endY; y += step) {
+          ctx.moveTo(vis.x0, y);
+          ctx.lineTo(vis.x1, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function render() {
+        clearCanvas();
+        drawGridVisible(GRID_STEP, '#1a1e25');
+
+        const vis = getVisibleWorldBounds();
+        const extend = (p1, p2) => extendToBoundsWorld(p1, p2, vis);
+
+        // 绘制已存在的直线与端点（世界空间）
+        lines.forEach((ln, idx) => {
+          const ext = extend(ln.p1, ln.p2);
+          ctx.save();
+          applyWorldTransform();
+          ctx.lineWidth = 5 / viewScale;
+          ctx.strokeStyle = idx === 0 ? '#49a3ff' : '#ffc857';
+          ctx.beginPath();
+          ctx.moveTo(ext.a.x, ext.a.y);
+          ctx.lineTo(ext.b.x, ext.b.y);
+          ctx.stroke();
+
+          // 端点（固定屏幕像素大小）
+          ctx.fillStyle = '#c9d3e6';
+          drawPointPx(ln.p1.x, ln.p1.y, 6);
+          drawPointPx(ln.p2.x, ln.p2.y, 6);
+          ctx.restore();
+        });
+
+        // 预览线（选择第二点时）
+        if (tempStart && previewPoint) {
+          const ext = extend(tempStart, previewPoint);
+          ctx.save();
+          applyWorldTransform();
+          ctx.setLineDash([8 / viewScale, 6 / viewScale]);
+          ctx.lineWidth = 2 / viewScale;
+          ctx.strokeStyle = '#7c8a9f';
+          ctx.beginPath();
+          ctx.moveTo(ext.a.x, ext.a.y);
+          ctx.lineTo(ext.b.x, ext.b.y);
+          ctx.stroke();
+          ctx.restore();
+          // 预览起点
+          ctx.save();
+          applyWorldTransform();
+          ctx.fillStyle = '#98a6bc';
+          drawPointPx(tempStart.x, tempStart.y, 3);
+          ctx.restore();
+        }
+
+        // 交点（如果存在且位于当前视窗）
+        if (lastResult && lastResult.type === '相交' && lastResult.intersection) {
+          const { x, y } = lastResult.intersection;
+          const s = worldToScreen({ x, y });
+          if (s.x >= 0 && s.x <= cssW && s.y >= 0 && s.y <= cssH) {
+            ctx.save();
+            applyWorldTransform();
+            ctx.fillStyle = '#ff0000';
+            drawPointPx(x, y, 5);
+            ctx.restore();
+          }
+        }
+      }
+
+      function drawPointPx(x, y, rPx) {
+        ctx.beginPath();
+        ctx.arc(x, y, rPx / viewScale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function getPoint(e) {
+        return { x: e.clientX, y: e.clientY };
+      }
+
+      function handleClick(p, screenPt) {
+        if (!tempStart) {
+          tempStart = snapIfNearGrid(p, screenPt);
+          previewPoint = null;
+          hudText.innerHTML = '选择第二个点以确定一条直线（两点延长为整条直线）';
+        } else {
+          // ignore near-identical points
+          p = snapIfNearGrid(p, screenPt);
+          const dx = p.x - tempStart.x, dy = p.y - tempStart.y;
+          if (Math.hypot(dx, dy) < 2) {
+            hudText.innerHTML = '两点太近了，请重新选择第二个点。';
+            return;
+          }
+          lines.push({ p1: tempStart, p2: p });
+          tempStart = null;
+          previewPoint = null;
+          if (lines.length === 1) {
+            hudText.innerHTML = '第一条线已确定。请再画第二条线。';
+          } else if (lines.length === 2) {
+            lastResult = classify(lines[0], lines[1]);
+            hudText.innerHTML = formatResult(lastResult);
+          } else {
+            // keep only 2 lines
+            lines = lines.slice(-2);
+          }
+        }
+        render();
+      }
+
+      function extendToBoundsWorld(p1, p2, bounds) {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const w = bounds.x1 - bounds.x0;
+        const h = bounds.y1 - bounds.y0;
+        const offsetX = bounds.x0;
+        const offsetY = bounds.y0;
+        const pts = [];
+
+        if (Math.abs(dx) < EPS) {
+          // vertical
+          const x = p1.x;
+          pts.push({ x, y: offsetY });
+          pts.push({ x, y: offsetY + h });
+        } else {
+          const m = dy / dx;
+          const b = p1.y - m * p1.x;
+          // x = 0, w
+          const y0 = b + m * (offsetX - 0) + (0 - offsetX) * m; // adjust for offset
+          const y_at_left = m * offsetX + b;
+          if (y_at_left >= offsetY - 1 && y_at_left <= offsetY + h + 1) pts.push({ x: offsetX, y: y_at_left });
+          const y_at_right = m * (offsetX + w) + b;
+          if (y_at_right >= offsetY - 1 && y_at_right <= offsetY + h + 1) pts.push({ x: offsetX + w, y: y_at_right });
+          // y = 0, h => x = (y - b)/m
+          if (Math.abs(m) > EPS) {
+            const x_top = (offsetY - b) / m;
+            if (x_top >= offsetX - 1 && x_top <= offsetX + w + 1) pts.push({ x: x_top, y: offsetY });
+            const x_bottom = (offsetY + h - b) / m;
+            if (x_bottom >= offsetX - 1 && x_bottom <= offsetX + w + 1) pts.push({ x: x_bottom, y: offsetY + h });
+          } else {
+            // horizontal line
+            const y = p1.y;
+            pts.push({ x: offsetX, y });
+            pts.push({ x: offsetX + w, y });
+          }
+        }
+
+        // de-duplicate and pick 2 farthest
+        const uniq = [];
+        for (const q of pts) {
+          const found = uniq.find(u => Math.hypot(u.x - q.x, u.y - q.y) < 0.5);
+          if (!found) uniq.push(q);
+        }
+        if (uniq.length >= 2) {
+          // choose the pair with max distance to span full canvas
+          let best = { i: 0, j: 1, d: -1 };
+          for (let i = 0; i < uniq.length; i++) {
+            for (let j = i + 1; j < uniq.length; j++) {
+              const d = Math.hypot(uniq[i].x - uniq[j].x, uniq[i].y - uniq[j].y);
+              if (d > best.d) best = { i, j, d };
+            }
+          }
+          return { a: uniq[best.i], b: uniq[best.j] };
+        }
+        // fallback to原始线段
+        return { a: p1, b: p2 };
+      }
+
+      function lineCoeffs(p1, p2) {
+        const a = p2.y - p1.y;
+        const b = p1.x - p2.x;
+        const c = p2.x * p1.y - p1.x * p2.y;
+        return { a, b, c };
+      }
+
+      function isProportional(a1,b1,c1, a2,b2,c2) {
+        // Check if [a1,b1,c1] = k * [a2,b2,c2] for some k
+        const pickK = () => {
+          if (Math.abs(a2) > EPS) return a1 / a2;
+          if (Math.abs(b2) > EPS) return b1 / b2;
+          if (Math.abs(c2) > EPS) return c1 / c2;
+          return 1; // shouldn't happen for valid lines
+        };
+        const k = pickK();
+        return Math.abs(a1 - k*a2) < 1e-7 && Math.abs(b1 - k*b2) < 1e-7 && Math.abs(c1 - k*c2) < 1e-7;
+      }
+
+      function classify(ln1, ln2) {
+        // 端点有效性校验，避免未定义导致报错
+        const validPt = (p) => p && typeof p.x === 'number' && typeof p.y === 'number';
+        if (!ln1 || !ln2 || !validPt(ln1.p1) || !validPt(ln1.p2) || !validPt(ln2.p1) || !validPt(ln2.p2)) {
+          return { type: '无效', intersection: null, angleDeg: null, perpendicular: false };
+        }
+        const { a:a1, b:b1, c:c1 } = lineCoeffs(ln1.p1, ln1.p2);
+        const { a:a2, b:b2, c:c2 } = lineCoeffs(ln2.p1, ln2.p2);
+        const D = a1*b2 - a2*b1;
+        const v1 = { x: ln1.p2.x - ln1.p1.x, y: ln1.p2.y - ln1.p1.y };
+        const v2 = { x: ln2.p2.x - ln2.p1.x, y: ln2.p2.y - ln2.p1.y };
+        const n1 = Math.hypot(v1.x, v1.y);
+        const n2 = Math.hypot(v2.x, v2.y);
+        let type, intersection = null, angleDeg = null, perpendicular = false;
+
+        if (Math.abs(D) < 1e-9) {
+          // parallel or coincident
+          if (isProportional(a1,b1,c1, a2,b2,c2)) {
+            type = '重合';
+          } else {
+            type = '平行';
+            // angle between parallels is 0
+            const dot = v1.x*v2.x + v1.y*v2.y;
+            const cos = Math.abs(dot) / (n1*n2);
+            const ang = Math.acos(Math.min(1, Math.max(-1, cos)));
+            angleDeg = +( (ang * 180 / Math.PI).toFixed(1) );
+          }
+        } else {
+          // intersection
+          type = '相交';
+          // 修正Cramer's法则求交点：Ax + By + C = 0
+          // D = a1*b2 - a2*b1
+          // x = (b1*c2 - b2*c1) / D
+          // y = (a2*c1 - a1*c2) / D
+          const x = (b1*c2 - b2*c1) / D;
+          const y = (a2*c1 - a1*c2) / D;
+          intersection = { x, y };
+          const dot = v1.x*v2.x + v1.y*v2.y;
+          const cos = Math.abs(dot) / (n1*n2);
+          const ang = Math.acos(Math.min(1, Math.max(-1, cos)));
+          // limit to [0, 90]
+          const angMin = Math.min(ang, Math.PI - ang);
+          angleDeg = +( (angMin * 180 / Math.PI).toFixed(1) );
+          perpendicular = Math.abs(dot) / (n1*n2) < 1e-6; // ~90°
+        }
+
+        return { type, intersection, angleDeg, perpendicular };
+      }
+
+      function formatResult(res) {
+        if (!res) return '';
+        if (res.type === '无效') {
+          return `情况：<span class="mono">无效</span><br/>请重试生成或绘制两条有效直线。`;
+        }
+        if (res.type === '相交') {
+          const extra = res.perpendicular ? '（垂直）' : '';
+          return `情况：<span class="mono">相交${extra}</span><br/>夹角≈ <span class="mono">${res.angleDeg}°</span>`;
+        } else if (res.type === '平行') {
+          return `情况：<span class="mono">平行</span><br/>两线没有交点。`;
+        } else if (res.type === '重合') {
+          return `情况：<span class="mono">重合</span><br/>两线完全在同一直线上（无限多个交点）。`;
+        }
+        return '';
+      }
+
+      function reset() {
+        lines = [];
+        tempStart = null;
+        previewPoint = null;
+        lastResult = null;
+        hudText.innerHTML = '用两次点击确定一条直线。';
+        render();
+      }
+
+      
+
+      
+      // 交互更新：点击吸附、拖动端点/直线、视图平移与捏合缩放
+      canvas.addEventListener('pointerdown', (e) => {
+        const screenPt = { x: e.clientX, y: e.clientY };
+        const worldPt = screenToWorld(screenPt);
+        canvas.setPointerCapture(e.pointerId);
+        activePointers.set(e.pointerId, screenPt);
+
+        // 双指捏合：第二个指针按下时进入捏合模式
+        if (activePointers.size === 2) {
+          const arr = Array.from(activePointers.values());
+          const c0 = { x: (arr[0].x + arr[1].x) / 2, y: (arr[0].y + arr[1].y) / 2 };
+          const d0 = Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y);
+          drag = {
+            type: 'pinch',
+            pointerIds: Array.from(activePointers.keys()),
+            dist0: Math.max(10, d0),
+            center0Screen: c0,
+            center0World: screenToWorld(c0),
+            scale0: viewScale,
+          };
+          e.preventDefault();
+          return;
+        }
+
+        // 未完成绘制：继续点选（吸附网格）
+        if (lines.length < 2 || tempStart) {
+          handleClick(worldPt, screenPt);
+          e.preventDefault();
+          return;
+        }
+
+        // 已有两条线：命中测试端点或直线；否则支持平移（空格或右键）
+        const hit = hitTest(worldPt, screenPt);
+        if (hit.type === 'point') {
+          drag = { type: 'endpoint', lineIndex: hit.lineIndex, endpoint: hit.endpoint, pointerId: e.pointerId };
+          e.preventDefault();
+          return;
+        }
+        if (hit.type === 'line') {
+          drag = { type: 'line', lineIndex: hit.lineIndex, lastWorld: worldPt, pointerId: e.pointerId };
+          e.preventDefault();
+          return;
+        }
+        if (spaceDown || e.button === 2) {
+          drag = { type: 'pan', lastScreen: screenPt, pointerId: e.pointerId };
+          e.preventDefault();
+          return;
+        }
+        // 默认：两线已生成后，在空白处拖动同时移动两条线
+        if (lines.length === 2) {
+          drag = { type: 'bothLines', lastWorld: worldPt, pointerId: e.pointerId };
+          e.preventDefault();
+          return;
+        }
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        const screenPt = { x: e.clientX, y: e.clientY };
+        const worldPt = screenToWorld(screenPt);
+        if (drag) {
+          if (drag.type === 'endpoint') {
+            const ln = lines[drag.lineIndex];
+            // 角度吸附：与另一条线平行或垂直
+            let snapped = worldPt;
+            if (lines.length === 2) {
+              const otherIdx = drag.lineIndex === 0 ? 1 : 0;
+              const other = lines[otherIdx];
+              const anchor = drag.endpoint === 'p1' ? ln.p2 : ln.p1;
+              snapped = snapToParallelOrPerpendicular(anchor, worldPt, other);
+            }
+            ln[drag.endpoint] = snapped; // 拖动端点改变方向
+            lastResult = classify(lines[0], lines[1]);
+            hudText.innerHTML = formatResult(lastResult);
+            render();
+          } else if (drag.type === 'line') {
+            const ln = lines[drag.lineIndex];
+            const dx = worldPt.x - drag.lastWorld.x;
+            const dy = worldPt.y - drag.lastWorld.y;
+            ln.p1 = { x: ln.p1.x + dx, y: ln.p1.y + dy };
+            ln.p2 = { x: ln.p2.x + dx, y: ln.p2.y + dy };
+            drag.lastWorld = worldPt;
+            lastResult = classify(lines[0], lines[1]);
+            hudText.innerHTML = formatResult(lastResult);
+            render();
+          } else if (drag.type === 'pan') {
+            const dx = screenPt.x - drag.lastScreen.x;
+            const dy = screenPt.y - drag.lastScreen.y;
+            viewOffset.x += dx;
+            viewOffset.y += dy;
+            drag.lastScreen = screenPt;
+            render();
+          } else if (drag.type === 'bothLines') {
+            const dx = worldPt.x - drag.lastWorld.x;
+            const dy = worldPt.y - drag.lastWorld.y;
+            for (let i = 0; i < lines.length; i++) {
+              lines[i].p1 = { x: lines[i].p1.x + dx, y: lines[i].p1.y + dy };
+              lines[i].p2 = { x: lines[i].p2.x + dx, y: lines[i].p2.y + dy };
+            }
+            drag.lastWorld = worldPt;
+            lastResult = classify(lines[0], lines[1]);
+            hudText.innerHTML = formatResult(lastResult);
+            render();
+          } else if (drag.type === 'pinch') {
+            // 更新两个指针位置
+            activePointers.set(e.pointerId, screenPt);
+            const ids = drag.pointerIds;
+            if (ids.every(id => activePointers.has(id))) {
+              const pA = activePointers.get(ids[0]);
+              const pB = activePointers.get(ids[1]);
+              const c1 = { x: (pA.x + pB.x) / 2, y: (pA.y + pB.y) / 2 };
+              const d1 = Math.hypot(pA.x - pB.x, pA.y - pB.y);
+              const factor = Math.max(0.2, d1 / drag.dist0);
+              const newScale = Math.max(MIN_SCALE, drag.scale0 * factor);
+              // 保持初始世界中心在新的屏幕中心
+              viewOffset.x = c1.x - drag.center0World.x * newScale;
+              viewOffset.y = c1.y - drag.center0World.y * newScale;
+              viewScale = newScale;
+              render();
+            }
+          }
+          e.preventDefault();
+          return;
+        }
+
+        // 绘制模式下：更新预览
+        if (tempStart) {
+          previewPoint = worldPt;
+          render();
+        }
+      });
+
+      canvas.addEventListener('pointerup', (e) => {
+        activePointers.delete(e.pointerId);
+        if (drag && drag.pointerId === e.pointerId) drag = null;
+        if (drag && drag.type === 'pinch' && drag.pointerIds.includes(e.pointerId)) drag = null;
+      });
+      canvas.addEventListener('pointercancel', (e) => {
+        activePointers.delete(e.pointerId);
+        if (drag && drag.pointerId === e.pointerId) drag = null;
+        if (drag && drag.type === 'pinch' && drag.pointerIds.includes(e.pointerId)) drag = null;
+      });
+
+      // 右键菜单禁用用于平移
+      canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      // 鼠标滚轮缩放（以指针位置为中心）
+      canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const screenPt = { x: e.clientX, y: e.clientY };
+        const worldPt = screenToWorld(screenPt);
+        const factor = Math.exp(-e.deltaY * 0.001);
+        const newScale = Math.max(MIN_SCALE, viewScale * factor);
+        // 保持指针对应的世界点在屏幕位置稳定
+        viewOffset.x += worldPt.x * (viewScale - newScale);
+        viewOffset.y += worldPt.y * (viewScale - newScale);
+        viewScale = newScale;
+        render();
+      }, { passive: false });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key === ' ') spaceDown = true;
+        if (e.key === 'r' || e.key === 'R') reset();
+      });
+      window.addEventListener('keyup', (e) => { if (e.key === ' ') spaceDown = false; });
+      window.addEventListener('resize', fitCanvas);
+      resetBtn.addEventListener('click', reset);
+
+      // 吸附：点击近网格交点时返回该交点，否则返回原坐标
+      function snapIfNearGrid(worldPt, screenPt) {
+        const gx = Math.round(worldPt.x / GRID_STEP) * GRID_STEP;
+        const gy = Math.round(worldPt.y / GRID_STEP) * GRID_STEP;
+        const s = worldToScreen({ x: gx, y: gy });
+        const d = Math.hypot(s.x - screenPt.x, s.y - screenPt.y);
+        return d <= SNAP_PX ? { x: gx, y: gy } : worldPt;
+      }
+
+      function hitTest(worldPt, screenPt) {
+        // 端点命中优先
+        for (let i = 0; i < lines.length; i++) {
+          const ln = lines[i];
+          const s1 = worldToScreen(ln.p1);
+          const s2 = worldToScreen(ln.p2);
+          if (Math.hypot(s1.x - screenPt.x, s1.y - screenPt.y) <= HIT_POINT_PX) return { type: 'point', lineIndex: i, endpoint: 'p1' };
+          if (Math.hypot(s2.x - screenPt.x, s2.y - screenPt.y) <= HIT_POINT_PX) return { type: 'point', lineIndex: i, endpoint: 'p2' };
+        }
+        // 直线命中（无限延长线）
+        let best = { type: 'none' };
+        for (let i = 0; i < lines.length; i++) {
+          const ln = lines[i];
+          const { a, b, c } = lineCoeffs(ln.p1, ln.p2);
+          const distWorld = Math.abs(a * worldPt.x + b * worldPt.y + c) / Math.hypot(a, b);
+          const distPx = distWorld * viewScale;
+          if (distPx <= HIT_LINE_PX) best = { type: 'line', lineIndex: i };
+        }
+        return best;
+      }
+
+      // 端点拖动角度吸附：与另一条线平行或垂直
+      function snapToParallelOrPerpendicular(anchorPt, targetPt, otherLine) {
+        if (!otherLine) return targetPt;
+        const vOther = { x: otherLine.p2.x - otherLine.p1.x, y: otherLine.p2.y - otherLine.p1.y };
+        const nOther = Math.hypot(vOther.x, vOther.y);
+        const vDrag = { x: targetPt.x - anchorPt.x, y: targetPt.y - anchorPt.y };
+        const nDrag = Math.hypot(vDrag.x, vDrag.y);
+        if (nOther < EPS || nDrag < EPS) return targetPt;
+        const dot = vDrag.x * vOther.x + vDrag.y * vOther.y;
+        const cos = dot / (nDrag * nOther);
+        const cosClamped = Math.min(1, Math.max(-1, cos));
+        const angDeg = Math.acos(Math.abs(cosClamped)) * 180 / Math.PI; // [0,90]
+        const errParallel = angDeg;
+        const errPerp = Math.abs(90 - angDeg);
+        const tol = ANGLE_SNAP_DEG;
+        if (errParallel <= tol || errPerp <= tol) {
+          let dir;
+          if (errParallel <= errPerp) {
+            dir = { x: vOther.x / nOther, y: vOther.y / nOther };
+          } else {
+            dir = { x: -vOther.y / nOther, y: vOther.x / nOther }; // 90° 旋转
+          }
+          const sign = (vDrag.x * dir.x + vDrag.y * dir.y) >= 0 ? 1 : -1;
+          const vNew = { x: dir.x * sign * nDrag, y: dir.y * sign * nDrag };
+          return { x: anchorPt.x + vNew.x, y: anchorPt.y + vNew.y };
+        }
+        return targetPt;
+      }
+
+      // 保留占位：若未来需要对缩放进行额外稳定处理，可在此添加
+
+      // init
+      fitCanvas();
+    </script>
+  </body>
+</html>
