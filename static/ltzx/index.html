@@ -83,6 +83,7 @@
         padding: 8px 10px;
       }
       a { color: #8ab4ff; text-decoration: none; }
+      #hudText{font-size: 28px;line-height: 1.5;}
     </style>
   </head>
   <body>
@@ -106,9 +107,10 @@
       const EPS = 1e-9;
 
       const GRID_STEP = 100;           // 网格步长（世界坐标）
-      const SNAP_PX = 12;             // 点击吸附阈值（屏幕像素）
-      const HIT_POINT_PX = 14;        // 端点命中半径（屏幕像素）
-      const HIT_LINE_PX = 8;          // 直线命中距离（屏幕像素）
+      const SNAP_PX = 5;              // 点击吸附阈值（屏幕像素）
+      const HIT_POINT_PX_MOUSE = 18;   // 鼠标端点命中半径（屏幕像素）
+      const HIT_POINT_PX_TOUCH = 28;   // 触摸端点命中半径（屏幕像素）
+      const HIT_LINE_PX = 8;           // 直线命中距离（屏幕像素）
       const MIN_SCALE = 1e-6; // 避免缩放为 0（支持近无限缩放）
       const ANGLE_SNAP_DEG = 6;       // 角度吸附阈值（与另一条线平行/垂直）
 
@@ -207,8 +209,8 @@
 
           // 端点（固定屏幕像素大小）
           ctx.fillStyle = '#c9d3e6';
-          drawPointPx(ln.p1.x, ln.p1.y, 6);
-          drawPointPx(ln.p2.x, ln.p2.y, 6);
+          drawPointPx(ln.p1.x, ln.p1.y, 8);
+          drawPointPx(ln.p2.x, ln.p2.y, 8);
           ctx.restore();
         });
 
@@ -472,7 +474,7 @@
         }
 
         // 已有两条线：命中测试端点或直线；否则支持平移（空格或右键）
-        const hit = hitTest(worldPt, screenPt);
+        const hit = hitTest(worldPt, screenPt, e.pointerType || 'mouse');
         if (hit.type === 'point') {
           drag = { type: 'endpoint', lineIndex: hit.lineIndex, endpoint: hit.endpoint, pointerId: e.pointerId };
           e.preventDefault();
@@ -616,14 +618,16 @@
         return d <= SNAP_PX ? { x: gx, y: gy } : worldPt;
       }
 
-      function hitTest(worldPt, screenPt) {
+      function hitTest(worldPt, screenPt, pointerType = 'mouse') {
+        const isTouchLike = pointerType === 'touch' || pointerType === 'pen';
+        const hitRadius = isTouchLike ? HIT_POINT_PX_TOUCH : HIT_POINT_PX_MOUSE;
         // 端点命中优先
         for (let i = 0; i < lines.length; i++) {
           const ln = lines[i];
           const s1 = worldToScreen(ln.p1);
           const s2 = worldToScreen(ln.p2);
-          if (Math.hypot(s1.x - screenPt.x, s1.y - screenPt.y) <= HIT_POINT_PX) return { type: 'point', lineIndex: i, endpoint: 'p1' };
-          if (Math.hypot(s2.x - screenPt.x, s2.y - screenPt.y) <= HIT_POINT_PX) return { type: 'point', lineIndex: i, endpoint: 'p2' };
+          if (Math.hypot(s1.x - screenPt.x, s1.y - screenPt.y) <= hitRadius) return { type: 'point', lineIndex: i, endpoint: 'p1' };
+          if (Math.hypot(s2.x - screenPt.x, s2.y - screenPt.y) <= hitRadius) return { type: 'point', lineIndex: i, endpoint: 'p2' };
         }
         // 直线命中（无限延长线）
         let best = { type: 'none' };
