@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>平行四边形的认识</title>
+    <style>
+      html, body { width: 100vw; height:100vh; margin: 0;background: #fff;overflow: hidden; }
+      svg { width: 100%; height: 100%; background: #fff;touch-action: none; }
+      .barOutlineGray { stroke: #000; stroke-width: 40; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+      .barFillGray { stroke: #eaeaea; stroke-width: 36; stroke-linecap: round; stroke-linejoin: round; fill: none; pointer-events: none; }
+      .barOutline { stroke: #000; stroke-width: 40; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+      .barFill { stroke: #f6e36c; stroke-width: 36; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+      .barOutline, .barFill { pointer-events: stroke; cursor: grab; }
+      .areaGray { fill: #fff; fill-opacity: 0.9; stroke: none; pointer-events: none; }
+      .areaYellow { fill: #d1b500; fill-opacity: 0.2; stroke: none; pointer-events: none; }
+      .handle { fill: #f6e36c; stroke: #000; stroke-width: 2; cursor: grab; }
+      .handle.dragging { cursor: grabbing; }
+      /* 顶部提示与右下角按钮 */
+      .tipBar { position: fixed; top: 0; left: 0; width: 100%; padding: 10px 14px; text-align: center; background: rgba(246, 227, 108, 0.25); color: #333; font-size: 14px; z-index: 9; display: none; pointer-events: none; }
+      .tipBar.visible { display: block; }
+      .controls { position: fixed; bottom: 16px; right: 16px; display: flex; gap: 12px; z-index: 10; }
+      .controls button { padding: 8px 14px; font-size: 14px; border-radius: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+      .controls button:hover { background: #f2f2f2; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <svg id="svg" viewBox="0 0 1200 800" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- 静态淡灰色木棒（位于黄色木棒下层，仅显示） -->
+        <!-- 灰色矩形的透明淡灰色填充（位于灰色木棒下层） -->
+        <polygon id="areaGray" class="areaGray" points="" />
+        <!-- 先画上下两条木棒（层级较低） -->
+        <line id="bgTopOutline" class="barOutlineGray" x1="0" y1="0" x2="0" y2="0" />
+        <line id="bgBottomOutline" class="barOutlineGray" x1="0" y1="0" x2="0" y2="0" />
+        <line id="bgTopFill" class="barFillGray" x1="0" y1="0" x2="0" y2="0" />
+        <line id="bgBottomFill" class="barFillGray" x1="0" y1="0" x2="0" y2="0" />
+
+        <!-- 再画左右两条木棒（层级更高，覆盖上下） -->
+        <line id="bgRightOutline" class="barOutlineGray" x1="0" y1="0" x2="0" y2="0" />
+        <line id="bgLeftOutline" class="barOutlineGray" x1="0" y1="0" x2="0" y2="0" />
+        <line id="bgRightFill" class="barFillGray" x1="0" y1="0" x2="0" y2="0" />
+        <line id="bgLeftFill" class="barFillGray" x1="0" y1="0" x2="0" y2="0" />
+        <!-- 四条木棒：先画黑色外轮廓，再画淡黄色填充 -->
+        <!-- 黄色矩形的透明淡黄色填充（位于黄色木棒下层） -->
+        <polygon id="areaYellow" class="areaYellow" points="" />
+        <!-- 先画上下两条木棒（层级较低） -->
+        <line id="topOutline" class="barOutline" x1="0" y1="0" x2="0" y2="0" />
+        <line id="bottomOutline" class="barOutline" x1="0" y1="0" x2="0" y2="0" />
+        <line id="topFill" class="barFill" x1="0" y1="0" x2="0" y2="0" />
+        <line id="bottomFill" class="barFill" x1="0" y1="0" x2="0" y2="0" />
+
+        <!-- 再画左右两条木棒（层级更高，覆盖上下） -->
+        <line id="rightOutline" class="barOutline" x1="0" y1="0" x2="0" y2="0" />
+        <line id="leftOutline" class="barOutline" x1="0" y1="0" x2="0" y2="0" />
+        <line id="rightFill" class="barFill" x1="0" y1="0" x2="0" y2="0" />
+        <line id="leftFill" class="barFill" x1="0" y1="0" x2="0" y2="0" />
+
+        <!-- 4个可拖拽的角 -->
+        <circle id="h0" class="handle" r="22" cx="0" cy="0"></circle>
+        <circle id="h1" class="handle" r="22" cx="0" cy="0"></circle>
+        <circle id="h2" class="handle" r="22" cx="0" cy="0"></circle>
+        <circle id="h3" class="handle" r="22" cx="0" cy="0"></circle>
+      </svg>
+      <!-- 顶部提示栏 -->
+      <div id="tipBar" class="tipBar">调整模式：可以拖动4条边改变边长</div>
+      <!-- 右下角控制按钮 -->
+      <div class="controls">
+        <button id="btnReset">重置</button>
+        <button id="btnAdjust">调整</button>
+      </div>
+    </div>
+
+    <script>
+      // --- 初始几何 ---
+      const svg = document.getElementById('svg');
+      // 使 SVG 的坐标与浏览器窗口尺寸一致，满足全屏大小需求
+      function setSvgViewBoxToWindow() {
+        const w = window.innerWidth || document.documentElement.clientWidth || svg.clientWidth;
+        const h = window.innerHeight || document.documentElement.clientHeight || svg.clientHeight;
+        svg.setAttribute('viewBox', `0 0 ${Math.max(1,w)} ${Math.max(1,h)}`);
+      }
+      setSvgViewBoxToWindow();
+
+      // 初始矩形位置与尺寸（自适应，居中，旋转时不出屏）
+      const OUTLINE_W = 40; // 外黑线宽，用于边界裕量
+      const HANDLE_R = 22;  // 角点半径，用于边界裕量
+      const SAFE_MARGIN = Math.max(OUTLINE_W / 2, HANDLE_R) + 2; // 旋转任意角度都完整显示的最小安全边距
+
+      const vb = svg.viewBox.baseVal;
+      const vw = vb.width, vh = vb.height;
+      const maxDiag = Math.min(vw, vh) - 2 * SAFE_MARGIN; // 允许的最大对角线长度
+
+      // 基于视窗的初始占比（可调），随后按对角线约束统一缩放
+      let W = vw * 0.45;
+      let H = vh * 0.35;
+      const d0 = Math.hypot(W, H);
+      if (d0 > maxDiag) {
+        const s = maxDiag / d0; W *= s; H *= s;
+      }
+      const startX = (vw - W) / 2;
+      const startY = (vh - H) / 2;
+      // 设置静态淡灰背景木棒将在顶点初始化后进行
+
+      // 顶点顺序：A(左上), B(右上), C(右下), D(左下)
+      const pts = [
+        { x: startX,       y: startY       }, // A = 0
+        { x: startX + W,   y: startY       }, // B = 1
+        { x: startX + W,   y: startY + H   }, // C = 2
+        { x: startX,       y: startY + H   }  // D = 3
+      ];
+      const defaultPts = pts.map(p => ({ x: p.x, y: p.y }));
+
+      // 四条边原始长度，作为约束目标值
+      let rest = {
+        AB: dist(pts[0], pts[1]),
+        BC: dist(pts[1], pts[2]),
+        CD: dist(pts[2], pts[3]),
+        DA: dist(pts[3], pts[0])
+      };
+
+      // 灰色木棒初始化将在元素引用创建后进行
+
+      // 拖拽状态与固定(钉住)集合
+      const pinned = [false,false,false,false];
+      let dragging = null;
+      let dragPointerId = null;
+
+      // 木棒（独立绘制）：外轮廓与填充
+      // 填充区域（透明）
+      const areaGrayEl = document.getElementById('areaGray');
+      const areaYellowEl = document.getElementById('areaYellow');
+
+      // 灰色木棒（静态，仅显示）
+      const bgLinesOutline = {
+        top: document.getElementById('bgTopOutline'),
+        right: document.getElementById('bgRightOutline'),
+        bottom: document.getElementById('bgBottomOutline'),
+        left: document.getElementById('bgLeftOutline'),
+      };
+      const bgLinesFill = {
+        top: document.getElementById('bgTopFill'),
+        right: document.getElementById('bgRightFill'),
+        bottom: document.getElementById('bgBottomFill'),
+        left: document.getElementById('bgLeftFill'),
+      };
+
+      // 初始化灰色木棒为默认位置与尺寸（与黄色木棒初始一致，仅显示，不参与交互）
+      setLine(bgLinesOutline.top,   pts[0], pts[1]);
+      setLine(bgLinesOutline.right, pts[1], pts[2]);
+      setLine(bgLinesOutline.bottom,pts[2], pts[3]);
+      setLine(bgLinesOutline.left,  pts[3], pts[0]);
+
+      setLine(bgLinesFill.top,   pts[0], pts[1]);
+      setLine(bgLinesFill.right, pts[1], pts[2]);
+      setLine(bgLinesFill.bottom,pts[2], pts[3]);
+      setLine(bgLinesFill.left,  pts[3], pts[0]);
+
+      // 初始化填充区域：灰色为静态默认，黄色为初始值（后续渲染中更新）
+      setArea(areaGrayEl, pts);
+      setArea(areaYellowEl, pts);
+
+      // 黄色木棒（可拖动上/下边）
+      const linesOutline = {
+        top: document.getElementById('topOutline'),
+        right: document.getElementById('rightOutline'),
+        bottom: document.getElementById('bottomOutline'),
+        left: document.getElementById('leftOutline'),
+      };
+      const linesFill = {
+        top: document.getElementById('topFill'),
+        right: document.getElementById('rightFill'),
+        bottom: document.getElementById('bottomFill'),
+        left: document.getElementById('leftFill'),
+      };
+      const handles = [
+        document.getElementById('h0'),
+        document.getElementById('h1'),
+        document.getElementById('h2'),
+        document.getElementById('h3')
+      ];
+
+      // 顶部提示与按钮
+      const tipBarEl = document.getElementById('tipBar');
+      const resetBtn = document.getElementById('btnReset');
+      const adjustBtn = document.getElementById('btnAdjust');
+      let adjusting = false;
+      // 灰色四边在退出调整后保持与黄色同步的状态开关
+      let graySync = false;
+
+      function doReset() {
+        // 恢复初始顶点、长度与状态
+        pts[0] = { x: startX,       y: startY       };
+        pts[1] = { x: startX + W,   y: startY       };
+        pts[2] = { x: startX + W,   y: startY + H   };
+        pts[3] = { x: startX,       y: startY + H   };
+        rest = {
+          AB: dist(pts[0], pts[1]),
+          BC: dist(pts[1], pts[2]),
+          CD: dist(pts[2], pts[3]),
+          DA: dist(pts[3], pts[0])
+        };
+        pinned[0] = pinned[1] = pinned[2] = pinned[3] = false;
+        draggingEdge = null; dragSideTarget = null; dragPointerId = null;
+        edgeStart = null; pointerStart = null;
+        // 重置时灰色不保持跟随
+        graySync = false;
+        // 同步填充与灰色边为默认
+        setArea(areaYellowEl, pts);
+        syncGrayFromPts(pts);
+        render();
+      }
+
+      resetBtn.addEventListener('click', () => {
+        doReset();
+      });
+
+      adjustBtn.addEventListener('click', () => {
+        if (!adjusting) {
+          doReset();
+          adjusting = true;
+          tipBarEl.classList.add('visible');
+          adjustBtn.textContent = '退出调整';
+        } else {
+          adjusting = false;
+          tipBarEl.classList.remove('visible');
+          adjustBtn.textContent = '调整';
+          // 退出调整：灰色边保留当前形状，但后续不再跟随黄色
+          graySync = false;
+          syncGrayFromPts(pts);
+        }
+      });
+
+
+      // restLen 辅助已移除
+
+      // 顶点几何投影与两圆求交已移除
+
+      // 点相对有向直线的侧向（带EPS与prefer，避免接近共线时抖动与跳变）
+      function sideOfLine(p, a, b, prefer = 1) {
+        const s = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+        if (Math.abs(s) <= SIDE_EPS) return prefer; // 共线近似：保持上一帧同侧
+        const sign = Math.sign(s);
+        return sign === 0 ? prefer : sign;
+      }
+
+      let dragSideTarget = null; // 当前边拖拽希望保持的侧向
+      const SIDE_EPS = Math.max(vw, vh) * 1e-6; // 线侧判定容差
+
+      // 顶点拖拽求解函数已移除
+
+      // 渲染函数：更新木棒线段与角点位置
+      function render() {
+        // 线段（外黑内黄）
+        setLine(linesOutline.top,    pts[0], pts[1]);
+        setLine(linesOutline.right,  pts[1], pts[2]);
+        setLine(linesOutline.bottom, pts[2], pts[3]);
+        setLine(linesOutline.left,   pts[3], pts[0]);
+
+        setLine(linesFill.top,    pts[0], pts[1]);
+        setLine(linesFill.right,  pts[1], pts[2]);
+        setLine(linesFill.bottom, pts[2], pts[3]);
+        setLine(linesFill.left,   pts[3], pts[0]);
+        // 黄色填充区域随当前点更新；调整模式下灰色也同步变化
+        setArea(areaYellowEl, pts);
+        if (adjusting || graySync) {
+          syncGrayFromPts(pts);
+        }
+        // 角点
+        for (let i = 0; i < 4; i++) {
+          handles[i].setAttribute('cx', pts[i].x);
+          handles[i].setAttribute('cy', pts[i].y);
+        }
+      }
+
+      function setLine(el, p1, p2) {
+        el.setAttribute('x1', p1.x); el.setAttribute('y1', p1.y);
+        el.setAttribute('x2', p2.x); el.setAttribute('y2', p2.y);
+      }
+
+      function setArea(el, ptsArr) {
+        el.setAttribute('points', ptsArr.map(p => `${p.x},${p.y}`).join(' '));
+      }
+
+      // 同步灰色四边与灰色填充到指定点集
+      function syncGrayFromPts(ptsArr) {
+        setLine(bgLinesOutline.top,   ptsArr[0], ptsArr[1]);
+        setLine(bgLinesOutline.right, ptsArr[1], ptsArr[2]);
+        setLine(bgLinesOutline.bottom,ptsArr[2], ptsArr[3]);
+        setLine(bgLinesOutline.left,  ptsArr[3], ptsArr[0]);
+        setLine(bgLinesFill.top,   ptsArr[0], ptsArr[1]);
+        setLine(bgLinesFill.right, ptsArr[1], ptsArr[2]);
+        setLine(bgLinesFill.bottom,ptsArr[2], ptsArr[3]);
+        setLine(bgLinesFill.left,  ptsArr[3], ptsArr[0]);
+        setArea(areaGrayEl, ptsArr);
+      }
+
+      // 距离与约束满足（Position Based Dynamics 简化版）
+      function dist(p, q) {
+        return Math.hypot(q.x - p.x, q.y - p.y);
+      }
+
+      function satisfy(i, j, target) {
+        const pi = pts[i], pj = pts[j];
+        let dx = pj.x - pi.x, dy = pj.y - pi.y;
+        let d = Math.hypot(dx, dy);
+        if (d === 0) return;
+        // 需要的修正因子，正值表示缩短，负值表示拉长
+        const diff = (d - target) / d;
+        const wi = pinned[i] ? 0 : 1;
+        const wj = pinned[j] ? 0 : 1;
+        const wsum = wi + wj;
+        if (wsum === 0) return; // 两端都固定
+        const mx = dx * diff, my = dy * diff;
+        if (wi) { pi.x += mx * (wi / wsum); pi.y += my * (wi / wsum); }
+        if (wj) { pj.x -= mx * (wj / wsum); pj.y -= my * (wj / wsum); }
+      }
+
+      function relax(iter = 30) {
+        for (let k = 0; k < iter; k++) {
+          satisfy(0, 1, rest.AB);
+          satisfy(1, 2, rest.BC);
+          satisfy(2, 3, rest.CD);
+          satisfy(3, 0, rest.DA);
+        }
+      }
+
+      // 将屏幕坐标转换为 SVG 坐标
+      function toSvgPoint(e) {
+        const pt = svg.createSVGPoint();
+        pt.x = e.clientX; pt.y = e.clientY;
+        const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+        return { x: svgPt.x, y: svgPt.y };
+      }
+
+      // 顶点拖拽事件已移除（保留角点仅用于视觉展示）
+
+      // 直接拖动上/下两条边：整体平移该边，两端保持相对边固定
+      let draggingEdge = null;
+      let edgeStart = null;
+      let pointerStart = null;
+
+      const edgeElements = {
+        top: linesFill.top,
+        right: linesFill.right,
+        bottom: linesFill.bottom,
+        left: linesFill.left,
+      };
+
+      edgeElements.top.addEventListener('pointerdown', e => {
+        pointerStart = toSvgPoint(e);
+        if (adjusting) {
+          // 调整模式：仅改变长度（高度），不旋转
+          draggingEdge = 'top_adjust';
+          edgeStart = { a: { ...pts[0] }, b: { ...pts[1] } };
+          dragPointerId = e.pointerId;
+          svg.setPointerCapture?.(dragPointerId);
+        } else {
+          // 默认模式：允许旋转，上边拖动，底边钉住
+          draggingEdge = 'top_rotate';
+          edgeStart = { a: { ...pts[0] }, b: { ...pts[1] } };
+          dragPointerId = e.pointerId;
+          svg.setPointerCapture?.(dragPointerId);
+          pinned[0] = pinned[1] = pinned[2] = pinned[3] = false;
+          pinned[2] = true; pinned[3] = true;
+          dragSideTarget = sideOfLine(pts[0], pts[2], pts[3]);
+        }
+      });
+
+      edgeElements.bottom.addEventListener('pointerdown', e => {
+        pointerStart = toSvgPoint(e);
+        if (adjusting) {
+          // 调整模式：仅改变长度（高度），不旋转
+          draggingEdge = 'bottom_adjust';
+          edgeStart = { c: { ...pts[2] }, d: { ...pts[3] } };
+          dragPointerId = e.pointerId;
+          svg.setPointerCapture?.(dragPointerId);
+        } else {
+          // 默认模式：允许旋转，下边拖动，顶边钉住
+          draggingEdge = 'bottom_rotate';
+          edgeStart = { c: { ...pts[2] }, d: { ...pts[3] } };
+          dragPointerId = e.pointerId;
+          svg.setPointerCapture?.(dragPointerId);
+          pinned[0] = pinned[1] = pinned[2] = pinned[3] = false;
+          pinned[0] = true; pinned[1] = true;
+          dragSideTarget = sideOfLine(pts[2], pts[0], pts[1]);
+        }
+      });
+      edgeElements.left.addEventListener('pointerdown', e => {
+        if (!adjusting) return; // 非调整模式不可拖动左右
+        draggingEdge = 'left_adjust';
+        pointerStart = toSvgPoint(e);
+        edgeStart = { a: { ...pts[0] }, d: { ...pts[3] } };
+        dragPointerId = e.pointerId;
+        svg.setPointerCapture?.(dragPointerId);
+        // 固定右边
+        pinned[0] = pinned[1] = pinned[2] = pinned[3] = false;
+        pinned[1] = true; pinned[2] = true;
+        // 限制同侧（相对右边 BC）
+        dragSideTarget = sideOfLine(pts[0], pts[1], pts[2]);
+      });
+
+      edgeElements.right.addEventListener('pointerdown', e => {
+        if (!adjusting) return; // 非调整模式不可拖动左右
+        draggingEdge = 'right_adjust';
+        pointerStart = toSvgPoint(e);
+        edgeStart = { b: { ...pts[1] }, c: { ...pts[2] } };
+        dragPointerId = e.pointerId;
+        svg.setPointerCapture?.(dragPointerId);
+        // 固定左边
+        pinned[0] = pinned[1] = pinned[2] = pinned[3] = false;
+        pinned[0] = true; pinned[3] = true;
+        // 限制同侧（相对左边 AD）
+        dragSideTarget = sideOfLine(pts[1], pts[3], pts[0]);
+      });
+      
+      svg.addEventListener('pointermove', e => {
+        const p = toSvgPoint(e);
+        if (draggingEdge) {
+          // 默认模式旋转：上/下边整体拖动，并限制同侧
+          if (draggingEdge === 'top_rotate') {
+            const dx = p.x - pointerStart.x, dy = p.y - pointerStart.y;
+            const aNew = { x: edgeStart.a.x + dx, y: edgeStart.a.y + dy };
+            const bNew = { x: edgeStart.b.x + dx, y: edgeStart.b.y + dy };
+            if (sideOfLine(aNew, pts[2], pts[3], dragSideTarget) === dragSideTarget && sideOfLine(bNew, pts[2], pts[3], dragSideTarget) === dragSideTarget) {
+              pts[0] = aNew; pts[1] = bNew;
+              relax(8);
+              render();
+            }
+          } else if (draggingEdge === 'bottom_rotate') {
+            const dx = p.x - pointerStart.x, dy = p.y - pointerStart.y;
+            const cNew = { x: edgeStart.c.x + dx, y: edgeStart.c.y + dy };
+            const dNew = { x: edgeStart.d.x + dx, y: edgeStart.d.y + dy };
+            if (sideOfLine(cNew, pts[0], pts[1], dragSideTarget) === dragSideTarget && sideOfLine(dNew, pts[0], pts[1], dragSideTarget) === dragSideTarget) {
+              pts[2] = cNew; pts[3] = dNew;
+              relax(8);
+              render();
+            }
+          // 调整模式不旋转：仅改变长度
+          } else if (draggingEdge === 'top_adjust') {
+            const dy = p.y - pointerStart.y;
+            const newY = edgeStart.a.y + dy;
+            pts[0] = { x: edgeStart.a.x, y: newY };
+            pts[1] = { x: edgeStart.b.x, y: newY };
+            // 更新约束长度为当前矩形尺寸
+            rest = {
+              AB: dist(pts[0], pts[1]),
+              BC: dist(pts[1], pts[2]),
+              CD: dist(pts[2], pts[3]),
+              DA: dist(pts[3], pts[0])
+            };
+            render();
+          } else if (draggingEdge === 'bottom_adjust') {
+            const dy = p.y - pointerStart.y;
+            const newY = edgeStart.c.y + dy;
+            pts[2] = { x: edgeStart.c.x, y: newY };
+            pts[3] = { x: edgeStart.d.x, y: newY };
+            rest = {
+              AB: dist(pts[0], pts[1]),
+              BC: dist(pts[1], pts[2]),
+              CD: dist(pts[2], pts[3]),
+              DA: dist(pts[3], pts[0])
+            };
+            render();
+          } else if (draggingEdge === 'left_adjust') {
+            const dx = p.x - pointerStart.x, dy = p.y - pointerStart.y;
+            const newX = edgeStart.a.x + dx;
+            pts[0] = { x: newX, y: edgeStart.a.y };
+            pts[3] = { x: newX, y: edgeStart.d.y };
+            rest = {
+              AB: dist(pts[0], pts[1]),
+              BC: dist(pts[1], pts[2]),
+              CD: dist(pts[2], pts[3]),
+              DA: dist(pts[3], pts[0])
+            };
+            render();
+          } else if (draggingEdge === 'right_adjust') {
+            const dx = p.x - pointerStart.x, dy = p.y - pointerStart.y;
+            const newX = edgeStart.b.x + dx;
+            pts[1] = { x: newX, y: edgeStart.b.y };
+            pts[2] = { x: newX, y: edgeStart.c.y };
+            rest = {
+              AB: dist(pts[0], pts[1]),
+              BC: dist(pts[1], pts[2]),
+              CD: dist(pts[2], pts[3]),
+              DA: dist(pts[3], pts[0])
+            };
+            render();
+          }
+        }
+      });
+
+      const endDrag = e => {
+        pinned[0] = pinned[1] = pinned[2] = pinned[3] = false; // 解除钉住
+        draggingEdge = null;
+        dragSideTarget = null;
+        dragPointerId = null;
+      };
+
+      svg.addEventListener('pointerup', endDrag);
+      svg.addEventListener('pointercancel', endDrag);
+      svg.addEventListener('pointerleave', endDrag);
+
+      // 初次渲染
+      render();
+    </script>
+  </body>
+</html>
