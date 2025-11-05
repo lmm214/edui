@@ -269,37 +269,51 @@ input[type="range"]::-moz-range-track {
         </div>
         <div class="controls-panel card" id="controls-panel">
             <div class="group">
+
+                <!-- 第二行：文字颜色单独一行 -->
+                <div class="field">
+                    <div id="text-color-selector" class="theme-selector" style="margin-top:8px;"></div>
+                </div>
                 <!-- 第一行：左侧紧凑/宽松；中间数字字号 -->
                 <div class="field" style="display:flex; gap:16px; justify-content:space-between; align-items:flex-start;">
                     <div style="flex:1; min-width: 0;">
-                        <label>布局模式</label>
                         <div class="density-group" style="display:flex; gap:8px; margin-top:8px;">
                             <button id="density-compact" class="theme-toggle-button">紧凑</button>
                             <button id="density-comfort" class="theme-toggle-button">宽松</button>
                         </div>
                     </div>
                     <div style="flex:1; min-width: 0;">
-                        <label>数字字号</label>
                         <div class="density-group" style="display:flex; gap:8px; margin-top:8px;">
                             <button id="number-small" class="theme-toggle-button">小号</button>
                             <button id="number-large" class="theme-toggle-button">大号</button>
                         </div>
                     </div>
                 </div>
-                <!-- 第二行：文字颜色单独一行 -->
+                <!-- 新增：周起始与表头 -->
                 <div class="field">
-                    <label>文字颜色</label>
-                    <div id="text-color-selector" class="theme-selector" style="margin-top:8px;"></div>
+                    <div class="density-group" style="display:flex; gap:8px; margin-top:8px;">
+                        <button id="week-sunday" class="theme-toggle-button">周日起</button>
+                        <button id="week-monday" class="theme-toggle-button">周一起</button>
+                        <button id="week-header-hide" class="theme-toggle-button">隐藏周</button>
+                        <button id="pure-text-btn" class="theme-toggle-button">隐背景</button>
+                    </div>
                 </div>
                 <!-- 第三行：竖屏比例按钮 -->
                 <div class="field">
-                    <label>竖屏比例</label>
                     <div id="ratio-selector" class="theme-selector" style="margin-top:8px;"></div>
                 </div>
                 <!-- 第四行：透明度设置 -->
                 <div class="field">
-                    <label for="bg-opacity">透明度</label>
-                    <input type="range" id="bg-opacity" min="0" max="1" step="0.1" value="0.2">
+                    <div class="control-row">
+                        <div style="flex:1; min-width: 0;">
+                            <label for="bg-mask-opacity">背景遮罩透明度</label>
+                            <input type="range" id="bg-mask-opacity" min="0" max="1" step="0.05" value="0.1">
+                        </div>
+                        <div style="flex:1; min-width: 0;">
+                            <label for="calendar-bg-opacity">月历背景透明度</label>
+                            <input type="range" id="calendar-bg-opacity" min="0" max="1" step="0.05" value="0.2">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -321,7 +335,12 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleControlsBtn: el('toggle-controls-btn'),
         downloadBtn: el('download-btn'),
         controlsPanel: el('controls-panel'),
-        bgOpacity: el('bg-opacity'),
+        bgMaskOpacity: el('bg-mask-opacity'),
+        calendarBgOpacity: el('calendar-bg-opacity'),
+        pureTextBtn: el('pure-text-btn'),
+        weekSunday: el('week-sunday'),
+        weekMonday: el('week-monday'),
+        weekHeaderHide: el('week-header-hide'),
         densityCompact: el('density-compact'),
         densityComfort: el('density-comfort'),
         numberSmall: el('number-small'),
@@ -355,12 +374,17 @@ document.addEventListener('DOMContentLoaded', () => {
         bgScale: 1,
         bgOffsetX: 0,
         bgOffsetY: 0,
+        bgMaskOpacity: 0.1,
+        pureTextMode: false,
+        hideWeekHeader: false,
     };
 
     let swatches = [];
 
     const textColors = [
         { name: '白色', value: '#FFFFFF' },
+        { name: '黑色', value: '#000000' },
+        { name: '棕色', value: '#8B4513' },
         { name: '橙色', value: '#FF9500' },
         { name: '绿色', value: '#34C759' },
         { name: '蓝色', value: '#007AFF' },
@@ -387,7 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const cellWidth = calendarWidth / 7;
         const densityRatio = state.compactMode ? 0.65 : 0.78;
         const cellHeight = cellWidth * densityRatio;
-        const rows = computeCalendarData(state.year, state.month, state.weekStart).length;
+        const rows = computeCalendarData(state.year, state.month, state.weekStart).length - (state.hideWeekHeader ? 1 : 0);
         const calendarHeight = cellHeight * rows;
         const margin = Math.round(canvas.width * 0.04);
         state.calendarX = canvas.width - calendarWidth - margin;
@@ -439,6 +463,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Draw non-blurred background onto main canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(state.bgOffscreen, 0, 0);
+
+        // 背景遮罩（全屏叠加）
+        if (state.bgMaskOpacity && state.bgMaskOpacity > 0) {
+            ctx.save();
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = `rgba(0,0,0,${Math.min(1, Math.max(0, state.bgMaskOpacity))})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.restore();
+        }
     }
 
     function drawPresetBackground(targetCtx = ctx) {
@@ -502,48 +535,51 @@ document.addEventListener('DOMContentLoaded', () => {
         const cellWidth = calendarWidth / 7;
         const densityRatio = compactMode ? 0.65 : 0.78;
         const cellHeight = cellWidth * densityRatio;
-        const calendarHeight = cellHeight * calendarData.length;
+        const rowsCount = calendarData.length - (state.hideWeekHeader ? 1 : 0);
+        const calendarHeight = cellHeight * rowsCount;
 
         const x = calendarX;
         const y = calendarY;
 
-        // Apple liquid glass box: localized background blur within rounded rectangle
-        ctx.save();
-        drawRoundRect(ctx, x, y, calendarWidth, calendarHeight, state.cornerRadius);
-        ctx.clip();
-        if (state.bgOffscreen) {
-            ctx.filter = 'blur(12px)';
-            ctx.drawImage(state.bgOffscreen, 0, 0);
-            ctx.filter = 'none';
+        if (!state.pureTextMode) {
+            // Apple liquid glass box: localized background blur within rounded rectangle
+            ctx.save();
+            drawRoundRect(ctx, x, y, calendarWidth, calendarHeight, state.cornerRadius);
+            ctx.clip();
+            if (state.bgOffscreen) {
+                ctx.filter = 'blur(12px)';
+                ctx.drawImage(state.bgOffscreen, 0, 0);
+                ctx.filter = 'none';
+            }
+            ctx.restore();
+
+            // Translucent white fill for glass
+            const glassAlpha = Math.min(0.55, Math.max(0.1, boxOpacity));
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = `rgba(255,255,255,${glassAlpha})`;
+            drawRoundRect(ctx, x, y, calendarWidth, calendarHeight, state.cornerRadius);
+            ctx.fill();
+
+            // Subtle highlight gradient (top shine)
+            const shine = ctx.createLinearGradient(x, y, x, y + calendarHeight);
+            shine.addColorStop(0, 'rgba(255,255,255,0.65)');
+            shine.addColorStop(0.4, 'rgba(255,255,255,0.12)');
+            shine.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = shine;
+            drawRoundRect(ctx, x, y, calendarWidth, calendarHeight, state.cornerRadius);
+            ctx.fill();
+
+            // Soft shadow to match draggable box style
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.25)';
+            ctx.shadowBlur = Math.max(6, canvas.width * 0.008);
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = Math.max(1, canvas.height * 0.002);
+            ctx.fillStyle = 'rgba(0,0,0,0)';
+            drawRoundRect(ctx, x, y, calendarWidth, calendarHeight, state.cornerRadius);
+            ctx.fill();
+            ctx.restore();
         }
-        ctx.restore();
-
-        // Translucent white fill for glass
-        const glassAlpha = Math.min(0.55, Math.max(0.1, boxOpacity));
-        ctx.globalAlpha = 1.0;
-        ctx.fillStyle = `rgba(255,255,255,${glassAlpha})`;
-        drawRoundRect(ctx, x, y, calendarWidth, calendarHeight, state.cornerRadius);
-        ctx.fill();
-
-        // Subtle highlight gradient (top shine)
-        const shine = ctx.createLinearGradient(x, y, x, y + calendarHeight);
-        shine.addColorStop(0, 'rgba(255,255,255,0.65)');
-        shine.addColorStop(0.4, 'rgba(255,255,255,0.12)');
-        shine.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = shine;
-        drawRoundRect(ctx, x, y, calendarWidth, calendarHeight, state.cornerRadius);
-        ctx.fill();
-
-        // Soft shadow to match draggable box style
-        ctx.save();
-        ctx.shadowColor = 'rgba(0,0,0,0.25)';
-        ctx.shadowBlur = Math.max(6, canvas.width * 0.008);
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = Math.max(1, canvas.height * 0.002);
-        ctx.fillStyle = 'rgba(0,0,0,0)';
-        drawRoundRect(ctx, x, y, calendarWidth, calendarHeight, state.cornerRadius);
-        ctx.fill();
-        ctx.restore();
 
 
         const fontSize = Math.floor(cellWidth / (compactMode ? 2.5 : 2.1));
@@ -559,14 +595,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const fontHeader = `${Math.floor(baseFontSize2 * headerScale)}px ${fontFamily}`;
         const fontDay = `${Math.floor(baseFontSize2 * dayScale)}px ${fontFamily}`;
         calendarData.forEach((week, rowIndex) => {
+            if (rowIndex === 0 && state.hideWeekHeader) return;
             ctx.font = rowIndex === 0 ? fontHeader : fontDay;
             week.forEach((day, colIndex) => {
                 const cellX = x + colIndex * cellWidth + cellWidth / 2;
-                const cellY = y + rowIndex * cellHeight + cellHeight / 2;
+                const visibleIndex = state.hideWeekHeader ? rowIndex - 1 : rowIndex;
+                const cellY = y + visibleIndex * cellHeight + cellHeight / 2;
 
-                // All text in one color (header, weekdays, weekends)
                 ctx.fillStyle = textColor;
-
                 ctx.fillText(day.toString(), cellX, cellY);
             });
         });
@@ -634,7 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const cellWidth = calendarWidth / 7;
         const densityRatio = compactMode ? 0.65 : 0.78;
         const cellHeight = cellWidth * densityRatio;
-        const rows = computeCalendarData(year, month, weekStart).length;
+        const rows = computeCalendarData(year, month, weekStart).length - (state.hideWeekHeader ? 1 : 0);
         const calendarHeight = cellHeight * rows;
         return x >= calendarX && x <= calendarX + calendarWidth && y >= calendarY && y <= calendarY + calendarHeight;
     }
@@ -686,12 +722,61 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        controls.bgOpacity.addEventListener('input', (e) => {
-            updateState({ boxOpacity: parseFloat(e.target.value) });
-        });
-        // 初始化透明度为滑块当前值
-        if (controls.bgOpacity) {
-            state.boxOpacity = parseFloat(controls.bgOpacity.value || state.boxOpacity);
+        // 月历背景透明度（玻璃背景）
+        if (controls.calendarBgOpacity) {
+            controls.calendarBgOpacity.addEventListener('input', (e) => {
+                updateState({ boxOpacity: parseFloat(e.target.value) });
+            });
+            state.boxOpacity = parseFloat(controls.calendarBgOpacity.value || state.boxOpacity);
+        }
+
+        // 背景遮罩透明度（全屏遮罩）
+        if (controls.bgMaskOpacity) {
+            controls.bgMaskOpacity.addEventListener('input', (e) => {
+                updateState({ bgMaskOpacity: parseFloat(e.target.value) });
+            });
+            state.bgMaskOpacity = parseFloat(controls.bgMaskOpacity.value || state.bgMaskOpacity);
+        }
+
+        // 纯文字无背景模式切换
+        if (controls.pureTextBtn) {
+            const updatePureTextActive = () => {
+                controls.pureTextBtn.classList.toggle('active', state.pureTextMode === true);
+            };
+            controls.pureTextBtn.addEventListener('click', () => {
+                updateState({ pureTextMode: !state.pureTextMode });
+                updatePureTextActive();
+            });
+            updatePureTextActive();
+        }
+
+        // 周起始切换
+        if (controls.weekSunday && controls.weekMonday) {
+            const updateWeekStartActive = () => {
+                controls.weekSunday.classList.toggle('active', state.weekStart === 'sunday');
+                controls.weekMonday.classList.toggle('active', state.weekStart === 'monday');
+            };
+            controls.weekSunday.addEventListener('click', () => {
+                updateState({ weekStart: 'sunday', hasAutoPlaced: false });
+                updateWeekStartActive();
+            });
+            controls.weekMonday.addEventListener('click', () => {
+                updateState({ weekStart: 'monday', hasAutoPlaced: false });
+                updateWeekStartActive();
+            });
+            updateWeekStartActive();
+        }
+
+        // 隐藏/显示星期表头
+        if (controls.weekHeaderHide) {
+            const updateHideHeaderActive = () => {
+                controls.weekHeaderHide.classList.toggle('active', state.hideWeekHeader === true);
+            };
+            controls.weekHeaderHide.addEventListener('click', () => {
+                updateState({ hideWeekHeader: !state.hideWeekHeader, hasAutoPlaced: false });
+                updateHideHeaderActive();
+            });
+            updateHideHeaderActive();
         }
 
         // 密度双按钮：同时显示并高亮当前选择
