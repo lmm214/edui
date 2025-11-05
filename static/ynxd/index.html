@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画圆内线段</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background:radial-gradient(at 21.980550567522773% 29.650507060184793%, hsla(0, 0%, 90.19607843137256%, 1) 0%, hsla(0, 0%, 90.19607843137256%, 0) 100%), radial-gradient(at 5.675583183471655% 56.09646661582133%, hsla(0, 0%, 78.43137254901961%, 1) 0%, hsla(0, 0%, 78.43137254901961%, 0) 100%), radial-gradient(at 46.95963957828448% 81.16631764526292%, hsla(0, 0%, 67.05882352941175%, 1) 0%, hsla(0, 0%, 67.05882352941175%, 0) 100%), radial-gradient(at 24.547757547950756% 51.598496103273405%, hsla(0, 0%, 45.09803921568628%, 1) 0%, hsla(0, 0%, 45.09803921568628%, 0) 100%), radial-gradient(at 48.834625417466015% 99.61010503814197%, hsla(0, 0%, 90.19607843137256%, 1) 0%, hsla(0, 0%, 90.19607843137256%, 0) 100%), radial-gradient(at 13.418770287805938% 54.396993215925725%, hsla(0, 0%, 78.43137254901961%, 1) 0%, hsla(0, 0%, 78.43137254901961%, 0) 100%), radial-gradient(at 82.1907139703395% 98.68780554195669%, hsla(0, 0%, 67.05882352941175%, 1) 0%, hsla(0, 0%, 67.05882352941175%, 0) 100%), radial-gradient(at 91.3445121317676% 19.543600342422017%, hsla(0, 0%, 45.09803921568628%, 1) 0%, hsla(0, 0%, 45.09803921568628%, 0) 100%), radial-gradient(at 72.11722378277973% 65.71232820185257%, hsla(0, 0%, 90.19607843137256%, 1) 0%, hsla(0, 0%, 90.19607843137256%, 0) 100%), radial-gradient(at 74.96403577774726% 74.1335580753314%, hsla(0, 0%, 78.43137254901961%, 1) 0%, hsla(0, 0%, 78.43137254901961%, 0) 100%);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            border-radius: 0;
+            padding: 20px;
+            box-shadow: none;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .title {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 24px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            background: #fff;
+            cursor: crosshair;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-shrink: 0;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+
+        .btn-undo {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-undo:hover {
+            background: #ff5252;
+            transform: translateY(-2px);
+        }
+
+        .btn-compare {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        .btn-compare:hover {
+            background: #26a69a;
+            transform: translateY(-2px);
+        }
+
+        .btn-sort {
+            background: #3293e8;
+            color: white;
+        }
+
+        .btn-sort:hover {
+            background: #288ee7;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .info {
+            text-align: center;
+            color: #666;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+                
+        <div class="controls">
+            <button class="btn btn-undo" id="undoBtn">撤销</button>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="mainCanvas" width="800" height="600"></canvas>
+        </div>
+
+        
+    </div>
+
+    <script>
+        class LineDrawingTool {
+            constructor() {
+            this.canvas = document.getElementById('mainCanvas');
+            this.ctx = this.canvas.getContext('2d');
+            
+            // 动态设置canvas尺寸以充分利用窗口空间
+            this.resizeCanvas();
+            window.addEventListener('resize', () => this.resizeCanvas());
+            
+            // 注意：圆形参数在resizeCanvas中设置，这里不需要重复设置
+            
+            this.lines = [];
+            this.comparedLines = []; // 新增：存储已比较的线段
+            this.colors = ['#E53E3E', '#38A169', '#3182CE', '#805AD5', '#D69E2E', '#DD6B20', '#319795', '#C53030'];
+            this.colorIndex = 0;
+            
+            this.isDrawing = false;
+            this.startPoint = null;
+            this.currentLine = null;
+            this.animatingLines = [];
+            
+            // 直径识别相关属性
+            this.diameterTolerance = 10; // ±10px 容差范围
+            this.isDiameter = false; // 当前线段是否为直径
+            this.diameterColor = '#000000'; // 直径的特殊颜色（黑色）
+            this.diameterLineWidth = 3; // 直径线宽（1px）
+            
+            // 闪烁动画相关属性
+            this.blinkingLines = new Set(); // 存储正在闪烁的线段
+            this.blinkInterval = null;
+            
+            // 旋转交互相关属性（针对半径端点）
+            this.isRotating = false;
+            this.rotatingLine = null;
+            this.rotateThreshold = 10; // 与端点距离阈值，触发旋转
+            
+            this.init();
+        }
+        
+        resizeCanvas() {
+            const container = document.querySelector('.canvas-container');
+            const containerRect = container.getBoundingClientRect();
+            
+            // 设置canvas尺寸为容器的95%，确保有边距
+            const width = Math.floor(containerRect.width * 0.95);
+            const height = Math.floor(containerRect.height * 0.95);
+            
+            // 设置高DPI支持
+            const dpr = window.devicePixelRatio || 1;
+            this.canvas.style.width = width + 'px';
+            this.canvas.style.height = height + 'px';
+            this.canvas.width = width * dpr;
+            this.canvas.height = height * dpr;
+            this.ctx.scale(dpr, dpr);
+            
+            // 重新计算圆形参数（使用逻辑尺寸）——单圆居中
+            this.leftCenterX = width * 0.5;
+            this.leftCenterY = height * 0.5;
+            this.radius = Math.min(width * 0.2, height * 0.3);
+            
+            // 合并为单个圆，仅使用左侧圆参数
+            
+            if (this.lines) {
+            this.draw();
+        }
+        }
+            
+            setupHighDPI() {
+                const dpr = window.devicePixelRatio || 1;
+                const rect = this.canvas.getBoundingClientRect();
+                
+                this.canvas.width = rect.width * dpr;
+                this.canvas.height = rect.height * dpr;
+                this.canvas.style.width = rect.width + 'px';
+                this.canvas.style.height = rect.height + 'px';
+                
+                this.ctx.scale(dpr, dpr);
+            }
+            
+            init() {
+            this.draw();
+            this.setupEventListeners();
+            this.updateButtons();
+            this.startBlinkAnimation(); // 启动闪烁动画
+        }
+            
+            draw() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // 绘制单个圆
+                this.drawLeftCircle();
+                
+                // 绘制所有线段
+                this.drawLines();
+            }
+            
+            drawLeftCircle() {
+                // 绘制圆形
+                this.ctx.beginPath();
+                this.ctx.arc(this.leftCenterX, this.leftCenterY, this.radius, 0, 2 * Math.PI);
+                this.ctx.strokeStyle = '#333';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+                
+                // 绘制圆心
+                this.ctx.beginPath();
+                this.ctx.arc(this.leftCenterX, this.leftCenterY, 4, 0, 2 * Math.PI);
+                this.ctx.fillStyle = '#333';
+                this.ctx.fill();
+            }
+            
+            // 合并为单个圆后，不再需要右侧圆
+            
+            drawRightArea() {
+                // 绘制白色背景填充
+                this.ctx.fillStyle = '#ffffff';
+                // 使用逻辑高度计算，自适应屏幕尺寸，考虑高清像素比例
+                const logicalHeight = this.canvas.height / (window.devicePixelRatio || 1);
+                const fillHeight = logicalHeight - this.rightAreaY - 50; // 底部留50px边距
+                this.ctx.fillRect(this.rightAreaX, this.rightAreaY, this.rightAreaWidth, fillHeight);
+            }
+            
+            drawLines() {
+                this.lines.forEach(line => {
+                    this.drawLine(line);
+                    this.drawEndpoints(line);
+                });
+            }
+            
+            drawLine(line) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(line.startX, line.startY);
+                this.ctx.lineTo(line.endX, line.endY);
+                
+                // 如果是直径，并检查是否需要闪烁
+                if (line.isDiameter) {
+                    // 检查是否在闪烁状态（通过时间戳判断）
+                    const shouldBlink = this.blinkingLines.has(line) && Math.floor(Date.now() / 500) % 2 === 0;
+                    
+                    if (shouldBlink) {
+                        this.ctx.strokeStyle = 'transparent'; // 闪烁时透明
+                    } else {
+                        this.ctx.strokeStyle = this.diameterColor;
+                    }
+                    this.ctx.lineWidth = this.diameterLineWidth;
+                } else {
+                    this.ctx.strokeStyle = line.color;
+                    this.ctx.lineWidth = 4;
+                }
+                
+                this.ctx.stroke();
+            }
+            
+            // 绘制直径特殊标识
+            drawDiameterIndicator(line) {
+                // 绘制虚线边框效果
+                this.ctx.beginPath();
+                this.ctx.moveTo(line.startX, line.startY);
+                this.ctx.lineTo(line.endX, line.endY);
+                this.ctx.strokeStyle = '#FFD700'; // 金色边框
+                this.ctx.lineWidth = 8;
+                this.ctx.setLineDash([8, 4]);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]); // 重置虚线
+                
+                // 在线段中点添加"D"标识
+                const midX = (line.startX + line.endX) / 2;
+                const midY = (line.startY + line.endY) / 2;
+                
+                this.ctx.fillStyle = '#FFD700';
+                this.ctx.font = 'bold 16px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillText('D', midX, midY - 20);
+            }
+            
+            drawEndpoints(line) {
+                // 绘制起点
+                this.ctx.beginPath();
+                this.ctx.arc(line.startX, line.startY, 4, 0, 2 * Math.PI);
+                this.ctx.fillStyle = line.color;
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+                
+                // 绘制终点
+                this.ctx.beginPath();
+                this.ctx.arc(line.endX, line.endY, 4, 0, 2 * Math.PI);
+                this.ctx.fillStyle = line.color;
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+            }
+            
+            drawAnimatingLines() {
+                this.animatingLines.forEach(animLine => {
+                    // 绘制动画线段
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(animLine.currentStartX, animLine.currentStartY);
+                    this.ctx.lineTo(animLine.currentEndX, animLine.currentEndY);
+                    this.ctx.strokeStyle = animLine.color;
+                    this.ctx.lineWidth = 4;
+                    this.ctx.stroke();
+                    
+                    // 绘制端点
+                    this.ctx.beginPath();
+                    this.ctx.arc(animLine.currentStartX, animLine.currentStartY, 4, 0, 2 * Math.PI);
+                    this.ctx.fillStyle = animLine.color;
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = '#fff';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+                    
+                    this.ctx.beginPath();
+                    this.ctx.arc(animLine.currentEndX, animLine.currentEndY, 4, 0, 2 * Math.PI);
+                    this.ctx.fillStyle = animLine.color;
+                    this.ctx.fill();
+                    this.ctx.strokeStyle = '#fff';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+                });
+            }
+            
+            setupEventListeners() {
+                // 鼠标事件（优先处理旋转，再处理绘制）
+                this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                this.canvas.addEventListener('mouseup', () => this.onMouseUp());
+                this.canvas.addEventListener('mouseleave', () => this.onMouseUp());
+                
+                // 触摸事件
+                this.canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const mouseEvent = new MouseEvent('mousedown', {
+                        clientX: touch.clientX,
+                        clientY: touch.clientY
+                    });
+                    this.canvas.dispatchEvent(mouseEvent);
+                });
+                
+                this.canvas.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    const mouseEvent = new MouseEvent('mousemove', {
+                        clientX: touch.clientX,
+                        clientY: touch.clientY
+                    });
+                    this.canvas.dispatchEvent(mouseEvent);
+                });
+                
+                this.canvas.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    const mouseEvent = new MouseEvent('mouseup', {});
+                    this.canvas.dispatchEvent(mouseEvent);
+                });
+                
+                // 按钮事件
+                document.getElementById('undoBtn').addEventListener('click', () => this.undo());
+            }
+            
+            getMousePos(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                return {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+            }
+            
+        getCircleIntersection(x, y) {
+            const dx = x - this.leftCenterX;
+            const dy = y - this.leftCenterY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // 避免除零错误，当鼠标在圆心时返回圆上的默认点
+            if (distance < 5) { // 增加容错范围，避免圆心附近的抖动
+                return { x: this.leftCenterX + this.radius, y: this.leftCenterY };
+            }
+            
+            const ratio = this.radius / distance;
+            return {
+                x: this.leftCenterX + dx * ratio,
+                y: this.leftCenterY + dy * ratio
+            };
+        }
+
+        // 单圆模式无需右侧圆端点吸附方法
+        
+        // 检查线段是否接近直径
+        isDiameterLine(startX, startY, endX, endY) {
+            // 计算线段长度
+            const lineLength = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
+            const diameter = this.radius * 2;
+            
+            // 检查长度是否接近直径
+            if (Math.abs(lineLength - diameter) > this.diameterTolerance) {
+                return false;
+            }
+            
+            // 检查线段是否通过圆心
+            const midX = (startX + endX) / 2;
+            const midY = (startY + endY) / 2;
+            const distanceToCenter = Math.sqrt((midX - this.leftCenterX) ** 2 + (midY - this.leftCenterY) ** 2);
+            
+            return distanceToCenter <= this.diameterTolerance;
+        }
+        
+        // 将线段调整为最接近的直径（保持起点不变）
+        adjustToDiameter(startX, startY, endX, endY) {
+            // 计算从起点到圆心的向量
+            const dx = this.leftCenterX - startX;
+            const dy = this.leftCenterY - startY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // 如果起点就在圆心，使用原始方向
+            if (distance < 5) {
+                const originalDx = endX - startX;
+                const originalDy = endY - startY;
+                const originalLength = Math.sqrt(originalDx * originalDx + originalDy * originalDy);
+                
+                if (originalLength > 0) {
+                    const unitX = originalDx / originalLength;
+                    const unitY = originalDy / originalLength;
+                    
+                    return {
+                        startX: startX, // 保持起点不变
+                        startY: startY,
+                        endX: startX + this.radius * 2 * unitX,
+                        endY: startY + this.radius * 2 * unitY
+                    };
+                }
+            }
+            
+            // 计算通过起点和圆心的直径，终点在起点的对侧
+            const unitX = dx / distance;
+            const unitY = dy / distance;
+            
+            // 计算对侧点（起点的对称点）
+            const oppositeX = this.leftCenterX + unitX * this.radius;
+            const oppositeY = this.leftCenterY + unitY * this.radius;
+            
+            return {
+                startX: startX, // 保持起点不变
+                startY: startY,
+                endX: oppositeX,
+                endY: oppositeY
+            };
+        }
+            
+            startDrawing(e) {
+                const pos = this.getMousePos(e);
+                this.isDrawing = true;
+
+                // 判断是否在右侧圆心附近开始（用于半径绘制）
+                const distToCenter = Math.hypot(pos.x - this.leftCenterX, pos.y - this.leftCenterY);
+                const centerThreshold = 12;
+
+                if (distToCenter <= centerThreshold) {
+                    // 半径模式：起点固定为圆心
+                    this.currentCircle = 'radius';
+                    this.currentLine = {
+                        startX: this.leftCenterX,
+                        startY: this.leftCenterY,
+                        endX: this.leftCenterX,
+                        endY: this.leftCenterY,
+                        color: this.colors[this.colorIndex % this.colors.length]
+                    };
+                } else {
+                    // 弦模式：起点吸附到圆边
+                    this.currentCircle = 'chord';
+                    const startPoint = this.getCircleIntersection(pos.x, pos.y);
+                    this.currentLine = {
+                        startX: startPoint.x,
+                        startY: startPoint.y,
+                        endX: startPoint.x,
+                        endY: startPoint.y,
+                        color: this.colors[this.colorIndex % this.colors.length]
+                    };
+                }
+            }
+            
+            drawMove(e) {
+            // 旋转模式优先处理
+            if (this.isRotating && this.rotatingLine) return;
+            if (!this.isDrawing || !this.currentLine) return;
+            
+            const pos = this.getMousePos(e);
+            
+            if (this.currentCircle === 'radius') {
+                // 半径：终点吸附到圆边
+                const endPoint = this.getCircleIntersection(pos.x, pos.y);
+                this.currentLine.endX = endPoint.x;
+                this.currentLine.endY = endPoint.y;
+                
+                // 半径不参与直径识别
+                this.isDiameter = false;
+                this.currentLine.color = this.colors[this.colorIndex % this.colors.length];
+            } else {
+                // 弦：终点吸附到圆边并检测直径
+                const endPoint = this.getCircleIntersection(pos.x, pos.y);
+                this.currentLine.endX = endPoint.x;
+                this.currentLine.endY = endPoint.y;
+                
+                // 检查是否接近直径
+                this.isDiameter = this.isDiameterLine(
+                    this.currentLine.startX, 
+                    this.currentLine.startY, 
+                    this.currentLine.endX, 
+                    this.currentLine.endY
+                );
+                
+                // 如果接近直径，自动调整为最接近的直径
+                if (this.isDiameter) {
+                    const adjustedLine = this.adjustToDiameter(
+                        this.currentLine.startX, 
+                        this.currentLine.startY, 
+                        this.currentLine.endX, 
+                        this.currentLine.endY
+                    );
+                    
+                    this.currentLine.startX = adjustedLine.startX;
+                    this.currentLine.startY = adjustedLine.startY;
+                    this.currentLine.endX = adjustedLine.endX;
+                    this.currentLine.endY = adjustedLine.endY;
+                    
+                    // 使用特殊颜色标识直径
+                    this.currentLine.color = this.diameterColor;
+                } else {
+                    // 恢复原始颜色
+                    this.currentLine.color = this.colors[this.colorIndex % this.colors.length];
+                }
+            }
+            
+            // 重绘
+            this.draw();
+            
+            // 绘制当前线段
+            this.drawLine(this.currentLine);
+            this.drawEndpoints(this.currentLine);
+        }
+            
+            stopDrawing() {
+            if (this.isDrawing && this.currentLine) {
+                // 检查线段长度，避免添加过短的线段
+                const length = Math.sqrt(
+                    (this.currentLine.endX - this.currentLine.startX) ** 2 + 
+                    (this.currentLine.endY - this.currentLine.startY) ** 2
+                );
+                
+                if (length > 10) {
+                    // 保存直径标识（仅弦模式）
+                    this.currentLine.isDiameter = (this.currentCircle !== 'radius') && this.isDiameter;
+                    
+                    // 如果是直径，添加到闪烁列表
+                    if (this.currentLine.isDiameter) {
+                        this.blinkingLines.add(this.currentLine);
+                    }
+                    
+                    this.lines.push({ ...this.currentLine });
+                    this.colorIndex++;
+                }
+            }
+            
+            this.isDrawing = false;
+            this.currentLine = null;
+            this.currentCircle = null;
+            this.isDiameter = false; // 重置直径标识
+            this.draw();
+            this.updateButtons();
+        }
+            
+            undo() {
+            if (this.lines.length > 0) {
+                const removedLine = this.lines.pop();
+                
+                // 从闪烁列表中移除
+                this.blinkingLines.delete(removedLine);
+                
+                // 同时从比较记录中移除对应的线段
+                this.comparedLines = this.comparedLines.filter(line => 
+                    !(line.startX === removedLine.startX && line.startY === removedLine.startY &&
+                      line.endX === removedLine.endX && line.endY === removedLine.endY)
+                );
+                
+                this.draw();
+            this.updateButtons();
+            }
+        }
+            
+            compareLines() {
+            if (this.lines.length === 0) return;
+            
+            // 只复制最后绘制的线段
+            const lastLine = this.lines[this.lines.length - 1];
+            
+            // 检查是否已经比较过这条线段
+            const alreadyCompared = this.comparedLines.some(line => 
+                line.startX === lastLine.startX && line.startY === lastLine.startY &&
+                line.endX === lastLine.endX && line.endY === lastLine.endY
+            );
+            
+            if (alreadyCompared) return; // 如果已经比较过，直接返回
+            
+            // 计算最后线段的长度
+            const length = Math.sqrt((lastLine.endX - lastLine.startX) ** 2 + (lastLine.endY - lastLine.startY) ** 2);
+            
+            // 创建比较线段对象
+            const compareLineData = {
+                ...lastLine,
+                length: length,
+                index: this.comparedLines.length
+            };
+            
+            // 添加到已比较列表
+            this.comparedLines.push(compareLineData);
+            
+            // 创建动画线段
+            const targetY = this.rightAreaY + 50 + this.comparedLines.length * 40; // 按顺序排列
+            const targetStartX = this.rightAreaX + 20;
+            const targetEndX = targetStartX + length;
+            
+            const animLine = {
+                ...lastLine,
+                length: length,
+                currentStartX: lastLine.startX,
+                currentStartY: lastLine.startY,
+                currentEndX: lastLine.endX,
+                currentEndY: lastLine.endY,
+                targetStartX: targetStartX,
+                targetStartY: targetY,
+                targetEndX: targetEndX,
+                targetEndY: targetY,
+                progress: 0,
+                index: this.comparedLines.length - 1
+            };
+            
+            this.animatingLines.push(animLine);
+            
+            // 开始动画
+            this.animateComparison();
+        }
+        
+        sortLines() {
+            if (this.comparedLines.length === 0) return;
+            
+            // 保存当前位置信息
+            const originalPositions = this.comparedLines.map((line, index) => ({
+                ...line,
+                currentY: this.rightAreaY + 50 + (index + 1) * 40,
+                originalIndex: index
+            }));
+            
+            // 按长度从长到短排序
+            const sortedLines = [...this.comparedLines].sort((a, b) => b.length - a.length);
+            
+            // 创建排序动画数据
+            this.sortingLines = [];
+            originalPositions.forEach((originalLine, originalIndex) => {
+                // 找到这条线在排序后的新位置
+                const newIndex = sortedLines.findIndex(sortedLine => 
+                    sortedLine.startX === originalLine.startX && 
+                    sortedLine.startY === originalLine.startY &&
+                    sortedLine.endX === originalLine.endX && 
+                    sortedLine.endY === originalLine.endY
+                );
+                
+                const newY = this.rightAreaY + 50 + (newIndex + 1) * 40;
+                
+                this.sortingLines.push({
+                    ...originalLine,
+                    currentY: originalLine.currentY,
+                    targetY: newY,
+                    startX: this.rightAreaX + 20,
+                    endX: this.rightAreaX + 20 + originalLine.length
+                });
+            });
+            
+            // 更新comparedLines为排序后的顺序
+            this.comparedLines = sortedLines;
+            
+            // 创建左侧圆内线段的圆盘旋转动画数据
+            this.rotatingLines = [];
+            this.lines.forEach(line => {
+                // 计算线段起点和终点相对于圆心的角度
+                const startAngle = Math.atan2(line.startY - this.leftCenterY, line.startX - this.leftCenterX);
+                const endAngle = Math.atan2(line.endY - this.leftCenterY, line.endX - this.leftCenterX);
+                
+                // 计算线段的方向角度（从起点指向终点的角度）
+                const lineDirectionAngle = Math.atan2(line.endY - line.startY, line.endX - line.startX);
+                
+                // 目标：让线段变为水平，即线段的方向角度变为0（水平向右）或π（水平向左）
+                // 选择距离更近的水平方向
+                let targetDirectionAngle = 0; // 水平向右
+                if (Math.abs(lineDirectionAngle - Math.PI) < Math.abs(lineDirectionAngle)) {
+                    targetDirectionAngle = Math.PI; // 水平向左
+                } else if (Math.abs(lineDirectionAngle + Math.PI) < Math.abs(lineDirectionAngle)) {
+                    targetDirectionAngle = -Math.PI; // 水平向左（等同于π）
+                }
+                
+                // 计算需要旋转的角度
+                let rotationAngle = targetDirectionAngle - lineDirectionAngle;
+                
+                // 标准化旋转角度到[-π, π]范围
+                while (rotationAngle > Math.PI) rotationAngle -= 2 * Math.PI;
+                while (rotationAngle < -Math.PI) rotationAngle += 2 * Math.PI;
+                
+                // 计算目标位置（旋转后的位置）
+                const targetStartAngle = startAngle + rotationAngle;
+                const targetEndAngle = endAngle + rotationAngle;
+                
+                const targetStartX = this.leftCenterX + this.radius * Math.cos(targetStartAngle);
+                const targetStartY = this.leftCenterY + this.radius * Math.sin(targetStartAngle);
+                const targetEndX = this.leftCenterX + this.radius * Math.cos(targetEndAngle);
+                const targetEndY = this.leftCenterY + this.radius * Math.sin(targetEndAngle);
+                
+                this.rotatingLines.push({
+                    ...line,
+                    originalStartX: line.startX,
+                    originalStartY: line.startY,
+                    originalEndX: line.endX,
+                    originalEndY: line.endY,
+                    currentStartX: line.startX,
+                    currentStartY: line.startY,
+                    currentEndX: line.endX,
+                    currentEndY: line.endY,
+                    targetStartX: targetStartX,
+                    targetStartY: targetStartY,
+                    targetEndX: targetEndX,
+                    targetEndY: targetEndY,
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    rotationAngle: rotationAngle,
+                    currentRotation: 0 // 当前旋转进度
+                });
+            });
+            
+            // 开始排序和旋转动画
+            this.animateSortingAndRotation();
+        }
+        
+        animateSortingAndRotation() {
+            const duration = 800; // 0.8秒动画
+            const startTime = Date.now();
+            
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // 使用缓动函数
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                
+                // 更新排序动画中每条线的当前Y位置
+                if (this.sortingLines) {
+                    this.sortingLines.forEach(line => {
+                        line.currentY = line.currentY + (line.targetY - line.currentY) * easeProgress * 0.1;
+                    });
+                }
+                
+                // 更新左侧圆内线段的圆盘旋转动画
+                if (this.rotatingLines) {
+                    this.rotatingLines.forEach(line => {
+                        // 更新当前旋转进度
+                        line.currentRotation = line.rotationAngle * easeProgress;
+                        
+                        // 根据当前旋转进度计算新的位置
+                        const currentStartAngle = line.startAngle + line.currentRotation;
+                        const currentEndAngle = line.endAngle + line.currentRotation;
+                        
+                        line.currentStartX = this.leftCenterX + this.radius * Math.cos(currentStartAngle);
+                        line.currentStartY = this.leftCenterY + this.radius * Math.sin(currentStartAngle);
+                        line.currentEndX = this.leftCenterX + this.radius * Math.cos(currentEndAngle);
+                        line.currentEndY = this.leftCenterY + this.radius * Math.sin(currentEndAngle);
+                    });
+                }
+                
+                // 重绘
+                this.draw();
+                
+                // 绘制排序动画中的线段
+                this.drawSortingLines();
+                
+                // 绘制旋转动画中的线段
+                this.drawRotatingLines();
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // 动画完成，更新原始线段位置为旋转后的位置
+                    if (this.rotatingLines) {
+                        this.rotatingLines.forEach((rotatingLine, index) => {
+                            // 更新原始线段数组中对应线段的位置
+                            if (this.lines[index]) {
+                                this.lines[index].startX = rotatingLine.currentStartX;
+                                this.lines[index].startY = rotatingLine.currentStartY;
+                                this.lines[index].endX = rotatingLine.currentEndX;
+                                this.lines[index].endY = rotatingLine.currentEndY;
+                            }
+                        });
+                    }
+                    
+                    // 清除动画数据
+                    this.sortingLines = [];
+                    this.rotatingLines = [];
+                    this.draw();
+                    this.updateButtons();
+                }
+            };
+            
+            animate();
+        }
+        
+        drawRotatingLines() {
+            if (!this.rotatingLines) return;
+            
+            this.rotatingLines.forEach(line => {
+                // 绘制旋转中的线段
+                this.ctx.beginPath();
+                this.ctx.moveTo(line.currentStartX, line.currentStartY);
+                this.ctx.lineTo(line.currentEndX, line.currentEndY);
+                
+                // 如果是直径，使用特殊样式
+                if (line.isDiameter) {
+                    // 检查是否在闪烁状态
+                    const shouldBlink = this.blinkingLines.has(line) && Math.floor(Date.now() / 500) % 2 === 0;
+                    
+                    if (shouldBlink) {
+                        this.ctx.strokeStyle = 'transparent';
+                    } else {
+                        this.ctx.strokeStyle = this.diameterColor;
+                    }
+                    this.ctx.lineWidth = this.diameterLineWidth;
+                } else {
+                    this.ctx.strokeStyle = line.color;
+                    this.ctx.lineWidth = 4;
+                }
+                
+                this.ctx.stroke();
+                
+                // 绘制端点
+                this.ctx.beginPath();
+                this.ctx.arc(line.currentStartX, line.currentStartY, 4, 0, 2 * Math.PI);
+                this.ctx.fillStyle = line.color;
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+                
+                this.ctx.beginPath();
+                this.ctx.arc(line.currentEndX, line.currentEndY, 4, 0, 2 * Math.PI);
+                this.ctx.fillStyle = line.color;
+                this.ctx.fill();
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+            });
+        }
+        
+        animateSorting() {
+            const duration = 800; // 0.8秒动画
+            const startTime = Date.now();
+            
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // 使用缓动函数
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                
+                // 更新每条线的当前Y位置
+                this.sortingLines.forEach(line => {
+                    line.currentY = line.currentY + (line.targetY - line.currentY) * easeProgress * 0.1;
+                });
+                
+                // 重绘
+                this.draw();
+                
+                // 绘制排序动画中的线段
+                this.drawSortingLines();
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // 动画完成，清除排序动画数据
+                    this.sortingLines = [];
+                    this.draw();
+                    this.updateButtons();
+                }
+            };
+            
+            animate();
+        }
+        
+        drawSortingLines() {
+            if (!this.sortingLines) return;
+            
+            this.sortingLines.forEach(line => {
+                // 绘制线段
+                this.ctx.beginPath();
+                this.ctx.moveTo(line.startX, line.currentY);
+                this.ctx.lineTo(line.endX, line.currentY);
+                this.ctx.strokeStyle = line.color;
+                this.ctx.lineWidth = 4;
+                this.ctx.stroke();
+                
+                // 绘制起点短刻度线
+                this.ctx.beginPath();
+                this.ctx.moveTo(line.startX, line.currentY - 8);
+                this.ctx.lineTo(line.startX, line.currentY + 2);
+                this.ctx.strokeStyle = line.color;
+                this.ctx.lineWidth = 3;
+                this.ctx.stroke();
+                
+                // 绘制终点短刻度线
+                this.ctx.beginPath();
+                this.ctx.moveTo(line.endX, line.currentY - 8);
+                this.ctx.lineTo(line.endX, line.currentY + 2);
+                this.ctx.strokeStyle = line.color;
+                this.ctx.lineWidth = 3;
+                this.ctx.stroke();
+            });
+        }
+            
+            animateComparison() {
+                const duration = 1000; // 1秒动画
+                const startTime = Date.now();
+                
+                const animate = () => {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    // 使用缓动函数
+                    const easeProgress = 1 - Math.pow(1 - progress, 3);
+                    
+                    this.animatingLines.forEach(animLine => {
+                        animLine.currentStartX = animLine.startX + (animLine.targetStartX - animLine.startX) * easeProgress;
+                        animLine.currentStartY = animLine.startY + (animLine.targetStartY - animLine.startY) * easeProgress;
+                        animLine.currentEndX = animLine.endX + (animLine.targetEndX - animLine.endX) * easeProgress;
+                        animLine.currentEndY = animLine.endY + (animLine.targetEndY - animLine.endY) * easeProgress;
+                    });
+                    
+                    this.draw();
+                    
+                    // 绘制虚线对齐线
+                    if (progress > 0.5) {
+                        this.drawAlignmentLines();
+                    }
+                    
+                    
+                    if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // 动画完成，立即清除动画线段并保持比较记录
+                    this.animatingLines = [];
+                    this.draw();
+                }
+                };
+                
+                animate();
+            }
+            
+            drawAlignmentLines() {
+                this.ctx.strokeStyle = '#ccc';
+                this.ctx.lineWidth = 1;
+                this.ctx.setLineDash([3, 3]);
+                
+                // 计算比较区域的边界
+                const logicalHeight = this.canvas.height / (window.devicePixelRatio || 1);
+                const rightAreaBottom = this.rightAreaY + (logicalHeight - this.rightAreaY - 50);
+                
+                this.animatingLines.forEach(animLine => {
+                    // 确保对齐线不超出比较区域
+                    if (animLine.currentStartY >= this.rightAreaY && animLine.currentStartY <= rightAreaBottom) {
+                        // 垂直对齐线
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(this.rightAreaX, animLine.currentStartY);
+                        this.ctx.lineTo(animLine.currentStartX, animLine.currentStartY);
+                        this.ctx.stroke();
+                    }
+                });
+                
+                this.ctx.setLineDash([]);
+            }
+            
+            drawStaticComparison() {
+            // 绘制已比较的线段记录（按添加顺序）
+            this.comparedLines.forEach((line, index) => {
+                const y = this.rightAreaY + 50 + (index + 1) * 40; // 按顺序排列
+                const startX = this.rightAreaX + 20;
+                const endX = startX + line.length;
+                
+                // 绘制线段
+                this.ctx.beginPath();
+                this.ctx.moveTo(startX, y);
+                this.ctx.lineTo(endX, y);
+                this.ctx.strokeStyle = line.color;
+                this.ctx.lineWidth = 4;
+                this.ctx.stroke();
+                
+                // 绘制起点短刻度线
+                this.ctx.beginPath();
+                this.ctx.moveTo(startX, y - 8);
+                this.ctx.lineTo(startX, y + 2);
+                this.ctx.strokeStyle = line.color;
+                this.ctx.lineWidth = 3;
+                this.ctx.stroke();
+                
+                // 绘制终点短刻度线
+                this.ctx.beginPath();
+                this.ctx.moveTo(endX, y - 8);
+                this.ctx.lineTo(endX, y + 2);
+                this.ctx.strokeStyle = line.color;
+                this.ctx.lineWidth = 3;
+                this.ctx.stroke();
+                
+                // 不显示长度标签（根据用户要求隐藏）
+            });
+            
+            // 绘制比较区域的两条虚线
+            this.drawComparisonGuideLines();
+        }
+                    // 工具函数：判断两点是否足够接近
+            isNearPoint(x1, y1, x2, y2, threshold = 10) {
+                return Math.hypot(x1 - x2, y1 - y2) <= threshold;
+            }
+
+            // 判断线段是否为“半径”（起点在圆心附近）
+            isRadiusLineObject(line) {
+                const centerTol = 12; // 与圆心判定阈值，与开始绘制用一致
+                return Math.hypot(line.startX - this.leftCenterX, line.startY - this.leftCenterY) <= centerTol;
+            }
+
+            // 在当前位置尝试进入半径端点旋转模式
+            tryStartRotationAtPos(pos) {
+                for (let i = this.lines.length - 1; i >= 0; i--) {
+                    const line = this.lines[i];
+                    if (this.isRadiusLineObject(line)) {
+                        if (this.isNearPoint(pos.x, pos.y, line.endX, line.endY, this.rotateThreshold)) {
+                            this.isRotating = true;
+                            this.rotatingLine = line;
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            // 统一鼠标按下入口：优先旋转，其次绘制
+            onMouseDown(e) {
+                const pos = this.getMousePos(e);
+                if (this.tryStartRotationAtPos(pos)) {
+                    return; // 进入旋转模式，不新建线段
+                }
+                this.startDrawing(e); // 进入绘制模式（半径或弦）
+            }
+
+            // 统一鼠标移动入口：根据模式处理
+            onMouseMove(e) {
+                if (this.isRotating && this.rotatingLine) {
+                    const pos = this.getMousePos(e);
+                    const endPoint = this.getCircleIntersection(pos.x, pos.y);
+                    this.rotatingLine.endX = endPoint.x;
+                    this.rotatingLine.endY = endPoint.y;
+                    this.draw();
+                    return;
+                }
+                this.drawMove(e);
+            }
+
+            // 统一鼠标抬起入口：结束当前模式
+            onMouseUp() {
+                if (this.isRotating) {
+                    this.isRotating = false;
+                    this.rotatingLine = null;
+                    this.draw();
+                    this.updateButtons();
+                    return;
+                }
+                this.stopDrawing();
+            }
+        drawComparisonGuideLines() {
+            if (this.comparedLines.length === 0) return;
+            
+            // 设置虚线样式
+            this.ctx.strokeStyle = '#999';
+            this.ctx.lineWidth = 1;
+            this.ctx.setLineDash([5, 5]);
+            
+            const startX = this.rightAreaX + 20;
+            const topY = this.rightAreaY + 30;
+            const bottomY = this.rightAreaY + this.canvas.height - 150;
+            
+            // 第一条虚线：比较区域起点
+            this.ctx.beginPath();
+            this.ctx.moveTo(startX, topY);
+            this.ctx.lineTo(startX, bottomY);
+            this.ctx.stroke();
+            
+            // 找到最长线段的长度
+            const maxLength = Math.max(...this.comparedLines.map(line => line.length));
+            const maxEndX = startX + maxLength;
+            
+            // 第二条虚线：最长线段的终点位置
+            this.ctx.beginPath();
+            this.ctx.moveTo(maxEndX, topY);
+            this.ctx.lineTo(maxEndX, bottomY);
+            this.ctx.stroke();
+            
+            // 重置虚线样式
+            this.ctx.setLineDash([]);
+        }
+            
+            // 启动闪烁动画
+            startBlinkAnimation() {
+                if (this.blinkInterval) {
+                    clearInterval(this.blinkInterval);
+                }
+                
+                this.blinkInterval = setInterval(() => {
+                    // 只有当有直径线段需要闪烁时才重绘
+                    if (this.blinkingLines.size > 0) {
+                        this.draw();
+                    }
+                }, 500); // 每500ms切换一次闪烁状态
+            }
+            
+            // 停止闪烁动画
+            stopBlinkAnimation() {
+                if (this.blinkInterval) {
+                    clearInterval(this.blinkInterval);
+                    this.blinkInterval = null;
+                }
+            }
+            
+            updateButtons() {
+                const undo = document.getElementById('undoBtn');
+                if (undo) undo.disabled = this.lines.length === 0;
+            }
+        }
+        
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            new LineDrawingTool();
+        });
+    </script>
+</body>
+</html>
