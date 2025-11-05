@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>一中同长也</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+    canvas {
+      display: block; /* 去除滚动条间隙 */
+      width: 100vw;
+      height: 100vh;
+      background: #ffffff;
+      touch-action: none;
+      cursor: crosshair;
+    }
+  </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <script>
+      (() => {
+        const canvas = document.getElementById('stage');
+        const ctx = canvas.getContext('2d');
+        const COLORS = { red: '#e53935', blue: '#1e88e5', dot: '#90caf9', line: '#1e88e5', circle: '#1e88e5', orange: '#fb8c00' };
+        const state = {
+          center: { x: 0, y: 0 },
+          prevCenter: null,
+          blue: { x: 0, y: 0 },
+          blueInitialized: false,
+          dotRadius: 7,
+          clickDots: [],
+          showLine: false,
+          fixedLen: null, // 连接线段固定长度
+          dragging: null,
+          dragMoved: false,
+          tempLineEnd: null,
+          // 蓝点拖动时的弧线轨迹状态
+          arcActive: false,
+          dragStartAngle: 0,
+          arcEndAngle: 0,
+          lastAngle: 0,
+          dragCumAbs: 0,
+          // 保留弧线与线段
+          circleVisible: false,
+          arcs: [], // { start, end, anticlockwise, radius }
+          segments: [], // { angle }
+          draggingSegIndex: null
+        };
+        const HIT_R = 14;
+        const INITIAL_OFFSET_X = 300;
+
+        function dpr() { return Math.max(1, window.devicePixelRatio || 1); }
+        function resize() {
+          const ratio = dpr();
+          const width = window.innerWidth, height = window.innerHeight;
+          canvas.width = Math.round(width * ratio);
+          canvas.height = Math.round(height * ratio);
+          canvas.style.width = width + 'px';
+          canvas.style.height = height + 'px';
+          ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+          const newCenter = { x: Math.floor(width / 2), y: Math.floor(height / 2) };
+          if (!state.prevCenter) {
+            state.center = newCenter;
+            state.prevCenter = { ...newCenter };
+            // 初始不设置默认蓝点，等待用户首次点击
+          } else {
+            state.center = newCenter;
+            if (state.blueInitialized) {
+              const offX = state.blue.x - state.prevCenter.x;
+              const offY = state.blue.y - state.prevCenter.y;
+              state.blue = { x: newCenter.x + offX, y: newCenter.y + offY };
+            }
+            state.prevCenter = { ...newCenter };
+          }
+          render();
+        }
+        function getPos(e) { return { x: e.clientX, y: e.clientY }; }
+        function dist(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return Math.hypot(dx, dy); }
+        function isHit(pos, target, radius) { return dist(pos, target) <= radius; }
+        function drawDot(x, y, r, color) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
+        function normalizeAngle(a){ return Math.atan2(Math.sin(a), Math.cos(a)); }
+        function angleDiff(a,b){ return normalizeAngle(a - b); }
+        function isDiameter(a, others, tol){
+          for (const b of others){
+            const d = Math.abs(angleDiff(a, b));
+            if (Math.abs(d - Math.PI) < tol) return true;
+          }
+          return false;
+        }
+        function normalizeAngle(a){ return Math.atan2(Math.sin(a), Math.cos(a)); }
+        function angleDiff(a,b){ return normalizeAngle(a - b); }
+        function isHoverEndpoint(pos){
+          if (isHit(pos, state.center, HIT_R)) return true;
+          if (state.blueInitialized && isHit(pos, state.blue, HIT_R)) return true;
+          if (state.segments.length && state.fixedLen){
+            for (const s of state.segments){
+              const ex = state.center.x + state.fixedLen * Math.cos(s.angle);
+              const ey = state.center.y + state.fixedLen * Math.sin(s.angle);
+              if (isHit(pos, {x:ex,y:ey}, HIT_R)) return true;
+            }
+          }
+          return false;
+        }
+        function maybeSnapAngle(angle, type){
+          if (!state.fixedLen) return angle;
+          const tol = Math.max(0.1, HIT_R / state.fixedLen);
+          let best = angle, bestD = Infinity;
+          const candidates = [];
+          if (type === 'blue'){
+            for (const s of state.segments){ candidates.push(normalizeAngle(s.angle + Math.PI)); }
+          } else if (type === 'seg'){
+            for (let i=0;i<state.segments.length;i++){
+              if (i === state.draggingSegIndex) continue;
+              candidates.push(normalizeAngle(state.segments[i].angle + Math.PI));
+            }
+            if (state.showLine){
+              const blueAng = Math.atan2(state.blue.y - state.center.y, state.blue.x - state.center.x);
+              candidates.push(normalizeAngle(blueAng + Math.PI));
+            }
+          }
+          for (const c of candidates){
+            const d = Math.abs(angleDiff(angle, c));
+            if (d < tol && d < bestD){ bestD = d; best = c; }
+          }
+          return best;
+        }
+        function render() {
+          const w = canvas.clientWidth, h = canvas.clientHeight;
+          ctx.clearRect(0, 0, w, h);
+          for (const d of state.clickDots) drawDot(d.x, d.y, state.dotRadius, COLORS.dot);
+          drawDot(state.center.x, state.center.y, state.dotRadius, COLORS.red);
+          if (state.blueInitialized) {
+            drawDot(state.blue.x, state.blue.y, state.dotRadius, COLORS.blue);
+          }
+          // 显示整个圆
+          if (state.circleVisible && state.fixedLen) {
+            ctx.beginPath();
+            ctx.arc(state.center.x, state.center.y, state.fixedLen, 0, Math.PI * 2);
+            ctx.strokeStyle = COLORS.circle;
+            ctx.lineWidth = 5;
+            ctx.stroke();
+          }
+          if (state.dragging === 'red' && state.tempLineEnd) { ctx.beginPath(); ctx.moveTo(state.center.x, state.center.y); ctx.lineTo(state.tempLineEnd.x, state.tempLineEnd.y); ctx.strokeStyle = COLORS.line; ctx.lineWidth = 4; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]); }
+
+          // 计算直径高亮
+          let mainAngle = null;
+          const tol = state.fixedLen ? Math.max(0.03, HIT_R / state.fixedLen) : 0.1;
+          if (state.showLine) {
+            mainAngle = Math.atan2(state.blue.y - state.center.y, state.blue.x - state.center.x);
+          }
+          // 主线段绘制（若与其它线段构成直径则使用橙色）
+          if (state.showLine) {
+            const others = state.segments.map(s => s.angle);
+            const mainIsOrange = isDiameter(mainAngle, others, tol);
+            ctx.beginPath();
+            ctx.moveTo(state.center.x, state.center.y);
+            ctx.lineTo(state.blue.x, state.blue.y);
+            ctx.strokeStyle = mainIsOrange ? COLORS.orange : COLORS.line;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            // 主线端点在形成直径时改为橙色
+            if (mainIsOrange) {
+              drawDot(state.blue.x, state.blue.y, state.dotRadius, COLORS.orange);
+            }
+          }
+          // 已保留的弧线轨迹
+          if (state.arcs.length && state.fixedLen) {
+            ctx.strokeStyle = COLORS.circle;
+            ctx.lineWidth = 5;
+            for (const a of state.arcs) {
+              ctx.beginPath();
+              ctx.arc(state.center.x, state.center.y, a.radius, a.start, a.end, a.anticlockwise);
+              ctx.stroke();
+            }
+          }
+          // 已提交的线段（圆心到圆线上），并在端点绘制蓝点
+          if (state.segments.length && state.fixedLen) {
+            const angles = state.segments.map(s => s.angle);
+            for (let i = 0; i < state.segments.length; i++) {
+              const ang = state.segments[i].angle;
+              const ex = state.center.x + state.fixedLen * Math.cos(ang);
+              const ey = state.center.y + state.fixedLen * Math.sin(ang);
+              const others = [];
+              // 其它线段角度
+              for (let j = 0; j < angles.length; j++) { if (j !== i) others.push(angles[j]); }
+              // 主线段角度
+              if (mainAngle !== null) others.push(mainAngle);
+              const isOrange = isDiameter(ang, others, tol);
+              ctx.beginPath();
+              ctx.moveTo(state.center.x, state.center.y);
+              ctx.lineTo(ex, ey);
+              ctx.strokeStyle = isOrange ? COLORS.orange : COLORS.line;
+              ctx.lineWidth = 5;
+              ctx.stroke();
+              drawDot(ex, ey, state.dotRadius, isOrange ? COLORS.orange : COLORS.blue);
+            }
+          }
+          // 蓝点拖动时绘制部分弧线轨迹（从起始角到当前角）
+          if (state.dragging === 'blue' && state.arcActive && state.fixedLen) {
+            ctx.beginPath();
+            const anticlockwise = state.arcEndAngle < state.dragStartAngle;
+            ctx.arc(state.center.x, state.center.y, state.fixedLen, state.dragStartAngle, state.arcEndAngle, anticlockwise);
+            ctx.strokeStyle = COLORS.circle;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+          }
+        }
+        canvas.addEventListener('pointerdown', (e) => {
+          const pos = getPos(e);
+          // 首次点击：仅将用户点击位置设为蓝点，并计算与红点距离（不显示线段）
+          if (!state.blueInitialized) {
+            state.blue = { x: pos.x, y: pos.y };
+            state.blueInitialized = true;
+            state.fixedLen = dist(state.center, state.blue);
+            render();
+            return;
+          }
+          if (isHit(pos, state.center, HIT_R)) { state.dragging = 'red'; state.dragMoved = false; state.tempLineEnd = pos; canvas.setPointerCapture(e.pointerId); }
+          else if (state.blueInitialized && isHit(pos, state.blue, HIT_R)) {
+            // 只有已连接红蓝点后才允许拖动蓝点
+            if (state.showLine && state.fixedLen) {
+              state.dragging = 'blue';
+              state.dragMoved = false;
+              // 初始化弧线轨迹
+              const startAngle = Math.atan2(state.blue.y - state.center.y, state.blue.x - state.center.x);
+              state.dragStartAngle = startAngle;
+              state.arcEndAngle = startAngle;
+              state.lastAngle = startAngle;
+              state.dragCumAbs = 0;
+              state.arcActive = true;
+              canvas.setPointerCapture(e.pointerId);
+            } else {
+              // 未连接时点击蓝点只当作普通点击
+              state.clickDots.push({ x: pos.x, y: pos.y });
+            }
+          } else if (state.circleVisible && state.fixedLen && state.segments.length) {
+            // 命中任意已创建线段的蓝色端点以旋转
+            for (let i = 0; i < state.segments.length; i++) {
+              const ang = state.segments[i].angle;
+              const ex = state.center.x + state.fixedLen * Math.cos(ang);
+              const ey = state.center.y + state.fixedLen * Math.sin(ang);
+              if (isHit(pos, { x: ex, y: ey }, HIT_R)) {
+                state.dragging = 'seg';
+                state.draggingSegIndex = i;
+                state.dragMoved = false;
+                state.dragStartAngle = ang;
+                state.arcEndAngle = ang;
+                state.lastAngle = ang;
+                state.dragCumAbs = 0;
+                state.arcActive = true;
+                canvas.setPointerCapture(e.pointerId);
+                break;
+              }
+            }
+          }
+          else { state.clickDots.push({ x: pos.x, y: pos.y }); }
+          render();
+        });
+        canvas.addEventListener('pointermove', (e) => {
+          const pos = getPos(e);
+          canvas.style.cursor = isHoverEndpoint(pos) ? 'pointer' : 'crosshair';
+          if (!state.dragging) return;
+          if (state.dragging === 'red') {
+            if (!state.dragMoved && dist(pos, state.tempLineEnd) > 3) state.dragMoved = true;
+            // 若圆已可见，则将临时线段端点吸附到圆线上
+            if (state.circleVisible && state.fixedLen) {
+              const ang = Math.atan2(pos.y - state.center.y, pos.x - state.center.x);
+              state.tempLineEnd = {
+                x: state.center.x + state.fixedLen * Math.cos(ang),
+                y: state.center.y + state.fixedLen * Math.sin(ang)
+              };
+            } else {
+              state.tempLineEnd = pos;
+            }
+          } else if (state.dragging === 'blue') {
+            state.dragMoved = true;
+            // 保持线段长度不变：将指针位置投影到固定半径的圆上
+            let rawAngle = Math.atan2(pos.y - state.center.y, pos.x - state.center.x);
+            const snapped = maybeSnapAngle(rawAngle, 'blue');
+            const R = state.fixedLen || dist(state.center, state.blue);
+            state.blue.x = state.center.x + R * Math.cos(snapped);
+            state.blue.y = state.center.y + R * Math.sin(snapped);
+            // 更新部分弧线的终点角度（按最短角差累计）
+            const delta = angleDiff(snapped, state.lastAngle);
+            state.arcEndAngle += delta;
+            state.lastAngle = snapped;
+            state.dragCumAbs += Math.abs(delta);
+            if (!state.circleVisible && state.fixedLen && state.dragCumAbs >= Math.PI * 2 - 0.01) {
+              // 完成一整圈才显示完整圆
+              state.circleVisible = true;
+            }
+          } else if (state.dragging === 'seg' && state.draggingSegIndex !== null) {
+            state.dragMoved = true;
+            let rawAngle = Math.atan2(pos.y - state.center.y, pos.x - state.center.x);
+            const snapped = maybeSnapAngle(rawAngle, 'seg');
+            const delta = angleDiff(snapped, state.lastAngle);
+            state.segments[state.draggingSegIndex].angle = snapped;
+            state.arcEndAngle += delta;
+            state.lastAngle = snapped;
+            state.dragCumAbs += Math.abs(delta);
+          }
+          render();
+        });
+        function endDrag(e) {
+          const pos = getPos(e);
+          if (state.dragging === 'red') {
+            if (state.dragMoved && isHit(pos, state.blue, HIT_R)) {
+              state.showLine = true;
+              state.fixedLen = dist(state.center, state.blue);
+              // 首次连接只显示线段，不显示圆
+            } else if (state.dragMoved && state.circleVisible && state.fixedLen) {
+              // 在圆已显示时，允许从圆心拖到圆线上形成新的线段
+              const releaseDist = dist(state.center, pos);
+              if (Math.abs(releaseDist - state.fixedLen) <= HIT_R) {
+                const ang = Math.atan2(pos.y - state.center.y, pos.x - state.center.x);
+                state.segments.push({ angle: ang });
+              }
+            } else if (!state.dragMoved) {
+              state.clickDots.push({ x: pos.x, y: pos.y });
+            }
+            state.tempLineEnd = null;
+          } else if (state.dragging === 'blue') {
+            if (!state.dragMoved) {
+              state.clickDots.push({ x: pos.x, y: pos.y });
+            } else if (state.fixedLen) {
+              // 保留弧线轨迹并显示完整圆
+              const anticlockwise = state.arcEndAngle < state.dragStartAngle;
+              state.arcs.push({ start: state.dragStartAngle, end: state.arcEndAngle, anticlockwise, radius: state.fixedLen });
+              if (!state.circleVisible && state.dragCumAbs >= Math.PI * 2 - 0.01) {
+                state.circleVisible = true;
+              }
+            }
+            state.arcActive = false;
+          } else if (state.dragging === 'seg') {
+            if (!state.dragMoved) {
+              state.clickDots.push({ x: pos.x, y: pos.y });
+            } else {
+              const anticlockwise = state.arcEndAngle < state.dragStartAngle;
+              state.arcs.push({ start: state.dragStartAngle, end: state.arcEndAngle, anticlockwise, radius: state.fixedLen });
+            }
+            state.draggingSegIndex = null;
+            state.arcActive = false;
+          }
+          state.dragging = null; state.dragMoved = false; render();
+        }
+        canvas.addEventListener('pointerup', endDrag);
+        canvas.addEventListener('pointercancel', endDrag);
+        window.addEventListener('resize', resize, { passive: true });
+        resize();
+      })();
+    </script>
+  </body>
+</html>
