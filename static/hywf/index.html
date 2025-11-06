@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>化方为圆</title>
+    <style>
+      html, body { height: 100%; }
+      body { margin: 0; background: #ffffff; }
+      canvas { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: crosshair; }
+
+      /* 右侧控制面板与垂直滑动条 */
+      .panel {
+        position: fixed;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.9);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+        user-select: none;
+        z-index: 10;
+      }
+      .panel label { font: 600 13px/1 system-ui, -apple-system, Segoe UI, Roboto; color: #334155; }
+      .panel .value { font: 12px/1 system-ui, -apple-system; color: #64748b; }
+      /* 垂直滑动条在 Safari/Chromium 的兼容写法 */
+      input[type="range"].vertical {
+        writing-mode: bt-lr; /* Firefox */
+        -webkit-appearance: slider-vertical; /* Safari */
+        width: 28px;
+        height: 320px;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <div class="panel">
+      <label for="autoStep">自动切角</label>
+      <input id="autoStep" class="vertical" type="range" min="0" max="13" step="1" value="0" />
+      <div class="value">步骤: <span id="stepVal">0</span>/13</div>
+    </div>
+    <script>
+      const canvas = document.getElementById('stage');
+      const ctx = canvas.getContext('2d');
+      let dpr = window.devicePixelRatio || 1;
+      let points = [];
+      // 保留一个基准正方形用于标点和自动切割
+      let squareBase = null;
+      let showDivisions = false; // 第一步显示12等分与数字
+      let isDown = false;
+      let start = { x: 0, y: 0 };
+      let curr = { x: 0, y: 0 };
+      const minDrag = 8; // 最小切割长度阈值
+      let previewLines = [];
+
+      function resize() {
+        dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(window.innerWidth * dpr);
+        canvas.height = Math.floor(window.innerHeight * dpr);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+        render();
+      }
+
+      function initSquare() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const size = Math.min(w, h) * 0.68;
+        const cx = w / 2;
+        const cy = h / 2;
+        const r = size / 2;
+        points = [
+          [cx - r, cy - r],
+          [cx + r, cy - r],
+          [cx + r, cy + r],
+          [cx - r, cy + r]
+        ];
+        squareBase = {
+          tl: { x: cx - r, y: cy - r },
+          tr: { x: cx + r, y: cy - r },
+          br: { x: cx + r, y: cy + r },
+          bl: { x: cx - r, y: cy + r },
+          size
+        };
+        render();
+      }
+
+      function clear() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function drawPolygon() {
+        if (points.length < 3) return;
+        ctx.beginPath();
+        ctx.moveTo(points[0][0], points[0][1]);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i][0], points[i][1]);
+        }
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(142,196,255,0.4)';
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      function drawGuide() {
+        if (!isDown) return;
+        ctx.save();
+        ctx.setLineDash([8, 8]);
+        ctx.lineDashOffset = 0;
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(curr.x, curr.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawPreviewConnections() {
+        if (!previewLines || previewLines.length === 0) return;
+        ctx.save();
+        ctx.setLineDash([10, 8]);
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2;
+        for (const ln of previewLines) {
+          ctx.beginPath();
+          ctx.moveTo(ln.a.x, ln.a.y);
+          ctx.lineTo(ln.b.x, ln.b.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function render() {
+        clear();
+        drawPolygon();
+        if (showDivisions) drawDivisionsAndLabels();
+        drawPreviewConnections();
+        drawGuide();
+      }
+
+      function cross(a, b) { return a.x * b.y - a.y * b.x; }
+
+      function centroid(poly) {
+        // 面积加权质心；输入为 [[x,y], ...]
+        let x = 0, y = 0, a = 0;
+        for (let i = 0; i < poly.length; i++) {
+          const [x1, y1] = poly[i];
+          const [x2, y2] = poly[(i + 1) % poly.length];
+          const k = x1 * y2 - x2 * y1;
+          a += k;
+          x += (x1 + x2) * k;
+          y += (y1 + y2) * k;
+        }
+        a = a / 2;
+        if (Math.abs(a) < 1e-6) {
+          // 退化时用顶点平均
+          const n = poly.length;
+          let sx = 0, sy = 0;
+          for (const p of poly) { sx += p[0]; sy += p[1]; }
+          return { x: sx / n, y: sy / n };
+        }
+        return { x: x / (6 * a), y: y / (6 * a) };
+      }
+
+      function intersectSegmentLine(A, B, P0, D) {
+        // 线: cross(D, X - P0) = 0
+        const fa = cross(D, { x: A.x - P0.x, y: A.y - P0.y });
+        const fb = cross(D, { x: B.x - P0.x, y: B.y - P0.y });
+        const denom = fa - fb;
+        if (Math.abs(denom) < 1e-9) return { x: B.x, y: B.y }; // 近似平行，退化到B
+        const t = fa / (fa - fb);
+        return { x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t };
+      }
+
+      function clipWithLine(P0, P1) {
+        const D = { x: P1.x - P0.x, y: P1.y - P0.y };
+        if (Math.hypot(D.x, D.y) < minDrag) return;
+        const c = centroid(points);
+        const keepSign = cross(D, { x: c.x - P0.x, y: c.y - P0.y }) >= 0 ? 1 : -1;
+
+        const S = points.map(([x, y]) => ({ x, y }));
+        const out = [];
+        for (let i = 0; i < S.length; i++) {
+          const A = S[i];
+          const B = S[(i + 1) % S.length];
+          const fa = cross(D, { x: A.x - P0.x, y: A.y - P0.y }) * keepSign;
+          const fb = cross(D, { x: B.x - P0.x, y: B.y - P0.y }) * keepSign;
+          const Ain = fa >= 0;
+          const Bin = fb >= 0;
+          if (Ain && Bin) {
+            out.push({ x: B.x, y: B.y });
+          } else if (Ain && !Bin) {
+            const I = intersectSegmentLine(A, B, P0, D);
+            if (I) out.push(I);
+          } else if (!Ain && Bin) {
+            const I = intersectSegmentLine(A, B, P0, D);
+            if (I) out.push(I);
+            out.push({ x: B.x, y: B.y });
+          } else {
+            // both outside: push nothing
+          }
+        }
+        if (out.length >= 3) {
+          points = out.map(p => [p.x, p.y]);
+          render();
+        }
+      }
+
+      //========== 12等分点与数字标记 ==========
+      function computeDivisionPoints() {
+        if (!squareBase) return null;
+        const { tl, tr, br, bl } = squareBase;
+        // 每边按12等分，取11个内分点（j=1..11）
+        const P = {
+          top: [], right: [], bottom: [], left: []
+        };
+        for (let j = 1; j <= 11; j++) {
+          const t = j / 12;
+          P.top.push({ x: tl.x + (tr.x - tl.x) * t, y: tl.y });
+          P.right.push({ x: tr.x, y: tr.y + (br.y - tr.y) * t });
+          P.bottom.push({ x: bl.x + (br.x - bl.x) * t, y: bl.y });
+          P.left.push({ x: tl.x, y: tl.y + (bl.y - tl.y) * t });
+        }
+        return P;
+      }
+
+      const topNums = [1,2,3,4,5,6,5,4,3,2,1];
+      const rightNums = [6,5,4,3,2,1,2,3,4,5,6];
+      const bottomNums = [1,2,3,4,5,6,5,4,3,2,1];
+      const leftNums = [6,5,4,3,2,1,2,3,4,5,6];
+
+      function drawDivisionsAndLabels() {
+        const P = computeDivisionPoints();
+        if (!P) return;
+        ctx.save();
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1.25;
+        ctx.font = '14px system-ui, -apple-system, Segoe UI, Roboto';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // 小刻度点
+        function dot(p){ ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); }
+
+        // 顶部
+        for (let i = 0; i < 11; i++) {
+          const p = P.top[i]; dot(p);
+          ctx.fillText(String(topNums[i]), p.x, p.y - 18);
+        }
+        // 右侧
+        ctx.textAlign = 'left';
+        for (let i = 0; i < 11; i++) {
+          const p = P.right[i]; dot(p);
+          ctx.fillText(String(rightNums[i]), p.x + 14, p.y);
+        }
+        // 底部
+        ctx.textAlign = 'center';
+        for (let i = 0; i < 11; i++) {
+          const p = P.bottom[i]; dot(p);
+          ctx.fillText(String(bottomNums[i]), p.x, p.y + 18);
+        }
+        // 左侧
+        ctx.textAlign = 'right';
+        for (let i = 0; i < 11; i++) {
+          const p = P.left[i]; dot(p);
+          ctx.fillText(String(leftNums[i]), p.x - 14, p.y);
+        }
+        ctx.restore();
+      }
+
+      //========== 连接规则与分步推进 ==========
+      function indicesOf(arr, v) {
+        const res = []; for (let i=0;i<arr.length;i++){ if (arr[i]===v) res.push(i);} return res;
+      }
+
+      function getConnectionLinesForLabel(P, i) {
+        const lines = [];
+        let leftIdxs = indicesOf(leftNums, i).sort((a,b)=>a-b);
+        let rightIdxs = indicesOf(rightNums, i).sort((a,b)=>a-b);
+        const topLeftIdx = topNums.indexOf(i);
+        const topRightIdx = topNums.lastIndexOf(i);
+        const bottomLeftIdx = bottomNums.indexOf(i);
+        const bottomRightIdx = bottomNums.lastIndexOf(i);
+        // 左边：上面的 i -> 上边靠左的 i；下面的 i -> 下边靠左的 i
+        if (leftIdxs.length === 0) {
+          // 无该数字
+        } else if (leftIdxs.length === 1) {
+          // 只有一个（如数字1在左边为中间），需连接到上、下各一条
+          lines.push({ a: P.left[leftIdxs[0]], b: P.top[topLeftIdx] });
+          lines.push({ a: P.left[leftIdxs[0]], b: P.bottom[bottomLeftIdx] });
+        } else {
+          lines.push({ a: P.left[leftIdxs[0]], b: P.top[topLeftIdx] });
+          lines.push({ a: P.left[leftIdxs[leftIdxs.length-1]], b: P.bottom[bottomLeftIdx] });
+        }
+        // 右边：上面的 i -> 上边靠右的 i；下面的 i -> 下边靠右的 i
+        if (rightIdxs.length === 0) {
+        } else if (rightIdxs.length === 1) {
+          lines.push({ a: P.right[rightIdxs[0]], b: P.top[topRightIdx] });
+          lines.push({ a: P.right[rightIdxs[0]], b: P.bottom[bottomRightIdx] });
+        } else {
+          lines.push({ a: P.right[rightIdxs[0]], b: P.top[topRightIdx] });
+          lines.push({ a: P.right[rightIdxs[rightIdxs.length-1]], b: P.bottom[bottomRightIdx] });
+        }
+        return lines;
+      }
+
+      function cutAlongLines(lines) {
+        for (const ln of lines) {
+          clipWithLine(ln.a, ln.b);
+        }
+      }
+
+      function applyAutoStep(step) {
+        previewLines = [];
+        // 0:无，1:显示标点；2:连1；3:切1；4:连2；5:切2；...；12:连6；13:切6
+        initSquare();
+        const P = computeDivisionPoints();
+        showDivisions = step >= 1;
+        if (!P) { render(); return; }
+        for (let i = 1; i <= 6; i++) {
+          const connectStep = 2 * i;        // 2,4,6,8,10,12
+          const cutStep = connectStep + 1;  // 3,5,7,9,11,13
+          const lines = getConnectionLinesForLabel(P, i);
+          if (step >= cutStep) {
+            cutAlongLines(lines);
+          } else if (step === connectStep) {
+            previewLines = lines;
+          }
+        }
+        render();
+      }
+
+      // 事件绑定
+      canvas.addEventListener('pointerdown', (e) => {
+        isDown = true;
+        start = { x: e.clientX, y: e.clientY };
+        curr = { x: e.clientX, y: e.clientY };
+        try { canvas.setPointerCapture(e.pointerId); } catch {}
+        render();
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (!isDown) return;
+        curr = { x: e.clientX, y: e.clientY };
+        render();
+      });
+
+      function endPointer(e) {
+        if (!isDown) return;
+        isDown = false;
+        clipWithLine(start, curr); // 松开后裁剪，保留包含中心的半平面
+        try { canvas.releasePointerCapture(e.pointerId); } catch {}
+        render();
+      }
+      canvas.addEventListener('pointerup', endPointer);
+      canvas.addEventListener('pointercancel', endPointer);
+
+      window.addEventListener('resize', () => { resize(); initSquare(); });
+      window.addEventListener('dblclick', () => initSquare());
+      window.addEventListener('keydown', (e) => { if (e.key === 'r' || e.key === 'R') initSquare(); });
+
+      // 滑动条交互
+      const stepInput = document.getElementById('autoStep');
+      const stepVal = document.getElementById('stepVal');
+      stepInput.addEventListener('input', () => {
+        const n = parseInt(stepInput.value, 10) || 0;
+        stepVal.textContent = String(n);
+        applyAutoStep(n);
+      });
+
+      // 初始化
+      resize();
+      initSquare();
+    </script>
+  </body>
+  </html>
