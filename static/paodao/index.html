@@ -14,10 +14,66 @@
       background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
       touch-action: none; /* 禁用默认触摸滚动/缩放，便于拖动 */
     }
+    /* 右上角设置按钮与面板 */
+    .settings-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 10;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      background: #1677ff;
+      color: #fff;
+      font: 600 14px system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      cursor: pointer;
+    }
+    .settings-panel {
+      position: fixed;
+      top: 56px;
+      right: 16px;
+      z-index: 10;
+      width: 240px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: saturate(180%) blur(12px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      color: #333;
+      font: 14px system-ui, -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+    }
+    .settings-panel .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 8px 0;
+    }
+    .settings-panel label { font-weight: 600; }
+    .settings-panel input[type="number"] {
+      width: 96px;
+      padding: 6px 8px;
+      border: 1px solid #d9d9d9;
+      border-radius: 8px;
+      outline: none;
+    }
+    /* 去除内部保存/关闭按钮，改为外部按钮切换 */
   </style>
   </head>
 <body>
   <canvas id="c"></canvas>
+  <button id="settingsBtn" class="settings-btn">设置</button>
+  <div id="settingsPanel" class="settings-panel" hidden>
+    <div class="row">
+      <label for="innerDivInput">内圈份数</label>
+      <input id="innerDivInput" type="number" min="2" max="60" step="1" />
+    </div>
+    <div class="row">
+      <label for="outerDivInput">外圈份数</label>
+      <input id="outerDivInput" type="number" min="2" max="60" step="1" />
+    </div>
+  </div>
   <script>
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
@@ -47,6 +103,25 @@
       rInnerTotalSteps: 0,
       rOuterTotalSteps: 0,
     };
+
+    // 分份数配置（持久化）
+    const CONFIG_KEY = 'ringDivisions';
+    function loadConfig() {
+      try {
+        const raw = localStorage.getItem(CONFIG_KEY);
+        if (raw) {
+          const obj = JSON.parse(raw);
+          const inner = Math.max(2, Math.min(60, parseInt(obj.innerDiv, 10) || 8));
+          const outer = Math.max(2, Math.min(60, parseInt(obj.outerDiv, 10) || 10));
+          return { innerDiv: inner, outerDiv: outer };
+        }
+      } catch (_) {}
+      return { innerDiv: 8, outerDiv: 10 };
+    }
+    function saveConfig(cfg) {
+      try { localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg)); } catch (_) {}
+    }
+    let config = loadConfig();
 
     function resizeAndDraw() {
       const dpr = window.devicePixelRatio || 1;
@@ -86,7 +161,7 @@
       ctx.stroke();
     }
 
-    function drawSide(cx, cy, outerDiv = 10, innerDiv = 8, opts = {}) {
+    function drawSide(cx, cy, outerDiv, innerDiv, opts = {}) {
       const {
         innerAngle = START_ANGLE,
         outerAngle = START_ANGLE,
@@ -207,10 +282,10 @@
       const leftCx = w * 0.25;
       const rightCx = w * 0.75;
       const cy = h * 0.5;
-      const innerStep = 2 * Math.PI / 8;
-      const outerStep = 2 * Math.PI / 10;
+      const innerStep = 2 * Math.PI / config.innerDiv;
+      const outerStep = 2 * Math.PI / config.outerDiv;
       // 左侧：支持拖拽与局部弧线高亮
-      drawSide(leftCx, cy, 10, 8, {
+      drawSide(leftCx, cy, config.outerDiv, config.innerDiv, {
         innerAngle: state.innerAngle,
         outerAngle: state.outerAngle,
         highlightInner: true,
@@ -220,7 +295,7 @@
         outerHighlightAngle: START_ANGLE + outerStep * state.outerTotalSteps,
       });
       // 右侧：同向联动拖拽与局部弧线高亮
-      drawSide(rightCx, cy, 10, 8, {
+      drawSide(rightCx, cy, config.outerDiv, config.innerDiv, {
         innerAngle: state.rInnerAngle,
         outerAngle: state.rOuterAngle,
         highlightInner: true,
@@ -233,7 +308,7 @@
       // 计算用于标签的几何（两侧相同半径）
       const { outerR } = getLeftGeometry();
       // 左侧显示内圆累计的大格数（0-8）
-      const leftCount = Math.min(8, Math.abs(state.innerTotalSteps));
+      const leftCount = Math.min(config.innerDiv, Math.abs(state.innerTotalSteps));
       // 右侧为独立数字（0-50），不与左侧同步
       const rightCount = Math.max(0, Math.min(50, state.rightCount));
 
@@ -247,6 +322,8 @@
 
     // 统一的指针事件处理函数（鼠标/触控笔/触摸统一使用）
     function onPointerDown(e) {
+      const iDiv = config.innerDiv;
+      const oDiv = config.outerDiv;
       const { leftCx, cy, outerR, innerR } = getLeftGeometry();
       const { rightCx, outerR: rOuterR, innerR: rInnerR } = getRightGeometry();
       const dotOffset = 16;
@@ -279,23 +356,23 @@
       if (dxIn * dxIn + dyIn * dyIn <= hitRadius * hitRadius) {
         state.draggingInnerId = e.pointerId;
         tryCapture(e.pointerId);
-        state.innerTickIndex = mod(angleToTick(state.innerAngle, 8), 8);
-        state.outerTickIndex = mod(angleToTick(state.outerAngle, 10), 10);
+        state.innerTickIndex = mod(angleToTick(state.innerAngle, iDiv), iDiv);
+        state.outerTickIndex = mod(angleToTick(state.outerAngle, oDiv), oDiv);
       } else if (dxOut * dxOut + dyOut * dyOut <= hitRadius * hitRadius) {
         state.draggingOuterId = e.pointerId;
         tryCapture(e.pointerId);
-        state.innerTickIndex = mod(angleToTick(state.innerAngle, 8), 8);
-        state.outerTickIndex = mod(angleToTick(state.outerAngle, 10), 10);
+        state.innerTickIndex = mod(angleToTick(state.innerAngle, iDiv), iDiv);
+        state.outerTickIndex = mod(angleToTick(state.outerAngle, oDiv), oDiv);
       } else if (dxRIn * dxRIn + dyRIn * dyRIn <= hitRadius * hitRadius) {
         state.rDraggingInnerId = e.pointerId;
         tryCapture(e.pointerId);
-        state.rInnerTickIndex = mod(angleToTick(state.rInnerAngle, 8), 8);
-        state.rOuterTickIndex = mod(angleToTick(state.rOuterAngle, 10), 10);
+        state.rInnerTickIndex = mod(angleToTick(state.rInnerAngle, iDiv), iDiv);
+        state.rOuterTickIndex = mod(angleToTick(state.rOuterAngle, oDiv), oDiv);
       } else if (dxROut * dxROut + dyROut * dyROut <= hitRadius * hitRadius) {
         state.rDraggingOuterId = e.pointerId;
         tryCapture(e.pointerId);
-        state.rInnerTickIndex = mod(angleToTick(state.rInnerAngle, 8), 8);
-        state.rOuterTickIndex = mod(angleToTick(state.rOuterAngle, 10), 10);
+        state.rInnerTickIndex = mod(angleToTick(state.rInnerAngle, iDiv), iDiv);
+        state.rOuterTickIndex = mod(angleToTick(state.rOuterAngle, oDiv), oDiv);
       } else {
         // 如果点击在右侧圆区域，则独立调整右侧数字（循环 0→50）
         const dxR = e.clientX - rightCx;
@@ -312,34 +389,42 @@
     }
 
     function onPointerMove(e) {
+      const iDiv = config.innerDiv;
+      const oDiv = config.outerDiv;
       const { leftCx, cy } = getLeftGeometry();
       const { rightCx } = getRightGeometry();
       if (state.draggingInnerId === e.pointerId) {
         let angle = Math.atan2(e.clientY - cy, e.clientX - leftCx);
-        angle = nearestSnapAngle(angle, 8);
-        const newK = mod(angleToTick(angle, 8), 8);
+        angle = nearestSnapAngle(angle, iDiv);
+        const newK = mod(angleToTick(angle, iDiv), iDiv);
         let deltaK = newK - state.innerTickIndex;
-        if (deltaK > 4) deltaK -= 8;
-        if (deltaK < -4) deltaK += 8;
+        {
+          const half = Math.floor(iDiv / 2);
+          if (deltaK > half) deltaK -= iDiv;
+          if (deltaK < -half) deltaK += iDiv;
+        }
         state.innerTickIndex = newK;
-        state.innerAngle = tickToAngle(newK, 8);
-        state.outerTickIndex = mod(state.outerTickIndex - deltaK, 10);
-        state.outerAngle = tickToAngle(state.outerTickIndex, 10);
+        state.innerAngle = tickToAngle(newK, iDiv);
+        state.outerTickIndex = mod(state.outerTickIndex - deltaK, oDiv);
+        state.outerAngle = tickToAngle(state.outerTickIndex, oDiv);
         state.innerTotalSteps += deltaK;
         state.outerTotalSteps -= deltaK;
         draw();
       }
       if (state.draggingOuterId === e.pointerId) {
         let angle = Math.atan2(e.clientY - cy, e.clientX - leftCx);
-        angle = nearestSnapAngle(angle, 10);
-        const newK = mod(angleToTick(angle, 10), 10);
+        angle = nearestSnapAngle(angle, oDiv);
+        const newK = mod(angleToTick(angle, oDiv), oDiv);
         let deltaK = newK - state.outerTickIndex;
-        if (deltaK > 5) deltaK -= 10;
-        if (deltaK < -5) deltaK += 10;
+        {
+          const half = Math.floor(oDiv / 2);
+          if (deltaK > half) deltaK -= oDiv;
+          if (deltaK < -half) deltaK += oDiv;
+        }
         state.outerTickIndex = newK;
-        state.outerAngle = tickToAngle(newK, 10);
-        state.innerTickIndex = mod(state.innerTickIndex - deltaK, 8);
-        state.innerAngle = tickToAngle(state.innerTickIndex, 8);
+        state.outerAngle = tickToAngle(newK, oDiv);
+        state.innerTickIndex = mod(state.innerTickIndex - deltaK, iDiv);
+        state.innerAngle = tickToAngle(state.innerTickIndex, iDiv);
         state.outerTotalSteps += deltaK;
         state.innerTotalSteps -= deltaK;
         draw();
@@ -348,15 +433,18 @@
       // 右侧拖拽：同方向同步一大格（红点或蓝点）
       if (state.rDraggingInnerId === e.pointerId) {
         let angle = Math.atan2(e.clientY - cy, e.clientX - rightCx);
-        angle = nearestSnapAngle(angle, 8);
-        const newK = mod(angleToTick(angle, 8), 8);
+        angle = nearestSnapAngle(angle, iDiv);
+        const newK = mod(angleToTick(angle, iDiv), iDiv);
         let deltaK = newK - state.rInnerTickIndex;
-        if (deltaK > 4) deltaK -= 8;
-        if (deltaK < -4) deltaK += 8;
+        {
+          const half = Math.floor(iDiv / 2);
+          if (deltaK > half) deltaK -= iDiv;
+          if (deltaK < -half) deltaK += iDiv;
+        }
         state.rInnerTickIndex = newK;
-        state.rInnerAngle = tickToAngle(newK, 8);
-        state.rOuterTickIndex = mod(state.rOuterTickIndex + deltaK, 10);
-        state.rOuterAngle = tickToAngle(state.rOuterTickIndex, 10);
+        state.rInnerAngle = tickToAngle(newK, iDiv);
+        state.rOuterTickIndex = mod(state.rOuterTickIndex + deltaK, oDiv);
+        state.rOuterAngle = tickToAngle(state.rOuterTickIndex, oDiv);
         state.rInnerTotalSteps += deltaK;
         state.rOuterTotalSteps += deltaK;
         state.rightCount = Math.min(50, state.rightCount + Math.abs(deltaK));
@@ -364,15 +452,18 @@
       }
       if (state.rDraggingOuterId === e.pointerId) {
         let angle = Math.atan2(e.clientY - cy, e.clientX - rightCx);
-        angle = nearestSnapAngle(angle, 10);
-        const newK = mod(angleToTick(angle, 10), 10);
+        angle = nearestSnapAngle(angle, oDiv);
+        const newK = mod(angleToTick(angle, oDiv), oDiv);
         let deltaK = newK - state.rOuterTickIndex;
-        if (deltaK > 5) deltaK -= 10;
-        if (deltaK < -5) deltaK += 10;
+        {
+          const half = Math.floor(oDiv / 2);
+          if (deltaK > half) deltaK -= oDiv;
+          if (deltaK < -half) deltaK += oDiv;
+        }
         state.rOuterTickIndex = newK;
-        state.rOuterAngle = tickToAngle(newK, 10);
-        state.rInnerTickIndex = mod(state.rInnerTickIndex + deltaK, 8);
-        state.rInnerAngle = tickToAngle(state.rInnerTickIndex, 8);
+        state.rOuterAngle = tickToAngle(newK, oDiv);
+        state.rInnerTickIndex = mod(state.rInnerTickIndex + deltaK, iDiv);
+        state.rInnerAngle = tickToAngle(state.rInnerTickIndex, iDiv);
         state.rOuterTotalSteps += deltaK;
         state.rInnerTotalSteps += deltaK;
         state.rightCount = Math.min(50, state.rightCount + Math.abs(deltaK));
@@ -461,6 +552,52 @@
       ctx.fillText(String(text), cx, cy);
       ctx.restore();
     }
+
+    // 设置面板交互
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const innerInput = document.getElementById('innerDivInput');
+    const outerInput = document.getElementById('outerDivInput');
+    function setButtonLabel() {
+      settingsBtn.textContent = settingsPanel.hidden ? '设置' : '关闭';
+    }
+    function openPanel() {
+      innerInput.value = config.innerDiv;
+      outerInput.value = config.outerDiv;
+      settingsPanel.hidden = false;
+      setButtonLabel();
+    }
+    function closePanel() {
+      settingsPanel.hidden = true;
+      setButtonLabel();
+    }
+    function togglePanel() {
+      if (settingsPanel.hidden) openPanel(); else closePanel();
+    }
+    settingsBtn.addEventListener('click', togglePanel);
+
+    function commitDivisions(nextInner, nextOuter) {
+      const inner = Math.max(2, Math.min(60, Math.round(Number(nextInner) || 8)));
+      const outer = Math.max(2, Math.min(60, Math.round(Number(nextOuter) || 10)));
+      config.innerDiv = inner;
+      config.outerDiv = outer;
+      saveConfig(config);
+      // 依据新分份数重新计算当前角度对应的索引
+      state.innerTickIndex = mod(angleToTick(state.innerAngle, inner), inner);
+      state.outerTickIndex = mod(angleToTick(state.outerAngle, outer), outer);
+      state.rInnerTickIndex = mod(angleToTick(state.rInnerAngle, inner), inner);
+      state.rOuterTickIndex = mod(angleToTick(state.rOuterAngle, outer), outer);
+      draw();
+    }
+    // 输入实时更新与保存
+    innerInput.addEventListener('input', () => {
+      commitDivisions(innerInput.value, outerInput.value);
+    });
+    outerInput.addEventListener('input', () => {
+      commitDivisions(innerInput.value, outerInput.value);
+    });
+    // 初始化时确保按钮文字正确
+    setButtonLabel();
   </script>
 </body>
 </html>
