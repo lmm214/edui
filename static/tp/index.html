@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>虚拟天平</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#ffffff}
+canvas{display:block;touch-action:none;-webkit-user-select:none;user-select:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+let W = window.innerWidth,
+H = window.innerHeight,
+dpr = window.devicePixelRatio || 1;
+const BASE_W = 1200,
+BASE_H = 460;
+const stage = {
+    sx: 0,
+    sy: 0,
+    scale: 1
+};
+function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    dpr = window.devicePixelRatio || 1;
+    c.width = W * dpr;
+    c.height = H * dpr;
+    c.style.width = W + 'px';
+    c.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const s = Math.min(W / BASE_W, H / BASE_H);
+    stage.scale = s;
+    stage.sx = (W - s * BASE_W) / 2;
+    stage.sy = (H - s * BASE_H) / 2
+}
+resize();
+window.addEventListener('resize', resize);
+function load(src) {
+    return new Promise(r =>{
+        const i = new Image();
+        i.src = src;
+        i.onload = () =>r(i)
+    })
+}
+let zhuti,
+gan,
+pan,
+w10,
+w20,
+w50,
+w100;
+const CFG = {
+    pivotX: 592,
+    pivotY: 210,
+    barHalf: 320,
+    ganWidth: 900,
+    panOffsetX: 0,
+    panOffsetY: -48,
+    panWidth: 240,
+    angleMax: 0.35,
+    sensitivity: 0.004,
+    dropSquareRatio: 0.72,
+    dropGapRatio: 0.10
+};
+let angle = 0,
+targetAngle = 0;
+let leftMass = 0,
+rightMass = 0;
+const weights = [];
+let dragging = null;
+let palette = [];
+const UI = {
+    showPivot: false,
+    showInfo: false
+};
+let leftPanCenter = {
+    x: 0,
+    y: 0
+},
+rightPanCenter = {
+    x: 0,
+    y: 0
+};
+let paletteRect = {
+    x: 0,
+    y: 0,
+    w: 0,
+    h: 0
+};
+let ganH = 0,
+panW = 0,
+panH = 0;
+Promise.all([load('tp-zhuti.png'), load('tp-gan.png'), load('tp-pan.png'), load('fm-10g.png'), load('fm-20g.png'), load('fm-50g.png'), load('fm-100g.png')]).then(a =>{
+    zhuti = a[0];
+    gan = a[1];
+    pan = a[2];
+    w10 = a[3];
+    w20 = a[4];
+    w50 = a[5];
+    w100 = a[6];
+    palette = [{
+        img: w10,
+        mass: 10
+    },
+    {
+        img: w20,
+        mass: 20
+    },
+    {
+        img: w50,
+        mass: 50
+    },
+    {
+        img: w100,
+        mass: 100
+    }];
+    loop()
+});
+function layout() {
+    ganH = gan.height * (CFG.ganWidth / gan.width);
+    panW = CFG.panWidth;
+    panH = pan.height * (panW / pan.width);
+    const ex = Math.cos(angle),
+    ey = Math.sin(angle);
+    const lx = CFG.pivotX - CFG.barHalf * ex;
+    const ly = CFG.pivotY - CFG.barHalf * ey;
+    const rx = CFG.pivotX + CFG.barHalf * ex;
+    const ry = CFG.pivotY + CFG.barHalf * ey;
+    leftPanCenter.x = lx + CFG.panOffsetX;
+    leftPanCenter.y = ly + CFG.panOffsetY;
+    rightPanCenter.x = rx + CFG.panOffsetX;
+    rightPanCenter.y = ry + CFG.panOffsetY;
+    const size = Math.min(110, BASE_W * 0.08);
+    const pad = 12;
+    const cols = 2,
+    rows = 2;
+    const totW = cols * size + (cols - 1) * pad;
+    const totH = rows * size + (rows - 1) * pad;
+    paletteRect.x = BASE_W - pad - totW;
+    paletteRect.y = BASE_H - pad - totH;
+    paletteRect.w = totW;
+    paletteRect.h = totH;
+    for (let i = 0; i < palette.length; i++) {
+        const r = Math.floor(i / 2),
+        c2 = i % 2;
+        palette[i].x = paletteRect.x + c2 * (size + pad);
+        palette[i].y = paletteRect.y + r * (size + pad);
+        palette[i].w = size;
+        palette[i].h = size
+    }
+}
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+    layout();
+    ctx.save();
+    ctx.translate(stage.sx, stage.sy);
+    ctx.scale(stage.scale, stage.scale);
+    ctx.drawImage(zhuti, 0, 0, BASE_W, BASE_H);
+    ctx.save();
+    ctx.translate(CFG.pivotX, CFG.pivotY);
+    ctx.rotate(angle);
+    ctx.drawImage(gan, -CFG.ganWidth / 2, -ganH, CFG.ganWidth, ganH);
+    ctx.restore();
+    ctx.drawImage(pan, leftPanCenter.x - panW / 2, leftPanCenter.y - panH / 2, panW, panH);
+    ctx.drawImage(pan, rightPanCenter.x - panW / 2, rightPanCenter.y - panH / 2, panW, panH);
+    if (UI.showPivot) {
+        ctx.save();
+        ctx.strokeStyle = '#ff3333';
+        ctx.lineWidth = 2 / stage.scale;
+        ctx.beginPath();
+        ctx.arc(CFG.pivotX, CFG.pivotY, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(CFG.pivotX - 12, CFG.pivotY);
+        ctx.lineTo(CFG.pivotX + 12, CFG.pivotY);
+        ctx.moveTo(CFG.pivotX, CFG.pivotY - 12);
+        ctx.lineTo(CFG.pivotX, CFG.pivotY + 12);
+        ctx.stroke();
+        ctx.restore();
+    }
+    for (const w of weights) {
+        const s = panW * 0.32;
+        const x = (w.pan === 'left' ? leftPanCenter.x: rightPanCenter.x) + w.ox;
+        const y = (w.pan === 'left' ? leftPanCenter.y: rightPanCenter.y) + w.oy;
+        ctx.drawImage(w.img, x - s / 2, y - s, s, s)
+    }
+    for (const p of palette) {
+        ctx.drawImage(p.img, p.x, p.y, p.w, p.h)
+    }
+    if (dragging) {
+        const s = Math.min(100, BASE_W * 0.08);
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(dragging.img, dragging.x - s / 2, dragging.y - s / 2, s, s);
+        ctx.globalAlpha = 1
+    }
+    if (UI.showInfo) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(8, 8, 320, 60);
+        ctx.fillStyle = '#fff';
+        ctx.font = '16px sans-serif';
+        ctx.fillText('pivotX: ' + CFG.pivotX, 16, 30);
+        ctx.fillText('pivotY: ' + CFG.pivotY, 160, 30);
+        ctx.fillText('barHalf: ' + CFG.barHalf, 16, 54);
+        ctx.fillText('panOffsetY: ' + CFG.panOffsetY, 160, 54);
+        ctx.restore();
+    }
+    ctx.restore()
+}
+function updateMass() {
+    leftMass = 0;
+    rightMass = 0;
+    for (const w of weights) {
+        if (w.pan === 'left') leftMass += w.mass;
+        else if (w.pan === 'right') rightMass += w.mass
+    }
+    targetAngle = Math.max( - CFG.angleMax, Math.min(CFG.angleMax, CFG.sensitivity * (rightMass - leftMass)))
+}
+function loop() {
+    updateMass();
+    angle += (targetAngle - angle) * 0.08;
+    draw();
+    requestAnimationFrame(loop)
+}
+function stagePos(e) {
+    const rect = c.getBoundingClientRect();
+    const x = (e.clientX - rect.left - stage.sx) / stage.scale;
+    const y = (e.clientY - rect.top - stage.sy) / stage.scale;
+    return {
+        x,
+        y
+    }
+}
+function inRect(x, y, r) {
+    return x >= r.x && y >= r.y && x <= r.x + r.w && y <= r.y + r.h
+}
+function panTopHit(x, y) {
+    const topL = leftPanCenter.y - panH / 2;
+    const topR = rightPanCenter.y - panH / 2;
+    const rLTop = {
+        x: leftPanCenter.x - panW / 2,
+        y: topL - 30,
+        w: panW,
+        h: 40
+    };
+    const rRTop = {
+        x: rightPanCenter.x - panW / 2,
+        y: topR - 30,
+        w: panW,
+        h: 40
+    };
+    const cap = panW * CFG.dropSquareRatio;
+    const gap = panH * CFG.dropGapRatio;
+    const rLSq = {x: leftPanCenter.x - cap / 2, y: topL - cap - gap, w: cap, h: cap};
+    const rRSq = {x: rightPanCenter.x - cap / 2, y: topR - cap - gap, w: cap, h: cap};
+    const rL = {
+        x: leftPanCenter.x - panW / 2,
+        y: leftPanCenter.y - panH / 2,
+        w: panW,
+        h: panH
+    };
+    const rR = {
+        x: rightPanCenter.x - panW / 2,
+        y: rightPanCenter.y - panH / 2,
+        w: panW,
+        h: panH
+    };
+    if (inRect(x, y, rLTop) || inRect(x, y, rLSq) || inRect(x, y, rL)) return 'left';
+    if (inRect(x, y, rRTop) || inRect(x, y, rRSq) || inRect(x, y, rR)) return 'right';
+    return null
+}
+c.addEventListener('pointerdown', e =>{
+    c.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    const p = stagePos(e);
+    for (let i = 0; i < palette.length; i++) {
+        const r = {
+            x: palette[i].x,
+            y: palette[i].y,
+            w: palette[i].w,
+            h: palette[i].h
+        };
+        if (inRect(p.x, p.y, r)) {
+            dragging = {
+                img: palette[i].img,
+                mass: palette[i].mass,
+                x: p.x,
+                y: p.y,
+                from: 'palette'
+            };
+            break
+        }
+    }
+    if (!dragging) {
+        const s = panW * 0.32;
+        for (let i = weights.length - 1; i >= 0; i--) {
+            const w = weights[i];
+            const cx = (w.pan === 'left' ? leftPanCenter.x: rightPanCenter.x) + w.ox;
+            const cy = (w.pan === 'left' ? leftPanCenter.y: rightPanCenter.y) + w.oy;
+            const r2 = {x: cx - s / 2, y: cy - s, w: s, h: s};
+            if (inRect(p.x, p.y, r2)) {
+                dragging = {img: w.img, mass: w.mass, x: p.x, y: p.y, from: 'pan'};
+                weights.splice(i, 1);
+                break
+            }
+        }
+    }
+});
+c.addEventListener('pointermove', e =>{
+    if (dragging) {
+        e.preventDefault();
+        const p2 = stagePos(e);
+        dragging.x = p2.x;
+        dragging.y = p2.y
+    }
+});
+c.addEventListener('pointerup', e =>{
+    if (dragging) {
+        const p2 = stagePos(e);
+        const hit = panTopHit(p2.x, p2.y);
+        if (hit) {
+            const count = weights.filter(w =>w.pan === hit).length;
+            const cols = 3;
+            const col = count % cols;
+            const row = Math.floor(count / cols);
+            const sx = panW * 0.28;
+            const s = panW * 0.32;
+            const gap = s * 0.1;
+            const ox = (col - 1) * sx;
+            const base0 = -panH * 0.12;
+            const base1 = base0 - (s + gap);
+            const oy = row === 0 ? base0: base1;
+            weights.push({img: dragging.img, mass: dragging.mass, pan: hit, ox: ox, oy: oy})
+        }
+        dragging = null
+    }
+    c.releasePointerCapture(e.pointerId);
+    e.preventDefault();
+});
+c.addEventListener('pointercancel', e =>{
+    dragging = null;
+    c.releasePointerCapture(e.pointerId);
+});
+window.addEventListener('keydown', e =>{
+    const step = e.shiftKey ? 10: 1;
+    if (e.key === 'ArrowLeft') {
+        CFG.pivotX -= step;
+        e.preventDefault();
+    } else if (e.key === 'ArrowRight') {
+        CFG.pivotX += step;
+        e.preventDefault();
+    } else if (e.key === 'ArrowUp') {
+        CFG.pivotY -= step;
+        e.preventDefault();
+    } else if (e.key === 'ArrowDown') {
+        CFG.pivotY += step;
+        e.preventDefault();
+    } else if (e.key === 'p' || e.key === 'P') {
+        UI.showPivot = !UI.showPivot;
+    } else if (e.key === 'i' || e.key === 'I') {
+        UI.showInfo = !UI.showInfo;
+    }
+});
+</script>
+</body>
+</html>
