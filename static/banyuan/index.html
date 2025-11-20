@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>半圆滚动互动演示</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            width: 98vw;
+            height: 98vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        h1 { 
+            color: #333; 
+            margin: 5px 0; 
+            font-size: 1.5rem;
+        }
+        .phase-indicator {
+            font-weight: bold;
+            color: #007bff;
+            height: 30px;
+            line-height: 30px;
+            font-size: 1.2rem;
+            margin-bottom: 5px;
+        }
+        .canvas-wrapper {
+            position: relative;
+            flex-grow: 1; 
+            width: 100%;
+            overflow: hidden;
+            border: 1px solid #ddd;
+            background: #fff;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #ffffff 80%, #f2f2f2 100%);
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+            padding: 10px 0;
+            width: 100%;
+            background: #fff;
+        }
+        button {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.2s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        button.reset { background-color: #6c757d; }
+        button.reset:hover { background-color: #545b62; }
+        
+        /* 放大模式按钮样式 */
+        button.zoom-btn { background-color: #17a2b8; }
+        button.zoom-btn:hover { background-color: #138496; }
+
+        input[type=range] {
+            width: 40%;
+            max-width: 500px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>半球形工件运动轨迹演示</h1>
+    <div class="phase-indicator" id="phaseText">准备开始</div>
+
+    <div class="canvas-wrapper">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <div class="controls">
+        <button id="btnPlay">▶ 播放</button>
+        <button id="btnReset" class="reset">↺ 重置</button>
+        <input type="range" id="progressSlider" min="0" max="1000" value="0">
+        <button id="btnZoom" class="zoom-btn">🔍 放大前两步</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const btnPlay = document.getElementById('btnPlay');
+    const btnReset = document.getElementById('btnReset');
+    const btnZoom = document.getElementById('btnZoom');
+    const slider = document.getElementById('progressSlider');
+    const phaseText = document.getElementById('phaseText');
+
+    // --- 物理参数 (米) ---
+    const R_METER = 3; 
+    const SLIDE_DIST_METER = 24;
+
+    // 各阶段距离
+    const DIST_P1 = (Math.PI * R_METER / 2); // 滚动
+    const DIST_P2 = (Math.PI * R_METER / 2); // 翻转
+    const DIST_P3 = SLIDE_DIST_METER;      // 平移
+    
+    const TOTAL_DIST_FULL = DIST_P1 + DIST_P2 + DIST_P3;
+    const TOTAL_DIST_ZOOM = DIST_P1 + DIST_P2; // 放大模式只看前两步
+
+    // --- 动画状态 ---
+    let isPlaying = false;
+    let isZoomMode = false; // 是否处于放大模式
+    let progress = 0; // 0 ~ 1 (注意：在放大模式下，1代表P2结束)
+    let animationId;
+    let autoPausePoint = 0; 
+
+    // --- 绘图参数 ---
+    let SCALE = 1; 
+    let GROUND_Y = 0;
+    let START_X = 0;
+    let DPR = 1; 
+
+    const PATH_COLORS = ['#ff7f0e', '#2ca02c', '#1f77b4']; 
+
+    // --- 核心：响应式布局与模式切换 ---
+    function resizeCanvas() {
+        const wrapper = canvas.parentElement;
+        DPR = window.devicePixelRatio || 1;
+        
+        const logicalWidth = wrapper.clientWidth;
+        const logicalHeight = wrapper.clientHeight;
+
+        canvas.width = logicalWidth * DPR;
+        canvas.height = logicalHeight * DPR;
+        canvas.style.width = logicalWidth + 'px';
+        canvas.style.height = logicalHeight + 'px';
+
+        ctx.scale(DPR, DPR);
+
+        const horizontalPadding = 40; 
+        const verticalPadding = 60;
+
+        // 决定当前要显示的总距离
+        // 放大模式：只显示 P1 + P2
+        // 全景模式：显示 P1 + P2 + P3
+        const distToShow = isZoomMode ? TOTAL_DIST_ZOOM : TOTAL_DIST_FULL;
+
+        // 缓冲区计算 (保证左右不切边)
+        const START_BUFFER = R_METER + 1.5; 
+        const END_BUFFER = R_METER + 1.5;
+        
+        const totalMetersNeeded = START_BUFFER + distToShow + END_BUFFER;
+
+        // 计算 Scale
+        SCALE = (logicalWidth - horizontalPadding * 2) / totalMetersNeeded;
+        
+        // 限制 Scale，避免极值
+        SCALE = Math.min(Math.max(SCALE, 10), 150); // 放大上限提高到150
+
+        START_X = horizontalPadding + (START_BUFFER * SCALE); 
+        GROUND_Y = logicalHeight - verticalPadding - (R_METER * SCALE); 
+        
+        update(); 
+    }
+
+    // 切换放大/全景模式
+    btnZoom.addEventListener('click', () => {
+        isZoomMode = !isZoomMode;
+        
+        // 切换文案
+        if (isZoomMode) {
+            btnZoom.innerText = "🔭 查看完整步骤";
+            // 切换到放大模式时，如果进度已经在P2之后，重置
+            if (progress * TOTAL_DIST_FULL > TOTAL_DIST_ZOOM) {
+                progress = 0;
+                autoPausePoint = 0;
+                slider.value = 0;
+            }
+        } else {
+            btnZoom.innerText = "🔍 放大前两步";
+            progress = 0; // 切换模式重置，体验更佳
+            autoPausePoint = 0;
+            slider.value = 0;
+        }
+        
+        isPlaying = false;
+        btnPlay.disabled = false;
+        cancelAnimationFrame(animationId);
+        
+        resizeCanvas();
+    });
+
+    function drawSemicircle(x, y, rotation, opacity = 1, isGhost = false) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rotation);
+        const rPx = R_METER * SCALE;
+
+        ctx.beginPath();
+        ctx.arc(0, 0, rPx, 0, Math.PI);
+        ctx.closePath();
+
+        if (isGhost) {
+            ctx.setLineDash([5, 5]); 
+            ctx.strokeStyle = `rgba(100, 100, 100, ${opacity})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = `rgba(230, 240, 255, ${opacity})`;
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // 直径
+        ctx.beginPath();
+        ctx.moveTo(-rPx, 0);
+        ctx.lineTo(rPx, 0);
+        ctx.lineWidth = 2;
+        if(isGhost) {
+             ctx.strokeStyle = `rgba(100, 100, 100, ${opacity})`;
+             ctx.setLineDash([5, 5]);
+        } else {
+            ctx.strokeStyle = '#333';
+            ctx.setLineDash([]); 
+        }
+        ctx.stroke();
+
+        // 圆心点
+        ctx.beginPath();
+        ctx.arc(0, 0, isZoomMode ? 6 : 4, 0, Math.PI * 2); // 放大模式点大一点
+        ctx.fillStyle = isGhost ? `rgba(255, 0, 0, ${opacity})` : 'red';
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    function getCenterPosition(totalMeters) {
+        let centerX, centerY, rotation;
+        let rPx = R_METER * SCALE;
+
+        if (totalMeters <= DIST_P1) {
+            // P1: 滚动
+            centerX = START_X + (totalMeters * SCALE); 
+            centerY = GROUND_Y - rPx;
+            rotation = totalMeters / DIST_P1 * (Math.PI / 2); 
+        } else if (totalMeters <= (DIST_P1 + DIST_P2)) {
+            // P2: 翻转
+            let distInPhase = totalMeters - DIST_P1;
+            let p = distInPhase / DIST_P2;
+            let angle = p * (Math.PI / 2);
+            let pivotX = START_X + DIST_P1 * SCALE;
+            centerX = pivotX + rPx * Math.sin(angle);
+            centerY = GROUND_Y - rPx * Math.cos(angle);
+            rotation = (Math.PI / 2) + angle;
+        } else {
+            // P3: 平移
+            let distInPhase = totalMeters - (DIST_P1 + DIST_P2);
+            let startSlideX = (START_X + DIST_P1 * SCALE) + rPx;
+            centerX = startSlideX + distInPhase * SCALE;
+            centerY = GROUND_Y;
+            rotation = Math.PI; 
+        }
+        return { x: centerX, y: centerY, rotation: rotation };
+    }
+
+    let pathPoints = [];
+    function generatePath(maxMeters) {
+        pathPoints = [];
+        const step = 0.05; 
+        let currentMeters = 0;
+        
+        // 限制最大生成距离，避免放大模式画出多余的线
+        let limit = isZoomMode ? Math.min(maxMeters, TOTAL_DIST_ZOOM) : Math.min(maxMeters, TOTAL_DIST_FULL);
+
+        while (currentMeters <= limit && currentMeters <= DIST_P1) {
+            pathPoints.push({ ...getCenterPosition(currentMeters), segment: 0 });
+            currentMeters += step;
+        }
+        while (currentMeters <= limit && currentMeters <= DIST_P1 + DIST_P2) {
+            pathPoints.push({ ...getCenterPosition(currentMeters), segment: 1 });
+            currentMeters += step;
+        }
+        // 如果不是放大模式，继续计算 P3
+        if (!isZoomMode) {
+            while (currentMeters <= limit) {
+                pathPoints.push({ ...getCenterPosition(currentMeters), segment: 2 });
+                currentMeters += step;
+            }
+        }
+        // 补点
+        if (currentMeters > limit && pathPoints.length > 0) {
+             // 简单补最后一个点
+             pathPoints.push({ ...getCenterPosition(limit), segment: limit > DIST_P1 + DIST_P2 ? 2 : (limit > DIST_P1 ? 1 : 0) });
+        }
+    }
+
+    function update() {
+        const logicalWidth = canvas.width / DPR;
+        const logicalHeight = canvas.height / DPR;
+        ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+        // --- 1. 地面 ---
+        ctx.beginPath();
+        ctx.moveTo(0, GROUND_Y);
+        ctx.lineTo(logicalWidth, GROUND_Y);
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 当前最大距离取决于模式
+        const maxDist = isZoomMode ? TOTAL_DIST_ZOOM : TOTAL_DIST_FULL;
+        let currentTotalMeters = progress * maxDist;
+        
+        // --- 文字更新 ---
+        if (currentTotalMeters <= DIST_P1) phaseText.innerText = "1. 无滑动滚动 (圆心水平移动)";
+        else if (currentTotalMeters <= (DIST_P1 + DIST_P2)) phaseText.innerText = "2. 绕棱角翻转 (圆心弧线运动)";
+        else phaseText.innerText = "3. 贴地平移 (圆心水平移动)";
+        
+        if(progress >= 1) phaseText.innerText = "演示结束";
+
+        // --- 2. 虚线 Ghosts (底层) ---
+        let startPos = getCenterPosition(0);
+        drawSemicircle(startPos.x, startPos.y, startPos.rotation, 0.3, true);
+        
+        // P1 结束虚线
+        if (currentTotalMeters >= DIST_P1) {
+            let p1End = getCenterPosition(DIST_P1);
+            drawSemicircle(p1End.x, p1End.y, p1End.rotation, 0.3, true);
+        }
+        
+        // P2 结束虚线 (任何模式都显示)
+        if (currentTotalMeters >= (DIST_P1 + DIST_P2)) {
+            let p2End = getCenterPosition(DIST_P1 + DIST_P2);
+            drawSemicircle(p2End.x, p2End.y, p2End.rotation, 0.3, true);
+        }
+
+        // P3 结束虚线 (仅全景模式)
+        if (!isZoomMode && currentTotalMeters >= TOTAL_DIST_FULL) {
+            let finalPos = getCenterPosition(TOTAL_DIST_FULL);
+            drawSemicircle(finalPos.x, finalPos.y, finalPos.rotation, 0.3, true);
+        }
+
+        // --- 3. 实体 ---
+        let curPos = getCenterPosition(currentTotalMeters);
+        drawSemicircle(curPos.x, curPos.y, curPos.rotation);
+
+        // --- 4. 轨迹 (顶层) ---
+        generatePath(currentTotalMeters);
+
+        if (pathPoints.length > 0) {
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            let currentSegment = pathPoints[0].segment;
+            ctx.beginPath();
+            ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+            ctx.strokeStyle = PATH_COLORS[currentSegment];
+            ctx.lineWidth = isZoomMode ? 6 : 4; // 放大模式轨迹更粗
+
+            for (let i = 1; i < pathPoints.length; i++) {
+                if (pathPoints[i].segment !== currentSegment) {
+                    ctx.stroke(); 
+                    ctx.beginPath(); 
+                    ctx.moveTo(pathPoints[i-1].x, pathPoints[i-1].y);
+                    currentSegment = pathPoints[i].segment;
+                    ctx.strokeStyle = PATH_COLORS[currentSegment];
+                }
+                ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
+            }
+            ctx.stroke(); 
+        }
+    }
+
+    function loop() {
+        if (isPlaying) {
+            // 动态速度：保证在屏幕上移动的视觉速度一致
+            // 全景大约33米，放大模式大约9.4米。
+            // 为了让放大模式看起来慢一点、细致一点，可以降低相对速度
+            const totalM = isZoomMode ? TOTAL_DIST_ZOOM : TOTAL_DIST_FULL;
+            const baseSpeed = isZoomMode ? 0.03 : 0.06; 
+            let speedStep = baseSpeed / totalM; 
+
+            progress += speedStep;
+            
+            let currentMeters = progress * totalM;
+            
+            // 自动暂停逻辑
+            if (autoPausePoint === 0 && currentMeters >= DIST_P1) {
+                progress = DIST_P1 / totalM;
+                isPlaying = false;
+                btnPlay.disabled = false;
+                autoPausePoint = 1;
+            } else if (autoPausePoint === 1 && currentMeters >= (DIST_P1 + DIST_P2)) {
+                progress = (DIST_P1 + DIST_P2) / totalM;
+                isPlaying = false;
+                btnPlay.disabled = false;
+                autoPausePoint = 2;
+                
+                // 如果是放大模式，到这里就结束了
+                if (isZoomMode) {
+                   progress = 1;
+                   autoPausePoint = 3; // End
+                }
+
+            } else if (autoPausePoint === 2 && !isZoomMode && progress >= 1) {
+                progress = 1;
+                isPlaying = false;
+                btnPlay.disabled = false;
+                autoPausePoint = 3; 
+            }
+
+            slider.value = progress * 1000;
+            update();
+            
+            if (isPlaying && progress < 1) {
+                animationId = requestAnimationFrame(loop);
+            } else if (progress >= 1) {
+                isPlaying = false;
+                btnPlay.disabled = false;
+                update(); // 确保最后一帧渲染
+            }
+        }
+    }
+
+    btnPlay.addEventListener('click', () => {
+        if (progress >= 1) { 
+            progress = 0;
+            autoPausePoint = 0;
+        }
+        isPlaying = true;
+        btnPlay.disabled = true;
+        loop();
+    });
+
+    btnReset.addEventListener('click', () => {
+        isPlaying = false;
+        btnPlay.disabled = false;
+        cancelAnimationFrame(animationId);
+        progress = 0;
+        slider.value = 0;
+        autoPausePoint = 0;
+        phaseText.innerText = "准备开始";
+        update();
+    });
+
+    slider.addEventListener('input', (e) => {
+        isPlaying = false;
+        btnPlay.disabled = false;
+        cancelAnimationFrame(animationId);
+        progress = e.target.value / 1000;
+        
+        const totalM = isZoomMode ? TOTAL_DIST_ZOOM : TOTAL_DIST_FULL;
+        let m = progress * totalM;
+
+        // 重置暂停点逻辑
+        if (m < DIST_P1) autoPausePoint = 0;
+        else if (m < (DIST_P1 + DIST_P2)) autoPausePoint = 1;
+        else if (!isZoomMode && progress < 1) autoPausePoint = 2;
+        else autoPausePoint = 3;
+
+        update();
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas(); 
+</script>
+
+</body>
+</html>
