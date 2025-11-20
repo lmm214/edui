@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>虚拟景观 - 3D沉浸式重建</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Arial', sans-serif; }
+    </style>
+</head>
+<body>
+    
+
+    <!-- 引入 Three.js 和 OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // --- 场景初始化 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // 天空蓝
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 180);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 14, 60); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.1; // 防止相机钻入地下
+
+        // --- 灯光 ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(-10, 50, 20);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 100;
+        dirLight.shadow.camera.left = -50;
+        dirLight.shadow.camera.right = 50;
+        dirLight.shadow.camera.top = 50;
+        dirLight.shadow.camera.bottom = -50;
+        scene.add(dirLight);
+
+        // --- 材质库 ---
+        const materials = {
+            water: new THREE.MeshPhongMaterial({ color: 0x4da6ff, shininess: 80, transparent: true, opacity: 0.9 }),
+            grass: new THREE.MeshLambertMaterial({ color: 0x5c9e5c }),
+            sand: new THREE.MeshLambertMaterial({ color: 0xe6dcb3 }),
+            road: new THREE.MeshLambertMaterial({ color: 0xf0e6cc }), // 浅色路面
+            towerPink: new THREE.MeshPhongMaterial({ color: 0xd8bfd8 }), // 浅紫/粉
+            towerDark: new THREE.MeshPhongMaterial({ color: 0x800080 }),
+            gold: new THREE.MeshPhongMaterial({ color: 0xffaa00, shininess: 60 }),
+            buildingWall: new THREE.MeshLambertMaterial({ color: 0xdddddd }),
+            monument: new THREE.MeshLambertMaterial({ color: 0xe0e0e0 }),
+            shipHull: new THREE.MeshLambertMaterial({ color: 0x8b4513 }),
+            shipWhite: new THREE.MeshLambertMaterial({ color: 0xffffff }),
+            treeTrunk: new THREE.MeshLambertMaterial({ color: 0x8b4513 }),
+            treeLeaves: new THREE.MeshLambertMaterial({ color: 0x228b22 })
+        };
+
+        // --- 1. 地形与水域 ---
+        const worldGroup = new THREE.Group();
+        scene.add(worldGroup);
+        worldGroup.position.y = -8;
+
+        // 大海/河流 (覆盖底部和右侧)
+        const waterGeo = new THREE.PlaneGeometry(200, 200);
+        const water = new THREE.Mesh(waterGeo, materials.water);
+        water.rotation.x = -Math.PI / 2;
+        water.position.y = -0.5;
+        water.receiveShadow = true;
+        worldGroup.add(water);
+
+        // 陆地 (主要岛屿/半岛)
+        const landGroup = new THREE.Group();
+        worldGroup.add(landGroup);
+
+        // 基础地面形状 (使用多个形状拼接模拟不规则海岸线)
+        function createLandMass(x, z, scaleX, scaleZ, rotation = 0) {
+            const geo = new THREE.CylinderGeometry(1, 1, 1, 32);
+            const mesh = new THREE.Mesh(geo, materials.grass);
+            mesh.position.set(x, 0, z);
+            mesh.scale.set(scaleX, 1, scaleZ); // 压扁成椭圆
+            mesh.rotation.y = rotation;
+            mesh.receiveShadow = true;
+            mesh.castShadow = true;
+            landGroup.add(mesh);
+        }
+
+        // 陆地：左侧大片区域
+        createLandMass(-15, 0, 15, 12);
+        // 陆地：中间连接
+        createLandMass(0, -2, 18, 8);
+        // 陆地：右侧区域
+        createLandMass(15, -5, 12, 12);
+        
+        // 湖泊 (左上角，通过在陆地上挖空或围合实现，这里简单用陆地包围)
+        // 为了简化，我们假设左上是水（已经是蓝色底板），我们在那里不放陆地即可。
+        
+        // 沙滩/河岸线 (稍微大一点的黄色层在下面)
+        const sandGeo = new THREE.CylinderGeometry(1.05, 1.05, 0.8, 32);
+        function createSand(x, z, scaleX, scaleZ) {
+            const mesh = new THREE.Mesh(sandGeo, materials.sand);
+            mesh.position.set(x, -0.2, z);
+            mesh.scale.set(scaleX, 1, scaleZ);
+            landGroup.add(mesh);
+        }
+        createSand(-15, 0, 15.5, 12.5);
+        createSand(0, -2, 18.5, 8.5);
+        createSand(15, -5, 12.5, 12.5);
+
+        // 道路 (蜿蜒的浅色带)
+        // 使用管状几何体或简单的长条
+        const pathPoints = [
+            new THREE.Vector3(-10, 0.1, 5),
+            new THREE.Vector3(-5, 0.1, 2),
+            new THREE.Vector3(0, 0.1, -3), // 塔附近
+            new THREE.Vector3(5, 0.1, -5),
+            new THREE.Vector3(12, 0.1, -4)  // 金色建筑附近
+        ];
+        const pathCurve = new THREE.CatmullRomCurve3(pathPoints);
+        const pathGeo = new THREE.TubeGeometry(pathCurve, 64, 0.8, 8, false);
+        const pathMesh = new THREE.Mesh(pathGeo, materials.road);
+        // 压平道路
+        pathMesh.scale.y = 0.1; 
+        landGroup.add(pathMesh);
+
+
+        // --- 2. 建筑物与地标 ---
+
+        // A. 高塔 (中央偏后) - 参考图中的粉色塔
+        const towerGroup = new THREE.Group();
+        towerGroup.position.set(0, 0, -6); // 位置
+        landGroup.add(towerGroup);
+
+        // 塔基
+        const tBase = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 3, 1, 16), materials.towerDark);
+        tBase.position.y = 0.5;
+        towerGroup.add(tBase);
+        
+        // 塔身
+        const tShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.5, 12, 16), materials.towerPink);
+        tShaft.position.y = 6.5;
+        tShaft.castShadow = true;
+        towerGroup.add(tShaft);
+
+        // 瞭望台 (下)
+        const tDeck1 = new THREE.Mesh(new THREE.CylinderGeometry(3, 0.5, 1.5, 16), materials.towerDark);
+        tDeck1.position.y = 10;
+        towerGroup.add(tDeck1);
+        
+        // 瞭望台 (中球)
+        const tSphere = new THREE.Mesh(new THREE.SphereGeometry(1.8, 16, 16), materials.towerPink);
+        tSphere.position.y = 12;
+        towerGroup.add(tSphere);
+
+        // 塔尖
+        const tSpire = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.5, 8, 8), materials.towerDark);
+        tSpire.position.y = 17;
+        towerGroup.add(tSpire);
+
+
+        // B. 金顶建筑 (右侧)
+        const buildingGroup = new THREE.Group();
+        buildingGroup.position.set(14, 0.5, -3); // 位置
+        landGroup.add(buildingGroup);
+
+        // 主体
+        const bBody = new THREE.Mesh(new THREE.BoxGeometry(4, 8, 4), materials.buildingWall);
+        bBody.position.y = 4;
+        bBody.castShadow = true;
+        buildingGroup.add(bBody);
+        
+        // 装饰柱/条纹 (简化)
+        const bStripes = new THREE.Mesh(new THREE.BoxGeometry(4.2, 6, 4.2), new THREE.MeshLambertMaterial({color: 0xadd8e6, transparent:true, opacity:0.5})); // 玻璃幕墙感
+        bStripes.position.y = 4;
+        buildingGroup.add(bStripes);
+
+        // 屋顶 (金色金字塔/亭顶)
+        const bRoofBase = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.5, 4.5), materials.gold);
+        bRoofBase.position.y = 8.25;
+        buildingGroup.add(bRoofBase);
+        
+        const bRoofTop = new THREE.Mesh(new THREE.ConeGeometry(3, 3, 4), materials.gold);
+        bRoofTop.position.y = 10;
+        bRoofTop.rotation.y = Math.PI / 4; // 旋转45度对齐角落
+        buildingGroup.add(bRoofTop);
+
+
+        // C. 纪念碑 (左侧)
+        const monumentGroup = new THREE.Group();
+        monumentGroup.position.set(-6, 0.5, 2); // 位置
+        landGroup.add(monumentGroup);
+
+        // 碑身 (逐渐变细的方柱)
+        const mBody = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 1.5, 6, 4), materials.monument);
+        mBody.position.y = 3;
+        mBody.rotation.y = Math.PI / 4;
+        mBody.castShadow = true;
+        monumentGroup.add(mBody);
+        
+        // 基座
+        const mBase = new THREE.Mesh(new THREE.BoxGeometry(4, 0.5, 4), materials.monument);
+        mBase.position.y = 0.25;
+        monumentGroup.add(mBase);
+
+
+        // --- 3. 游船 (前景左侧) ---
+        const shipGroup = new THREE.Group();
+        shipGroup.position.set(-15, -8, 18);
+        shipGroup.rotation.y = 0;
+        scene.add(shipGroup);
+
+        // 船身
+        const hullGeo = new THREE.BoxGeometry(8, 1.5, 3);
+        // 简单修改顶点做成船形
+        const pos = hullGeo.attributes.position;
+        for(let i=0; i<pos.count; i++){
+            if(pos.getY(i) < 0) { // 船底收窄
+                pos.setZ(i, pos.getZ(i) * 0.6);
+            }
+            if(pos.getX(i) > 3) { // 船头尖
+                pos.setZ(i, pos.getZ(i) * 0.1);
+            }
+        }
+        hullGeo.computeVertexNormals();
+        
+        const shipHull = new THREE.Mesh(hullGeo, materials.shipHull);
+        shipHull.position.y = 0.5;
+        shipGroup.add(shipHull);
+
+        // 船舱
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 2), materials.shipWhite);
+        cabin.position.set(-1, 2, 0);
+        shipGroup.add(cabin);
+        
+        const cabinTop = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 1.8), materials.shipWhite);
+        cabinTop.position.set(-0.5, 3.25, 0);
+        shipGroup.add(cabinTop);
+
+        // 烟囱
+        const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.5, 8), new THREE.MeshLambertMaterial({color:0x333333}));
+        stack.position.set(-2, 3.5, 0);
+        shipGroup.add(stack);
+
+        // 烟雾粒子 (简单模拟)
+        const smokeParticles = [];
+        const smokeGeo = new THREE.SphereGeometry(0.2, 4, 4);
+        const smokeMat = new THREE.MeshBasicMaterial({color: 0xdddddd, transparent: true, opacity: 0.6});
+        
+        // 船尾浪花
+        const wakeGeo = new THREE.PlaneGeometry(10, 2);
+        const wakeMat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.4});
+        const wake = new THREE.Mesh(wakeGeo, wakeMat);
+        wake.rotation.x = -Math.PI/2;
+        wake.position.set(-6, 0.1, 0);
+        shipGroup.add(wake);
+
+
+        // --- 4. 植被 (树木) ---
+        function createTree(x, z) {
+            const treeGroup = new THREE.Group();
+            treeGroup.position.set(x, 0.5, z);
+
+            // 树干
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 1.5, 6), materials.treeTrunk);
+            trunk.position.y = 0.75;
+            trunk.castShadow = true;
+            treeGroup.add(trunk);
+
+            // 树冠 (几个球体或圆锥)
+            const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.2, 3, 8), materials.treeLeaves);
+            leaves.position.y = 2.5;
+            leaves.castShadow = true;
+            treeGroup.add(leaves);
+
+            // 随机缩放一点增加自然感
+            const s = 0.4 + Math.random() * 0.2;
+            treeGroup.scale.set(s, s, s);
+
+            landGroup.add(treeGroup);
+        }
+
+        // 批量种树
+        // 左侧森林
+        for(let i=0; i<30; i++) {
+            createTree(-20 + Math.random()*15, -5 + Math.random()*15);
+        }
+        // 塔周围
+        for(let i=0; i<15; i++) {
+            createTree(-5 + Math.random()*10, -8 + Math.random()*5);
+        }
+        // 右侧森林
+        for(let i=0; i<20; i++) {
+            createTree(10 + Math.random()*10, -8 + Math.random()*10);
+        }
+
+        // --- 动画与渲染 ---
+        const clock = new THREE.Clock();
+        
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            // 烟雾动画
+            if(Math.floor(time * 10) % 5 === 0) {
+                const p = new THREE.Mesh(smokeGeo, smokeMat);
+                p.position.set(
+                    shipGroup.position.x - 2,
+                    shipGroup.position.y + 4,
+                    shipGroup.position.z
+                );
+                scene.add(p);
+                smokeParticles.push({mesh: p, age: 0});
+            }
+
+            // 更新所有烟雾粒子
+            for(let i = smokeParticles.length - 1; i >= 0; i--) {
+                const p = smokeParticles[i];
+                p.age += delta;
+                p.mesh.position.y += delta * 1.5; // 上升
+                p.mesh.position.x -= delta * 0.5; // 向后飘
+                p.mesh.material.opacity = 0.6 * (1 - p.age / 2); // 渐隐
+                
+                if(p.age > 2) {
+                    scene.remove(p.mesh);
+                    smokeParticles.splice(i, 1);
+                }
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        // 窗口大小调整
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>
