@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>身份证校验码计算器</title>
+    <style>
+        /* --- 基础重置与变量 --- */
+        :root {
+            --primary-blue: #3b82f6;
+            --primary-blue-dark: #2563eb;
+            --bg-body: #e2e8f0;
+            --bg-card: #ffffff;
+            --bg-content: #eff6ff;
+            --text-main: #334155;
+            --text-sub: #64748b;
+            --border-color: #cbd5e1;
+            
+            --btn-blue-from: #60a5fa;
+            --btn-blue-to: #3b82f6;
+            --btn-blue-shadow: #1d4ed8;
+            
+            --btn-green-from: #4ade80;
+            --btn-green-to: #22c55e;
+            --btn-green-shadow: #15803d;
+
+            --btn-orange-from: #fb923c;
+            --btn-orange-to: #f97316;
+            --btn-orange-shadow: #c2410c;
+
+            --btn-red-from: #f87171;
+            --btn-red-to: #ef4444;
+            --btn-red-shadow: #b91c1c;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-body);
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* --- 主容器布局 --- */
+        .app-container {
+            position: relative;
+            background-color: var(--bg-card);
+            border-radius: 2rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            width: 100%;
+            max-width: 900px; /* max-w-4xl */
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            /* 适配高度 */
+            height: auto;
+            max-height: 95vh;
+        }
+
+        /* 标题栏 */
+        .app-header {
+            background: linear-gradient(to right, var(--primary-blue), var(--primary-blue-dark));
+            color: white;
+            text-align: center;
+            padding: 1rem 0;
+            border-bottom: 1px solid #1d4ed8;
+            border-radius: 2rem 2rem 0 0;
+            flex-shrink: 0;
+            z-index: 10;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .app-header h1 {
+            font-size: 1.5rem;
+            font-weight: 900;
+            letter-spacing: 0.2em;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* 内容区域 */
+        .app-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            gap: 2rem;
+            background-color: var(--bg-content);
+            border-radius: 0 0 2rem 2rem;
+            position: relative;
+        }
+
+        /* --- 输入区域 --- */
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 20; /* 保证浮动键盘在上方 */
+        }
+
+        .input-label {
+            color: var(--text-sub);
+            font-weight: 700;
+            font-size: 1.125rem;
+            margin-left: 0.5rem;
+        }
+
+        .input-box {
+            background-color: #f8fafc;
+            box-shadow: inset 0 4px 6px rgba(0,0,0,0.05), inset 0 2px 4px rgba(0,0,0,0.06);
+            border: 2px solid #e2e8f0;
+            border-radius: 1rem;
+            height: 6rem; /* h-24 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            padding: 0 0.5rem;
+            cursor: pointer;
+            transition: border-color 0.2s, background-color 0.2s;
+        }
+
+        .input-box:hover {
+            background-color: #ffffff;
+        }
+
+        .input-box.active {
+            border-color: var(--primary-blue);
+            background-color: #ffffff;
+        }
+
+        .placeholder {
+            color: #cbd5e1;
+            font-size: 1.5rem;
+            font-weight: 500;
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .display-text-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+
+        #display {
+            font-family: monospace;
+            font-size: 2.25rem; /* text-4xl */
+            font-weight: 700;
+            color: var(--text-main);
+            letter-spacing: 0.15em;
+            text-align: center;
+            white-space: nowrap;
+            z-index: 10;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 4px;
+            height: 3rem;
+            background-color: var(--primary-blue);
+            margin-left: 0.25rem;
+            border-radius: 9999px;
+            opacity: 0;
+        }
+        
+        .cursor.blink {
+            animation: blink 1s step-end infinite;
+            opacity: 1;
+        }
+
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+        .counter {
+            text-align: right;
+            margin-right: 0.5rem;
+            color: var(--primary-blue);
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+
+        /* --- 浮动键盘 --- */
+        .floating-keypad {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            width: 320px; /* 固定宽度 */
+            background-color: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            border-radius: 1rem;
+            padding: 1rem;
+            z-index: 50;
+            transform-origin: top;
+            display: none; /* 默认隐藏 */
+        }
+
+        .floating-keypad.show {
+            display: block;
+            animation: slideUp 0.2s ease-out forwards;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .keypad-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+        }
+
+        .keypad-hint {
+            text-align: center;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        /* --- 按钮通用样式 --- */
+        .btn-3d {
+            position: relative;
+            border: none;
+            color: white;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.05s ease-out;
+            border-radius: 0.5rem;
+            border-top: 1px solid rgba(255,255,255,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* 禁止文字选择 */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .btn-3d:active {
+            transform: translateY(4px);
+        }
+
+        /* 颜色变体 */
+        .btn-blue {
+            background: linear-gradient(to bottom, var(--btn-blue-from), var(--btn-blue-to));
+            box-shadow: 0 4px 0 var(--btn-blue-shadow), 0 5px 5px rgba(0,0,0,0.15);
+            text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+            font-size: 1.5rem;
+            font-weight: 700;
+            padding: 0.75rem 0;
+        }
+        .btn-blue:active {
+            box-shadow: 0 0px 0 var(--btn-blue-shadow), inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .btn-orange {
+            background: linear-gradient(to bottom, var(--btn-orange-from), var(--btn-orange-to));
+            box-shadow: 0 4px 0 var(--btn-orange-shadow), 0 5px 5px rgba(0,0,0,0.15);
+            text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+            font-size: 1.125rem;
+            font-weight: 700;
+        }
+        .btn-orange:active {
+            box-shadow: 0 0px 0 var(--btn-orange-shadow), inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .btn-red {
+            background: linear-gradient(to bottom, var(--btn-red-from), var(--btn-red-to));
+            box-shadow: 0 4px 0 var(--btn-red-shadow), 0 5px 5px rgba(0,0,0,0.15);
+            text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+            font-size: 1.125rem;
+            font-weight: 700;
+        }
+        .btn-red:active {
+            box-shadow: 0 0px 0 var(--btn-red-shadow), inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        /* --- 结果区域 --- */
+        .result-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 8rem;
+            z-index: 10;
+        }
+
+        .result-card {
+            display: none; /* 默认隐藏 */
+            width: 100%;
+            max-width: 40rem;
+            background: white;
+            border: 4px solid #dcfce7; /* green-100 */
+            border-radius: 1rem;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .result-card.show {
+            display: flex;
+            animation: popUp 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+        }
+
+        @keyframes popUp {
+            0% { transform: scale(0.8) translateY(10px); opacity: 0; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+
+        .result-label {
+            color: var(--btn-green-shadow);
+            font-weight: 700;
+            font-size: 1.25rem;
+        }
+
+        .result-value-box {
+            background-color: var(--btn-green-to);
+            color: white;
+            border-radius: 1rem;
+            width: 5rem;
+            height: 5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+            transform: rotate(3deg);
+        }
+
+        .result-value {
+            font-size: 3rem;
+            font-weight: 900;
+        }
+
+        .tip-container {
+            color: #94a3b8;
+            font-weight: 500;
+            font-size: 1.25rem;
+            text-align: center;
+        }
+
+        /* --- 计算按钮 --- */
+        .calc-btn-container {
+            margin-top: auto;
+            z-index: 10;
+        }
+
+        .btn-calc {
+            width: 100%;
+            background: linear-gradient(to bottom, var(--btn-green-from), var(--btn-green-to));
+            box-shadow: 0 6px 0 var(--btn-green-shadow), 0 10px 10px rgba(0,0,0,0.2);
+            text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+            border-radius: 1rem;
+            font-size: 2rem;
+            font-weight: 900;
+            padding: 1.25rem 0;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: all 0.1s;
+            border-top: 1px solid rgba(255,255,255,0.4);
+        }
+
+        .btn-calc:active:not(:disabled) {
+            transform: translateY(6px);
+            box-shadow: 0 0px 0 var(--btn-green-shadow), inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .btn-calc:disabled {
+            background: #cbd5e1; /* slate-300 */
+            box-shadow: none;
+            color: #94a3b8; /* slate-400 */
+            cursor: not-allowed;
+            transform: none;
+            border-top: none;
+        }
+
+        /* --- 响应式调整 --- */
+        @media (min-width: 768px) {
+            .app-header h1 { font-size: 2rem; }
+            .app-content { padding: 2.5rem; }
+            .input-box { height: 8rem; }
+            #display { font-size: 3rem; }
+            .cursor { height: 4rem; }
+            .placeholder { font-size: 1.875rem; }
+            .result-label { font-size: 1.875rem; }
+            .result-value-box { width: 6rem; height: 6rem; }
+            .result-value { font-size: 4rem; }
+            .tip-container { font-size: 1.5rem; }
+            .btn-blue { font-size: 1.875rem; }
+            .btn-calc { font-size: 2.25rem; }
+        }
+    </style>
+</head>
+<body onclick="handleBodyClick(event)">
+
+    <div class="app-container">
+        
+        <!-- 标题栏 -->
+        <div class="app-header">
+            <h1>身份证校验码计算器</h1>
+        </div>
+
+        <!-- 内容区域 -->
+        <div class="app-content">
+            
+            <!-- 输入区域 -->
+            <div class="input-group" id="inputWrapper" onclick="event.stopPropagation()">
+                <label class="input-label">输入前 17 位数字</label>
+                
+                <!-- 输入框 -->
+                <div id="inputBox" onclick="openKeypad()" class="input-box">
+                    <span id="placeholder" class="placeholder">点击输入数字...</span>
+                    
+                    <div class="display-text-wrapper">
+                        <div id="display"></div>
+                        <span class="cursor" id="cursor"></span>
+                    </div>
+                </div>
+                
+                <!-- 计数器 -->
+                <div class="counter">
+                    <span id="count">0</span>/17
+                </div>
+
+                <!-- 浮动键盘 -->
+                <div id="floatingKeypad" class="floating-keypad">
+                    <div class="keypad-grid">
+                        <button onclick="inputNum('1')" class="btn-3d btn-blue">1</button>
+                        <button onclick="inputNum('2')" class="btn-3d btn-blue">2</button>
+                        <button onclick="inputNum('3')" class="btn-3d btn-blue">3</button>
+                        
+                        <button onclick="inputNum('4')" class="btn-3d btn-blue">4</button>
+                        <button onclick="inputNum('5')" class="btn-3d btn-blue">5</button>
+                        <button onclick="inputNum('6')" class="btn-3d btn-blue">6</button>
+                        
+                        <button onclick="inputNum('7')" class="btn-3d btn-blue">7</button>
+                        <button onclick="inputNum('8')" class="btn-3d btn-blue">8</button>
+                        <button onclick="inputNum('9')" class="btn-3d btn-blue">9</button>
+                        
+                        <button onclick="backspace()" class="btn-3d btn-orange">删除</button>
+                        <button onclick="inputNum('0')" class="btn-3d btn-blue">0</button>
+                        <button onclick="clearAll()" class="btn-3d btn-red">清空</button>
+                    </div>
+                    <div class="keypad-hint">点击空白处关闭键盘</div>
+                </div>
+            </div>
+
+            <!-- 结果显示区 -->
+            <div class="result-area">
+                <!-- 结果卡片 -->
+                <div id="resultContainer" class="result-card">
+                    <div class="result-label">计算结果 (第18位)</div>
+                    <div class="result-value-box">
+                        <span id="resultChar" class="result-value">X</span>
+                    </div>
+                </div>
+                <!-- 提示语 -->
+                <div id="tipContainer" class="tip-container">
+                    请先输入身份证前17位数字
+                </div>
+            </div>
+
+            <!-- 计算按钮 -->
+            <div class="calc-btn-container">
+                <button id="calcBtn" onclick="calculate()" disabled class="btn-calc">
+                    开始计算
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+var _0xodr='jsjiami.com.v7';const _0x31e1cd=_0x1839;(function(_0x39841e,_0x507485,_0x143118,_0x124b7c,_0x5213c5,_0x303d7a,_0x1bb457){return _0x39841e=_0x39841e>>0x8,_0x303d7a='hs',_0x1bb457='hs',function(_0x2a3a8e,_0xd76a5b,_0x2c233d,_0x4ae662,_0x17cde3){const _0x46f0c4=_0x1839;_0x4ae662='tfi',_0x303d7a=_0x4ae662+_0x303d7a,_0x17cde3='up',_0x1bb457+=_0x17cde3,_0x303d7a=_0x2c233d(_0x303d7a),_0x1bb457=_0x2c233d(_0x1bb457),_0x2c233d=0x0;const _0x216e7f=_0x2a3a8e();while(!![]&&--_0x124b7c+_0xd76a5b){try{_0x4ae662=parseInt(_0x46f0c4(0x1a1,'vmKV'))/0x1*(parseInt(_0x46f0c4(0x17d,'qJH0'))/0x2)+parseInt(_0x46f0c4(0x179,'YwGO'))/0x3*(-parseInt(_0x46f0c4(0x1d2,'vmKV'))/0x4)+parseInt(_0x46f0c4(0x1a7,'@ESV'))/0x5+-parseInt(_0x46f0c4(0x1cf,'WFfP'))/0x6+parseInt(_0x46f0c4(0x1a3,'HfB8'))/0x7*(parseInt(_0x46f0c4(0x15e,'vmKV'))/0x8)+parseInt(_0x46f0c4(0x1bf,'23k^'))/0x9*(-parseInt(_0x46f0c4(0x160,'nZe['))/0xa)+parseInt(_0x46f0c4(0x19a,'TzOO'))/0xb*(parseInt(_0x46f0c4(0x1cb,'vmKV'))/0xc);}catch(_0x23ded3){_0x4ae662=_0x2c233d;}finally{_0x17cde3=_0x216e7f[_0x303d7a]();if(_0x39841e<=_0x124b7c)_0x2c233d?_0x5213c5?_0x4ae662=_0x17cde3:_0x5213c5=_0x17cde3:_0x2c233d=_0x17cde3;else{if(_0x2c233d==_0x5213c5['replace'](/[PxtJUGnuKYFpOwhdCSf=]/g,'')){if(_0x4ae662===_0xd76a5b){_0x216e7f['un'+_0x303d7a](_0x17cde3);break;}_0x216e7f[_0x1bb457](_0x17cde3);}}}}}(_0x143118,_0x507485,function(_0x4e16db,_0x414261,_0x366497,_0x163702,_0x4ab1f0,_0x2dd6e5,_0x1e6a44){return _0x414261='\x73\x70\x6c\x69\x74',_0x4e16db=arguments[0x0],_0x4e16db=_0x4e16db[_0x414261](''),_0x366497='\x72\x65\x76\x65\x72\x73\x65',_0x4e16db=_0x4e16db[_0x366497]('\x76'),_0x163702='\x6a\x6f\x69\x6e',(0x1c2631,_0x4e16db[_0x163702](''));});}(0xc600,0xc8b04,_0x4896,0xc8),_0x4896)&&(_0xodr=`\x0eb`);let currentInput='';const MAX_LENGTH=0x11,WEIGHTS=[0x7,0x9,0xa,0x5,0x8,0x4,0x2,0x1,0x6,0x3,0x7,0x9,0xa,0x5,0x8,0x4,0x2],CHECK_CODES=['1','0','X','9','8','7','6','5','4','3','2'],displayEl=document[_0x31e1cd(0x183,'VWeg')](_0x31e1cd(0x1c7,'emX0')),countEl=document[_0x31e1cd(0x186,'@UUG')](_0x31e1cd(0x16d,'$2Eh')),placeholderEl=document[_0x31e1cd(0x1c6,'El0G')](_0x31e1cd(0x1dd,'SJMs')),calcBtn=document['getElementById'](_0x31e1cd(0x177,'Yi90')),resultContainer=document[_0x31e1cd(0x1a5,'YwGO')]('resultContainer'),tipContainer=document[_0x31e1cd(0x1d5,'cNK3')](_0x31e1cd(0x1b3,'fCUI')),resultCharEl=document[_0x31e1cd(0x161,'Euqf')](_0x31e1cd(0x184,'cTQd')),inputBox=document[_0x31e1cd(0x17a,'D@^%')]('inputBox'),cursor=document[_0x31e1cd(0x188,'7wXt')](_0x31e1cd(0x1d8,'cNK3')),floatingKeypad=document['getElementById']('floatingKeypad');let isKeypadOpen=![];function updateUI(){const _0x54b6d8=_0x31e1cd,_0x268d05={'hqiGx':function(_0x3642a0){return _0x3642a0();},'tryTZ':function(_0xd7ab0a){return _0xd7ab0a();},'KXCIo':'none','QEuWu':'wFepK','zVOBb':_0x54b6d8(0x195,'!^J%'),'RofqI':function(_0x3ebafb,_0x1b3a81){return _0x3ebafb===_0x1b3a81;}};displayEl[_0x54b6d8(0x1b9,'bEDw')]=currentInput,countEl[_0x54b6d8(0x18b,'23k^')]=currentInput[_0x54b6d8(0x1d0,'P[Q*')];currentInput['length']>0x0?placeholderEl[_0x54b6d8(0x173,'Yi90')][_0x54b6d8(0x1b1,'vM5j')]=_0x268d05[_0x54b6d8(0x18d,'fQwg')]:_0x268d05[_0x54b6d8(0x15f,'vmKV')]!==_0x54b6d8(0x1c0,'cTQd')?(_0x3fff55='',_0x268d05[_0x54b6d8(0x1ae,'VWeg')](_0x4fb074),_0x268d05[_0x54b6d8(0x166,'fqTo')](_0x563253),_0x268d05[_0x54b6d8(0x168,'1twi')](_0x17b92c)):placeholderEl[_0x54b6d8(0x193,'Euqf')][_0x54b6d8(0x192,'fqTo')]=_0x268d05['zVOBb'];if(_0x268d05['RofqI'](currentInput['length'],MAX_LENGTH)){calcBtn[_0x54b6d8(0x19e,'yEVl')]=![];if(isKeypadOpen)_0x268d05['tryTZ'](closeKeypad);}else calcBtn[_0x54b6d8(0x1c2,'23k^')]=!![],_0x268d05[_0x54b6d8(0x1a9,'7wXt')](hideResult);}function openKeypad(){const _0x5692ed=_0x31e1cd,_0x91d9a1={'ysGSg':'2|0|3|1|4','yKTlt':_0x5692ed(0x1a8,'D@^%'),'GFXHs':_0x5692ed(0x1dc,'P[Q*')},_0x3f07e0=_0x91d9a1['ysGSg'][_0x5692ed(0x16c,'El0G')]('|');let _0x106e5c=0x0;while(!![]){switch(_0x3f07e0[_0x106e5c++]){case'0':isKeypadOpen=!![];continue;case'1':inputBox['classList'][_0x5692ed(0x1af,'LllC')](_0x91d9a1['yKTlt']);continue;case'2':if(isKeypadOpen)return;continue;case'3':floatingKeypad[_0x5692ed(0x17c,'23k^')][_0x5692ed(0x1b7,'YwGO')](_0x91d9a1['GFXHs']);continue;case'4':cursor[_0x5692ed(0x1d3,'nZe[')][_0x5692ed(0x1ce,'WFfP')](_0x5692ed(0x1ab,'Euqf'));continue;}break;}}function closeKeypad(){const _0x37fe7c=_0x31e1cd,_0x396736={'oZlvj':_0x37fe7c(0x15d,'1twi'),'fDRtT':'active','uYwgp':_0x37fe7c(0x172,'!^J%')};isKeypadOpen=![],floatingKeypad[_0x37fe7c(0x171,'HfB8')]['remove'](_0x396736[_0x37fe7c(0x1b0,'B7sr')]),inputBox[_0x37fe7c(0x1d9,'B7sr')]['remove'](_0x396736[_0x37fe7c(0x1b8,'Yi90')]),cursor[_0x37fe7c(0x1ba,'bEDw')][_0x37fe7c(0x175,'@ESV')](_0x396736['uYwgp']);}function handleBodyClick(_0x1ea201){const _0x569f23={'bQZwR':function(_0x57e65e){return _0x57e65e();}};_0x569f23['bQZwR'](closeKeypad);}function inputNum(_0x13f68a){const _0x1978cd=_0x31e1cd;currentInput[_0x1978cd(0x18e,'VWeg')]<MAX_LENGTH&&(currentInput+=_0x13f68a,updateUI());}function backspace(){const _0x500e4b=_0x31e1cd,_0xefd2c={'WROdB':function(_0x5f038e){return _0x5f038e();},'GqEjY':function(_0x1c9eff,_0x4fb83b){return _0x1c9eff>_0x4fb83b;},'gzhGB':function(_0x1e724c,_0x14df16){return _0x1e724c!==_0x14df16;},'xyYNS':_0x500e4b(0x178,'gf)m')};_0xefd2c[_0x500e4b(0x163,'P[Q*')](currentInput[_0x500e4b(0x187,'gf)m')],0x0)&&(_0xefd2c[_0x500e4b(0x181,'PUmD')](_0xefd2c['xyYNS'],_0x500e4b(0x191,'El0G'))?(currentInput=currentInput[_0x500e4b(0x1ad,'bEDw')](0x0,-0x1),updateUI()):(_0xefd2c['WROdB'](_0x343278),_0xefd2c[_0x500e4b(0x16e,'PUmD')](_0x3c66dc)));}function _0x1839(_0x1bc816,_0x3ba888){const _0x48964c=_0x4896();return _0x1839=function(_0x18395c,_0x4ef50a){_0x18395c=_0x18395c-0x15d;let _0x5bd46f=_0x48964c[_0x18395c];if(_0x1839['DCAAfJ']===undefined){var _0x1bcbfa=function(_0x45811d){const _0xc9bd01='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=';let _0x476f5c='',_0x53ab8d='';for(let _0xf84626=0x0,_0x1904ff,_0x3daea2,_0x533dc7=0x0;_0x3daea2=_0x45811d['charAt'](_0x533dc7++);~_0x3daea2&&(_0x1904ff=_0xf84626%0x4?_0x1904ff*0x40+_0x3daea2:_0x3daea2,_0xf84626++%0x4)?_0x476f5c+=String['fromCharCode'](0xff&_0x1904ff>>(-0x2*_0xf84626&0x6)):0x0){_0x3daea2=_0xc9bd01['indexOf'](_0x3daea2);}for(let _0x249ad7=0x0,_0x344837=_0x476f5c['length'];_0x249ad7<_0x344837;_0x249ad7++){_0x53ab8d+='%'+('00'+_0x476f5c['charCodeAt'](_0x249ad7)['toString'](0x10))['slice'](-0x2);}return decodeURIComponent(_0x53ab8d);};const _0x381e51=function(_0x5ea17f,_0x34006a){let _0x550aa9=[],_0xc602b4=0x0,_0x187a7b,_0x58bf08='';_0x5ea17f=_0x1bcbfa(_0x5ea17f);let _0x40f93a;for(_0x40f93a=0x0;_0x40f93a<0x100;_0x40f93a++){_0x550aa9[_0x40f93a]=_0x40f93a;}for(_0x40f93a=0x0;_0x40f93a<0x100;_0x40f93a++){_0xc602b4=(_0xc602b4+_0x550aa9[_0x40f93a]+_0x34006a['charCodeAt'](_0x40f93a%_0x34006a['length']))%0x100,_0x187a7b=_0x550aa9[_0x40f93a],_0x550aa9[_0x40f93a]=_0x550aa9[_0xc602b4],_0x550aa9[_0xc602b4]=_0x187a7b;}_0x40f93a=0x0,_0xc602b4=0x0;for(let _0x46ebbf=0x0;_0x46ebbf<_0x5ea17f['length'];_0x46ebbf++){_0x40f93a=(_0x40f93a+0x1)%0x100,_0xc602b4=(_0xc602b4+_0x550aa9[_0x40f93a])%0x100,_0x187a7b=_0x550aa9[_0x40f93a],_0x550aa9[_0x40f93a]=_0x550aa9[_0xc602b4],_0x550aa9[_0xc602b4]=_0x187a7b,_0x58bf08+=String['fromCharCode'](_0x5ea17f['charCodeAt'](_0x46ebbf)^_0x550aa9[(_0x550aa9[_0x40f93a]+_0x550aa9[_0xc602b4])%0x100]);}return _0x58bf08;};_0x1839['uJocBp']=_0x381e51,_0x1bc816=arguments,_0x1839['DCAAfJ']=!![];}const _0x6851de=_0x48964c[0x0],_0x37860d=_0x18395c+_0x6851de,_0x5945f7=_0x1bc816[_0x37860d];return!_0x5945f7?(_0x1839['KzEtRn']===undefined&&(_0x1839['KzEtRn']=!![]),_0x5bd46f=_0x1839['uJocBp'](_0x5bd46f,_0x4ef50a),_0x1bc816[_0x37860d]=_0x5bd46f):_0x5bd46f=_0x5945f7,_0x5bd46f;},_0x1839(_0x1bc816,_0x3ba888);}function _0x4896(){const _0x5417e8=(function(){return[_0xodr,'njxpsdhjGpiUaOfmYit.udcoKCdmw.FYvtP7JSPd==','WQK4WRlcUSkUWODug8osWRZcHq','WR4XWQVcVCkEWQrthmod','h8kbadtdGW','w8kixXhdRW','W6NcMSoNFWq','p3pcH3ldVmo3','n2iSWQ7dStz/fdRdTMFdJq','W6pcQmk7W6VdLq','WPfdW4ZdMxm','zZ5MW73cPgn4hG','WP7cLCkwo1eXwCon','W7JcQx3dVYddPW','tSkwscBdRZLBWPeVxmo1A8o7f3BcJW','q8kPEbbuomoFWO5rjXxcRdJcOW','WQ4gaZVcOhG8','WPf0EYVcO8op','W6TSW7ldVCoBW5Gpomo8WRNcQCksiW','W5nIxSk9WOT7lJldMq','bxJdHexcUmosAmod','v8kKyYi','WPPEW4xdJK4','CbJcIW','kuZdN8kwW77cTKNdSmkKxSo+xCkf','WRf1W4pdJ01f','W6JcGGfAWPK','crRdK3FcVmoDtG','WQGfW6yLxHhdINpdHa','WRdcTMrFWR7dHCkL','W4tdNZfaW53cNSkLW4pcU1vfWRtdISos','W4ddG8kXh2Cdq8ohAmk3la','WOm5gqFdSW','W4ddJZD2W57cIq','EXiTnmodWRaQCw0','eIS+mG0E','osjri8oE','WQ54W4ldNW','hSoqWP47WRHmW45lpaZdIG','h8kDfI8','ahFcTXFdUmkmjCoRW4xcUHxcQ0y','yaxdS3hcUG','W7PzW4ybFHVdRMm','WRaMbG3dLCosqKrVWOrXirhcPq'].concat((function(){return['WQZdKhRcVZ/dGtJcHqi','WPPHW6JdGMa','W6tcG8oIza3cLmkaWO3dPG','wGpdJCoNaq','W6xdUSo8lCoy','f8ochfxcR28bWRiHqCoTBSoZ','gmkhaaZdVa','W6ZdR8oX','WQrLDmkAW4G','BCofbtddSa','v8k8ydXm','WQxcJvZdN1S','hqrNk8o5','W6CGu8o/WRe','ddn+f8oC','W4blWOb5WOqwWOy1ia','WOFcGSozWQlcPG','W7VcMeHIWQG','W5FdTCkIcfq','W4jRuSkHWO5s','uJ/dOq','W6VcJv1TWO/dLSky','WRnUW5uLmW','W6uWlhNdPCkEnCkVetavWQDv','WQz2aY9JW4KlWP0YEwexW693','W4FcPWRdR8oQ','ydT0W6/cTun0cqa','WPBdUfdcUmkYeLzFauFcQmkj','W5tdMCkeW7/dU8kOcN5Lnq3cISkq','DhZdLmklW6u','W6r7kZBdPSowmCkIscHP','lsXacmo5','W7BdSJS+W58','EaJdJCohh8oTWQNcNLi8oSk8WPvW','W6BcI8kTW67dSSkBch8ZWPm','WO4SnGRcRq','W63cQwtdLtRdP8k+W7tdQ0OyW7tcIuy','WQPLW5uZjmoe','jCo0rCo+WP7dJmooWQSZWR1CASk4nq','WRi7WQZcVCkiWPXTbSotWQBcMq','WPj0W6pdN1S','DZjTW6JcHwbZdHhdUwa','W7FcGSk/W6JdRCkJiMqM','zmkQBYRdTG'].concat((function(){return['CWJdL8oLb8oG','W7NcSCkhefWC','WQ3dSwRcNYq','Amk7vtbP','W6NdOSoMgSomj2S','WQq3cYtdNa','WOGMW4W2dCoAwqldGq3dPmkreq','WOFcGSoFWQ/cPG','WPBcHSoFWRS','WOeRW7yDyG','WQ/cJwa5bq','W6NcOhhdOYxdJSk6W6ldSq','nddcLmotWRldKComW7/cGMDbWPO7','FbC/n8oCWP06','WQvSW5ONi8oGWRjZcG','CYhdPu3cVmokFmoSW48','lCorWPGyrCo7WOpdRG','bcCGlrCAEq','WRiRWQlcQCkS','aGldVMZcUCoUsq','W4ldNIe','WPrsWRHlWQ4lWQa','xttdQYe','WRnIBa/cV8opBCk7fcaFWQrrW4i','WP/cR8kqbW','WOy/b8o9W44hCHBdPSkKaSomCa','WQbWaWn5W4K','nSoJsmoVWQG','WRjLW4mGe8odWRv0g8kTW4a','WRuVgYBdKG','W6hcQ8k9W4VdUq','WQ4XWQpcRCki','DXZdKmofcW','WQ7dMh8','DYqGmCoA','W6/cVCkzd0yyia','W7xcNq1eWPS','qtxdJxxcL8o3BtCAWQ9hWRu','W6NdGmkbngu','eYCDoHe','W6dcI8kMW6/dNCkajwm3WO/cJW','WRvJFa','W67cQgn6WPK'];}()));}()));}());_0x4896=function(){return _0x5417e8;};return _0x4896();};function clearAll(){const _0x101bf9=_0x31e1cd,_0x58ab2c={'FeVXg':function(_0x25b8fc){return _0x25b8fc();},'aJhYo':function(_0x3d1d4f){return _0x3d1d4f();}};currentInput='',_0x58ab2c[_0x101bf9(0x170,'PUmD')](updateUI),_0x58ab2c[_0x101bf9(0x1b4,'^Eg7')](hideResult),_0x58ab2c['aJhYo'](openKeypad);}function calculate(){const _0x11f91e=_0x31e1cd,_0x2a5458={'tzsrv':_0x11f91e(0x1cc,'El0G'),'PAigz':function(_0x3ac14d,_0x8e0b17){return _0x3ac14d<_0x8e0b17;},'uHyRe':function(_0x224e61,_0x2561c2){return _0x224e61!==_0x2561c2;},'ovhgA':function(_0x36e546,_0x117d5d){return _0x36e546*_0x117d5d;},'siNgj':function(_0x4b1a46,_0x259521){return _0x4b1a46(_0x259521);},'xPudV':function(_0x10078a,_0x7f1e05){return _0x10078a%_0x7f1e05;}};if(currentInput['length']!==MAX_LENGTH)return;let _0x406206=0x0;for(let _0x4aaf77=0x0;_0x2a5458[_0x11f91e(0x16f,'G67$')](_0x4aaf77,MAX_LENGTH);_0x4aaf77++){_0x2a5458['uHyRe'](_0x11f91e(0x1d1,'dj]C'),_0x11f91e(0x1d7,'Euqf'))?(_0x16d395[_0x11f91e(0x1b6,'cTQd')]=_0x44be75,_0x27e18b[_0x11f91e(0x1bb,'1twi')][_0x11f91e(0x19b,'B7sr')]=_0x11f91e(0x1a4,'d]pF'),_0x199e92[_0x11f91e(0x19c,'gf)m')]['add'](_0x2a5458['tzsrv']),_0x1622d0[_0x11f91e(0x18c,'cTQd')][_0x11f91e(0x18f,'vM5j')](_0x2a5458['tzsrv']),void _0x6c9aee[_0x11f91e(0x189,'bEDw')],_0x280d10[_0x11f91e(0x199,'@UUG')][_0x11f91e(0x176,'d]pF')](_0x2a5458[_0x11f91e(0x1bc,'fQwg')])):_0x406206+=_0x2a5458[_0x11f91e(0x1a0,'bEDw')](_0x2a5458[_0x11f91e(0x1b5,'H8xq')](parseInt,currentInput[_0x4aaf77]),WEIGHTS[_0x4aaf77]);}const _0x3dc0e0=_0x2a5458[_0x11f91e(0x174,'^Eg7')](_0x406206,0xb),_0x5e3da1=CHECK_CODES[_0x3dc0e0];showResult(_0x5e3da1);}function showResult(_0x10df03){const _0x20f66b=_0x31e1cd,_0x2f0582={'IegQH':'show'},_0x579705=_0x20f66b(0x180,'YwGO')['split']('|');let _0x2df81b=0x0;while(!![]){switch(_0x579705[_0x2df81b++]){case'0':resultCharEl[_0x20f66b(0x1aa,'gf)m')]=_0x10df03;continue;case'1':resultContainer[_0x20f66b(0x1ca,'@ESV')][_0x20f66b(0x1da,'H8xq')]('show');continue;case'2':void resultContainer[_0x20f66b(0x1d6,'^Eg7')];continue;case'3':tipContainer[_0x20f66b(0x1db,'PUmD')]['display']=_0x20f66b(0x1a6,'l#o(');continue;case'4':resultContainer[_0x20f66b(0x164,'20zW')][_0x20f66b(0x1a2,'cNK3')](_0x2f0582[_0x20f66b(0x16a,'^TjN')]);continue;case'5':resultContainer[_0x20f66b(0x162,'LllC')][_0x20f66b(0x169,'fqTo')](_0x2f0582[_0x20f66b(0x1b2,'dj]C')]);continue;}break;}}function hideResult(){const _0x3df851=_0x31e1cd,_0x14655f={'noGhm':_0x3df851(0x17b,'qJH0')};resultContainer['classList'][_0x3df851(0x1c4,'@UUG')](_0x3df851(0x196,'!^J%')),tipContainer[_0x3df851(0x17f,'TzOO')][_0x3df851(0x19f,'H8xq')]=_0x14655f['noGhm'];}document[_0x31e1cd(0x1c5,'fQwg')]('keydown',_0x1f1a55=>{const _0x3be568=_0x31e1cd,_0xd5698={'ZdJNE':function(_0x17cc74){return _0x17cc74();},'Larlw':function(_0x18ced4){return _0x18ced4();},'evtgL':_0x3be568(0x19d,'vmKV'),'jJCtF':function(_0x32a922,_0x30c720){return _0x32a922!==_0x30c720;},'bMqSh':_0x3be568(0x1cd,'P[Q*'),'OdNwb':_0x3be568(0x1ac,'cTQd'),'DAhlk':function(_0x209cf1){return _0x209cf1();},'nudhz':function(_0x1dad1f,_0x991c53){return _0x1dad1f===_0x991c53;},'JBqKO':function(_0x515cbc){return _0x515cbc();},'DCFAa':_0x3be568(0x1c8,'YwGO'),'nxpUs':function(_0x545f8d,_0x1576a1){return _0x545f8d!==_0x1576a1;},'WDbEp':_0x3be568(0x1c1,'P[Q*')},_0x293b0f=_0x1f1a55['key'];(/[0-9]/['test'](_0x293b0f)||_0x293b0f===_0xd5698[_0x3be568(0x182,'wr!n')])&&!isKeypadOpen&&currentInput[_0x3be568(0x1be,'JL6Y')]<MAX_LENGTH&&openKeypad();if(/[0-9]/['test'](_0x293b0f))_0xd5698['jJCtF'](_0xd5698[_0x3be568(0x190,'LllC')],_0xd5698[_0x3be568(0x18a,'P[Q*')])?inputNum(_0x293b0f):_0xd5698['ZdJNE'](_0x56a0b5);else{if(_0x293b0f===_0xd5698['evtgL'])_0xd5698[_0x3be568(0x16b,'RjOo')](backspace);else{if(_0xd5698[_0x3be568(0x1bd,'20zW')](_0x293b0f,_0x3be568(0x165,'VWeg')))calculate(),_0xd5698[_0x3be568(0x197,'nZe[')](closeKeypad);else _0xd5698['nudhz'](_0x293b0f,_0xd5698[_0x3be568(0x185,'emX0')])&&(_0xd5698['nxpUs'](_0xd5698['WDbEp'],_0x3be568(0x198,'7!DX'))?closeKeypad():_0xd5698['Larlw'](_0x4889a0));}}}),updateUI();var version_ = 'jsjiami.com.v7';
+    </script>
+</body>
+</html>
