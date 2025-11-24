@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>抢金币大作战</title>
+    <style>
+        :root {
+            /* --- 核心卡通配色 (Cartoon Flat) --- */
+            --border-color: #000000;  /* 纯黑边框，极致对比 */
+            --border-width: 3px;      /* 粗线条 */
+            --shadow-offset: 5px;     /* 统一阴影偏移量 */
+            
+            /* 背景色系 */
+            --page-bg: #ffefc1;       /* 页面亮黄 */
+            --panel-bg: #ffffff;      /* 面板纯白 */
+            --board-bg: #a0e6ff;      /* 游戏区亮蓝 */
+            --history-bg: #ffeaa7;    /* 战绩区暖黄 */
+
+            /* 角色色系 */
+            --player-main: #00e676;   /* 荧光绿 */
+            --ai-main: #ff5252;       /* 亮红 */
+            --gold-main: #ffd700;     /* 金币黄 */
+            --action-btn: #2979ff;    /* 按钮亮蓝 */
+            
+            /* 文本 */
+            --text-main: #000000;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background-color: var(--page-bg);
+            /* 波点背景 */
+            background-image: radial-gradient(var(--border-color) 15%, transparent 16%);
+            background-size: 25px 25px;
+            background-opacity: 0.1; /* 注意：CSS标准不支持background-opacity，这里用rgba模拟 */
+            /* 修正背景为淡色波点 */
+            background-image: radial-gradient(rgba(0,0,0,0.1) 15%, transparent 16%);
+            
+            color: var(--text-main);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+            padding: 15px;
+            gap: 20px;
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+
+        /* --- 左侧主区域 --- */
+        .left-panel {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: 100%;
+        }
+
+        /* 1. 顶部状态板 (Hard Shadow) */
+        .status-board {
+            background: var(--panel-bg);
+            border: var(--border-width) solid var(--border-color);
+            border-radius: 16px;
+            padding: 0; /* 内部无间隙，紧凑 */
+            display: flex;
+            gap: 0; /* 紧贴 */
+            flex-shrink: 0;
+            /* 硬阴影 */
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--border-color);
+            height: 60px;
+            overflow: hidden; /* 保证圆角 */
+        }
+
+        .status-block {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 1.5em;
+            font-weight: 900;
+            color: #999; 
+            background: #f0f0f0;
+            transition: all 0.1s;
+            /* 中间加一条分割线 */
+            border-right: var(--border-width) solid var(--border-color);
+        }
+        .status-block:last-child {
+            border-right: none;
+        }
+
+        /* 激活状态：鲜艳背景 + 黑色文字 */
+        .status-block.active {
+            color: #000;
+            background: #fff;
+        }
+        
+        .status-block.p-me.active { background: var(--player-main); }
+        .status-block.p-ai.active { background: var(--ai-main); }
+        .history-view .status-block.p-ai { background: #ffcfcf; color: #000; }
+        .history-view .status-block.p-me { background: #b9ffd7; color: #000; }
+
+        .pointer-icon { display: none; }
+        .status-block.active .pointer-icon { 
+            font-size: 3rem;
+            display: inline-block; 
+            animation: poke 0.6s infinite alternate;
+            filter: drop-shadow(2px 2px 0 #000); /* 手指也有阴影 */
+        }
+        @keyframes poke { from { transform: translateX(-5px); } to { transform: translateX(0); } }
+
+        /* 2. 中间：分割容器 */
+        .split-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-height: 0; 
+        }
+
+        /* 通用卡片样式 (Hard Shadow) */
+        .cartoon-card {
+            border: var(--border-width) solid var(--border-color);
+            border-radius: 16px;
+            position: relative;
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--border-color);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+        }
+
+        .section-header {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-bottom: var(--border-width) solid var(--border-color);
+            font-weight: 900;
+            font-size: 1em;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* 3. 数字对战区 */
+        .game-board-wrapper {
+            flex: 1;
+            background: var(--board-bg);
+            min-height: 0;
+            transition: background 0.3s;
+            /* 修正背景混合 */
+            background: var(--board-bg); /* 简单纯色背景更清晰 */
+        }
+        
+        .game-board-wrapper.bomb-mode-bg {
+            background: #636e72;
+        }
+
+        .game-board {
+            flex: 1 1 auto;
+            overflow-y: visible;
+            padding: 60px 40px 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(65px, 1fr));
+            grid-auto-rows: 75px;
+            gap: 50px 15px;
+        }
+
+        /* 4. 战绩记录 */
+        .history-wrapper {
+            flex: 1;
+            background: var(--history-bg);
+        }
+
+        .history-list {
+            list-style: none;
+            padding: 15px;
+            margin: 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .history-item {
+            background: #fff;
+            border: var(--border-width) solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            /* 列表项硬阴影 */
+            box-shadow: 3px 3px 0px rgba(0,0,0,0.2);
+        }
+
+        .history-squares {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            flex: 1;
+        }
+        .sq-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            border: 2px dashed #fff;
+            border-radius: 8px;
+            padding: 8px;
+        }
+        .sq-group.highlight { border-color: red; }
+
+        /* 战绩小方块 */
+        .sq-item {
+            width: 60px;   
+            height: 60px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            background-color: #eee;
+            color: #999;
+            font-size: 24px; 
+            font-weight: 900;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .sq-p { 
+            background-color: var(--player-main); 
+            color: #000; 
+        }
+        .sq-ai { 
+            background-color: #ffcfcf; 
+            color: #000; 
+        }
+
+        .sq-critical { border-color: #ff9800;border-width: 3px;}
+        .image-overlay {
+            position: fixed;
+            inset: 0;
+            background: #ffffff;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .image-overlay.show { display: flex; }
+        .image-overlay img {
+            max-width: 100vw;
+            max-height: 100vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+        }
+        /* --- 右侧控制栏 --- */
+        .right-panel {
+            flex: 1;
+            min-width: 230px;
+            max-width: 340px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .control-panel {
+            flex: 1;
+            background: #f0f0f0;
+            border: var(--border-width) solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            text-align: center;
+            margin: 10px 0 30px 0;
+            color: var(--text-main);
+            /* 文字硬描边 */
+            text-shadow: 2px 2px 0px #fff, 4px 4px 0px rgba(0,0,0,0.2);
+            line-height: 1.1;
+            font-weight: 900;
+            transform: rotate(-2deg); /* 微微倾斜增加动感 */
+        }
+
+        /* 按钮通用样式 (3D按压感) */
+        button {
+            width: 100%;
+            padding: 15px;
+            font-family: inherit;
+            font-weight: 900;
+            font-size: 1.2em;
+            border: var(--border-width) solid var(--border-color);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.1s;
+            text-transform: uppercase;
+            position: relative;
+            outline: none;
+        }
+
+        button:active {
+            transform: translate(4px, 4px);
+            box-shadow: none !important;
+        }
+
+        /* 抢数按钮 */
+        .btn-action {
+            background-color: var(--player-main);
+            box-shadow: 4px 4px 0px var(--border-color);
+            margin-bottom: 1.5rem;
+        }
+        .btn-action:hover { filter: brightness(1.1); }
+        .btn-action:disabled {
+            background-color: #b2bec3;
+            color: #636e72;
+            box-shadow: 2px 2px 0px var(--border-color);
+            cursor: not-allowed;
+            transform: translate(2px, 2px);
+        }
+
+        .btn-start-ai {
+            background-color: var(--ai-main);
+            box-shadow: 4px 4px 0px var(--border-color);
+            margin-bottom: 10px;
+        }
+
+        /* 重置按钮 */
+        .btn-replay {
+            background-color: #fff3b5;
+            color: #000;
+            box-shadow: 4px 4px 0px var(--border-color);
+            font-size: 1.3em;
+        }
+        
+        /* 小按钮容器 */
+        .sub-controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 5px;
+        }
+
+        .btn-secondary {
+            background-color: #fff;
+            color: #000;
+            box-shadow: 4px 4px 0px var(--border-color);
+            font-size: 1em;
+            padding: 12px;
+        }
+        .btn-secondary.active {
+            background-color: #000;
+            color: #fff;
+            box-shadow: none;
+            transform: translate(4px, 4px);
+        }
+
+        .section-header .btn-secondary {
+            width: auto;
+            padding: 2px 5px;
+            box-shadow: 1px 1px 0px var(--border-color);
+        }
+        .section-header .header-actions { display: flex; gap: 24px; }
+
+        /* --- 游戏方块 (硬朗风格) --- */
+        .block {
+            background-color: #fff;
+            border: var(--border-width) solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            font-weight: 900;
+            color: #ccc;
+            position: relative;
+            box-shadow: 5px 5px 0px rgba(0,0,0,0.15); 
+            transition: transform 0.1s, background-color 0.2s;
+        }
+
+        /* 目标方块 */
+        .block.target-block {
+            background-color: var(--gold-main);
+            color: #000;
+            border-color: #000;
+        }
+        .block.target-block::after,.block.target-bomb::after {
+            content: url('data:image/svg+xml,<svg t="1763987548080" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="57459" width="40" height="40"><path d="M0 512c0 283.306667 228.693333 512 512 512s512-228.693333 512-512S795.306667 0 512 0 0 228.693333 0 512z" fill="%23FBE945" p-id="57460"></path><path d="M119.466667 512c0 139.946667 75.093333 269.653333 194.56 337.92s269.653333 71.68 392.533333 0 194.56-197.973333 194.56-337.92c0-215.04-174.08-392.533333-392.533333-392.533333S119.466667 296.96 119.466667 512z" fill="%23FBB11B" p-id="57461"></path><path d="M904.533333 512c0-85.333333-27.306667-167.253333-78.506666-232.106667C764.586667 232.106667 679.253333 204.8 597.333333 204.8 378.88 204.8 204.8 378.88 204.8 597.333333c0 85.333333 27.306667 167.253333 78.506667 232.106667 61.44 47.786667 146.773333 78.506667 232.106666 78.506667 215.04-3.413333 389.12-177.493333 389.12-395.946667z" fill="%23FDC72F" p-id="57462"></path><path d="M552.96 286.72l85.333333 170.666667 180.906667 34.133333-126.293333 139.946667 20.48 187.733333-160.426667-81.92-167.253333 81.92 27.306666-187.733333-126.293333-139.946667 177.493333-34.133333 88.746667-170.666667" fill="%23FBB11B" p-id="57463"></path><path d="M512 245.76l92.16 167.253333 174.08 37.546667-126.293333 139.946667 20.48 187.733333-160.426667-85.333333-160.426667 85.333333 20.48-187.733333-126.293333-139.946667 174.08-37.546667L512 245.76" fill="%23FBE945" p-id="57464"></path></svg>');
+            position: absolute;
+            top: -50px; right: -16px;
+            font-size: 4rem;
+            filter: drop-shadow(3px 3px 0px #000); /* 硬阴影图标 */
+            z-index: 5;
+            animation: float 2s infinite ease-in-out;
+        }
+
+        .block.target-bomb {
+            background-color: #2d3436;
+            color: #fff;
+        }
+        .block.target-bomb::after {
+            content: '💣';
+        }
+
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+        /* 占领样式 */
+        .block.taken-player {
+            background-color: var(--player-main);
+            color: #000;
+            box-shadow: none;
+            transform: translate(5px, 5px);
+            border-color: #000;
+        }
+
+        .block.taken-ai {
+            background-color: var(--ai-main);
+            color: #000;
+            box-shadow: none;
+            transform: translate(5px, 5px);
+            border-color: #000;
+        }
+
+        /* 侦探模式星星 */
+        .detective-mode .block.critical {
+            border: 4px solid var(--gold-main);
+        }
+        .detective-mode .block.critical::before {
+            content:url('data:image/svg+xml,<svg t="1763988811168" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="69106" width="32" height="32"><path d="M1020.061538 397.784615c-7.876923-19.692308-23.630769-35.446154-39.384615-35.446153l-291.446154-55.138462-129.969231-275.692308C547.446154 11.815385 531.692308 0 512 0s-35.446154 11.815385-47.261538 31.507692l-129.969231 275.692308-291.446154 55.138462c-19.692308 3.938462-35.446154 15.753846-39.384615 35.446153-7.876923 19.692308 0 39.384615 11.815384 55.138462l212.676923 204.8-55.138461 299.323077c-3.938462 19.692308 3.938462 39.384615 19.692307 51.2 15.753846 15.753846 47.261538 7.876923 55.138462 3.938461l267.815385-137.846153 263.876923 137.846153c7.876923 3.938462 35.446154 11.815385 55.138461-3.938461 15.753846-11.815385 23.630769-31.507692 19.692308-51.2l-55.138462-299.323077 212.676923-208.738462c11.815385-7.876923 15.753846-31.507692 7.876923-51.2z" fill="%23FFBF20" p-id="69107"></path></svg>');
+            position: absolute;
+            top: -25px; right: -15px;
+            color: var(--gold-main);
+            font-size: 2rem;
+            filter: drop-shadow(2px 2px 0px #000);
+            z-index: 10;
+        }
+
+        /* --- 弹窗样式 --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7); /* 加深遮罩 */
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+            backdrop-filter: none; /* 移除模糊，保持硬朗 */
+        }
+        .modal-box {
+            background: #fff;
+            padding: 30px;
+            border: var(--border-width) solid var(--border-color);
+            border-radius: 20px;
+            box-shadow: 10px 10px 0px #000; /* 纯黑硬阴影 */
+        }
+        .modal-box h2 {
+            margin-top: 0;
+            border-bottom: 3px solid #000;
+            padding-bottom: 15px;
+            text-align: center;
+            font-weight: 900;
+        }
+        .setting-grid {
+            display: grid;
+            grid-template-columns: 90px 1fr;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+        .setting-grid input, .setting-grid select {
+            padding: 10px;
+            border: 2px solid #000;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 900;
+            color: #000;
+            background: #eee;
+        }
+
+        /* 特效 */
+        .rain-container {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+        }
+        .rain-drop {
+            position: absolute;
+            top: -50px;
+            animation: fall linear forwards;
+            font-size: 2.5em;
+            filter: drop-shadow(2px 2px 0 #000); /* 特效也要硬阴影 */
+        }
+        @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
+
+
+        @media (max-width: 800px), (max-height: 600px) {
+            body { padding: 8px; gap: 10px; }
+            .status-board { height: 46px; }
+            .status-block { font-size: 1.2em; }
+            .split-container { gap: 12px; }
+            .cartoon-card { border-radius: 12px; }
+            .right-panel { max-width: 280px; }
+            .control-panel { padding: 12px; gap: 12px; }
+            h1 { font-size: 1.6rem; margin: 6px 0 16px 0; }
+            .section-header { padding: 6px 10px; }
+            button { padding: 10px; font-size: 1em; }
+            .btn-action { margin-bottom: 8px; }
+            .game-board { padding: 20px; grid-template-columns: repeat(auto-fill, minmax(55px, 1fr)); grid-auto-rows: 60px; gap: 12px; overflow-y: auto; }
+            .block { font-size: 1.4em; }
+            .history-list { padding: 10px; }
+        }
+        @media (min-width: 1205px) {
+            .game-board { grid-template-columns: repeat(10, minmax(65px, 1fr)); }
+            .block{font-size: 3rem;}
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 左侧：演示区 + 战绩 -->
+    <div class="left-panel">
+        
+        <!-- 1. 顶部状态板 (恢复外框，内部平分) -->
+        <div class="status-board">
+            <div id="status-player" class="status-block p-me active" onclick="quickSetStarter('player')">
+                <svg t="1763987205110" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="43007" width="32" height="32"><path d="M753.99168 138.11712c-41.61536 0-74.9568 33.34144-74.9568 74.9568 0 40.05888 30.80192 72.33536 69.79584 74.87488 3.2768-0.28672 6.63552-0.28672 9.87136 0a75.3664 75.3664 0 0 0 70.2464-74.9568 74.9568 74.9568 0 0 0-74.9568-74.87488z m-136.3968 74.9568a136.11008 136.11008 0 0 1 136.3968-136.3968 136.3968 136.3968 0 0 1 136.3968 136.3968v0.2048a136.76544 136.76544 0 0 1-131.60448 136.15104 30.72 30.72 0 0 1-4.99712-0.2048 30.67904 30.67904 0 0 1-4.99712 0.2048 136.11008 136.11008 0 0 1-131.19488-136.3968zM708.93568 388.01408c62.2592-10.89536 133.28384-0.49152 184.89344 33.75104h0.08192c35.2256 23.552 56.97536 57.63072 56.97536 95.6416 0 38.01088-21.7088 72.0896-57.01632 95.60064-51.2 34.28352-121.36448 44.6464-183.5008 34.24256a30.72 30.72 0 1 1 10.19904-60.6208c50.09408 8.43776 103.6288-0.86016 139.18208-24.69888l0.08192-0.04096c22.44608-14.99136 29.61408-31.70304 29.61408-44.48256 0-12.77952-7.168-29.4912-29.61408-44.48256-36.0448-23.87968-90.35776-33.13664-140.288-24.3712a30.72 30.72 0 1 1-10.60864-60.53888zM132.17792 213.07392a136.3968 136.3968 0 0 1 136.3968-136.3968 136.11008 136.11008 0 0 1 136.3968 136.3968 136.11008 136.11008 0 0 1-131.15392 136.3968 30.72 30.72 0 0 1-5.03808-0.24576 30.72 30.72 0 0 1-4.99712 0.2048 136.76544 136.76544 0 0 1-131.60448-136.15104v-0.2048z m61.44-0.12288a75.3664 75.3664 0 0 0 70.2464 74.9568c3.2768-0.24576 6.59456-0.24576 9.87136 0a74.67008 74.67008 0 0 0 69.79584-74.83392c0-41.61536-33.34144-74.9568-74.9568-74.9568a74.9568 74.9568 0 0 0-74.9568 74.83392zM162.73408 472.92416c36.0448-23.87968 90.35776-33.13664 140.288-24.3712a30.72 30.72 0 1 0 10.60864-60.53888c-62.2592-10.89536-133.28384-0.49152-184.89344 33.75104H128.6144c-35.2256 23.552-56.97536 57.63072-56.97536 95.6416 0 37.96992 21.7088 72.0896 56.9344 95.60064 51.28192 34.28352 121.4464 44.6464 183.58272 34.24256a30.72 30.72 0 1 0-10.19904-60.6208c-50.09408 8.43776-103.6288-0.86016-139.18208-24.69888l-0.04096-0.04096c-22.528-14.99136-29.65504-31.70304-29.65504-44.48256 0-12.77952 7.168-29.4912 29.61408-44.48256z" fill="#2c2c2c" opacity=".4" p-id="43008"></path><path d="M508.3136 444.08832c-41.61536 0-74.9568 33.34144-74.9568 74.9568 0 40.05888 30.80192 72.33536 69.79584 74.87488 3.31776-0.28672 6.71744-0.28672 10.0352 0 38.62528-2.21184 69.75488-34.57024 70.08256-74.9568a74.9568 74.9568 0 0 0-74.9568-74.87488z m-136.3968 74.9568a136.15104 136.15104 0 0 1 136.3968-136.3968 136.3968 136.3968 0 0 1 136.3968 136.3968v0.2048c-0.53248 73.48224-58.368 134.06208-131.80928 136.192a31.08864 31.08864 0 0 1-4.79232-0.24576 30.5152 30.5152 0 0 1-4.99712 0.2048 136.11008 136.11008 0 0 1-131.19488-136.3968zM512.16384 690.46272c47.84128 0 97.36192 11.8784 136.06912 37.6832 35.26656 23.552 57.01632 57.63072 57.01632 95.6416 0 38.01088-21.7088 72.0896-57.01632 95.60064-38.87104 25.96864-88.35072 38.01088-136.23296 38.01088s-97.36192-12.04224-136.23296-38.01088c-35.30752-23.552-57.01632-57.63072-57.01632-95.60064 0-38.01088 21.7088-72.0896 57.01632-95.60064l0.08192-0.04096c38.87104-25.76384 88.43264-37.6832 136.31488-37.6832z m-102.35904 88.8832c-22.44608 14.9504-29.61408 31.66208-29.61408 44.4416 0 12.77952 7.168 29.4912 29.65504 44.48256 26.70592 17.85856 63.61088 27.68896 102.15424 27.68896 38.5024 0 75.44832-9.8304 102.11328-27.648v-0.04096c22.528-14.99136 29.65504-31.70304 29.65504-44.48256 0-12.77952-7.12704-29.4912-29.61408-44.48256-26.4192-17.6128-63.32416-27.4432-101.9904-27.4432-38.66624 0-75.69408 9.8304-102.35904 27.4432z" fill="#2c2c2c" p-id="43009"></path></svg> 我们 <span class="pointer-icon">👈</span> 
+            </div>
+            <div id="status-ai" class="status-block p-ai" onclick="quickSetStarter('ai')">
+                <svg t="1763987113982" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="40095" width="32" height="32"><path d="M650.24 647.168c-22.528 0-40.96-18.432-40.96-40.96v-40.96c0-22.528 18.432-40.96 40.96-40.96s40.96 18.432 40.96 40.96v40.96c0 22.528-18.432 40.96-40.96 40.96zM373.76 647.168c-22.528 0-40.96-18.432-40.96-40.96v-40.96c0-22.528 18.432-40.96 40.96-40.96s40.96 18.432 40.96 40.96v40.96c0 22.528-18.432 40.96-40.96 40.96z" fill="#515151" p-id="40096"></path><path d="M776.192 990.208H247.808c-90.112 0-163.84-73.728-163.84-163.84V663.552C83.968 428.032 275.456 235.52 512 235.52s428.032 192.512 428.032 428.032v161.792c0 91.136-72.704 164.864-163.84 164.864zM512 317.44c-191.488 0-346.112 155.648-346.112 346.112v161.792c0 45.056 36.864 81.92 81.92 81.92h529.408c45.056 0 81.92-36.864 81.92-81.92V663.552C858.112 473.088 703.488 317.44 512 317.44z" fill="#515151" p-id="40097"></path><path d="M316.416 354.304c-19.456 11.264-45.056 5.12-56.32-14.336l-92.16-157.696c-11.264-19.456-5.12-45.056 14.336-56.32 19.456-11.264 45.056-5.12 56.32 14.336l92.16 157.696c11.264 19.456 5.12 45.056-14.336 56.32z" fill="#515151" p-id="40098"></path><path d="M129.910107 197.830862a81.92 81.92 0 1 0 141.442855-82.688962 81.92 81.92 0 1 0-141.442855 82.688962Z" fill="#515151" p-id="40099"></path><path d="M718.848 354.304c19.456 11.264 45.056 5.12 56.32-14.336l92.16-157.696c11.264-19.456 5.12-45.056-14.336-56.32-19.456-11.264-45.056-5.12-56.32 14.336l-92.16 157.696c-12.288 19.456-5.12 45.056 14.336 56.32z" fill="#515151" p-id="40100"></path><path d="M792.926561 226.971706a81.92 81.92 0 1 0 82.688963-141.442854 81.92 81.92 0 1 0-82.688963 141.442854Z" fill="#515151" p-id="40101"></path><path d="M593.92 844.8H430.08c-22.528 0-40.96-18.432-40.96-40.96s18.432-40.96 40.96-40.96h163.84c22.528 0 40.96 18.432 40.96 40.96s-18.432 40.96-40.96 40.96z" fill="#515151" p-id="40102"></path><path d="M562.176 190.464c-11.264 0-22.528-5.12-30.72-13.312l-31.744-35.84-22.528 31.744c-7.168 11.264-20.48 17.408-33.792 17.408h-71.68c-22.528 0-40.96-18.432-40.96-40.96s18.432-40.96 40.96-40.96h51.2L462.848 51.2c7.168-10.24 18.432-16.384 30.72-17.408 12.288-1.024 24.576 4.096 32.768 13.312l53.248 60.416 81.92-1.024c22.528 0 40.96 18.432 40.96 40.96s-18.432 40.96-40.96 40.96l-99.328 2.048z" fill="#515151" p-id="40103"></path></svg> AI <span class="pointer-icon">👈</span> 
+            </div>
+        </div>
+
+        <!-- 分割容器 -->
+        <div class="split-container">
+            
+            <!-- 2. 游戏区 (垂直居中，背景独立) -->
+            <div class="cartoon-card game-board-wrapper" id="board-bg">
+                <div class="section-header">
+                    <span id="game-title-text">🎲 抢金币模式</span>
+                    <div class="header-actions">
+                        <button class="btn-secondary" onclick="adjustTarget(-1)">－</button>
+                        <button class="btn-secondary" onclick="adjustTarget(1)">＋</button>
+                        <button class="btn-secondary" id="btn-mode-header" onclick="toggleMode()">🔍 侦探</button>
+                    </div>
+
+                </div>
+                <div class="game-board" id="game-board">
+                    <!-- 动态生成 -->
+                </div>
+            </div>
+
+            <!-- 战绩榜 (填充剩余) -->
+            <div class="cartoon-card history-wrapper" id="history-section" style="display:none;">
+                <div class="section-header" style="border-bottom: 3px solid #000;">
+                    <span onclick="showBothViews()">📜 对战记录</span>
+                    <div class="header-actions">
+                        <button class="btn-secondary" id="btn-clue1" onclick="toggleHistoryClue1()">线索1</button>
+                        <button class="btn-secondary" id="btn-clue2" onclick="toggleHistoryClue2()">线索2</button>
+                    </div>
+                </div>
+                <ul class="history-list" id="history-list">
+                    <li style="text-align:center; color:#999; padding:20px; font-weight:900;">暂无记录...快开始吧！</li>
+                </ul>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 右侧：控制台 -->
+    <div class="right-panel">
+        <div class="control-panel">
+            <h1 id="main-title" onclick="toggleFullscreen()"><svg t="1763987548080" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="57459" width="48" height="48"><path d="M0 512c0 283.306667 228.693333 512 512 512s512-228.693333 512-512S795.306667 0 512 0 0 228.693333 0 512z" fill="#FBE945" p-id="57460"></path><path d="M119.466667 512c0 139.946667 75.093333 269.653333 194.56 337.92s269.653333 71.68 392.533333 0 194.56-197.973333 194.56-337.92c0-215.04-174.08-392.533333-392.533333-392.533333S119.466667 296.96 119.466667 512z" fill="#FBB11B" p-id="57461"></path><path d="M904.533333 512c0-85.333333-27.306667-167.253333-78.506666-232.106667C764.586667 232.106667 679.253333 204.8 597.333333 204.8 378.88 204.8 204.8 378.88 204.8 597.333333c0 85.333333 27.306667 167.253333 78.506667 232.106667 61.44 47.786667 146.773333 78.506667 232.106666 78.506667 215.04-3.413333 389.12-177.493333 389.12-395.946667z" fill="#FDC72F" p-id="57462"></path><path d="M552.96 286.72l85.333333 170.666667 180.906667 34.133333-126.293333 139.946667 20.48 187.733333-160.426667-81.92-167.253333 81.92 27.306666-187.733333-126.293333-139.946667 177.493333-34.133333 88.746667-170.666667" fill="#FBB11B" p-id="57463"></path><path d="M512 245.76l92.16 167.253333 174.08 37.546667-126.293333 139.946667 20.48 187.733333-160.426667-85.333333-160.426667 85.333333 20.48-187.733333-126.293333-139.946667 174.08-37.546667L512 245.76" fill="#FBE945" p-id="57464"></path></svg> 抢金币<br/>大作战</h1>
+            
+            <!-- 操作按钮 -->
+            <div id="action-buttons-container" style="margin-top: auto;">
+                <!-- 动态生成 -->
+            </div>
+
+            <!-- 底部功能区 -->
+            <button class="btn-replay" onclick="resetGame()">再来一局</button>
+
+            <div class="sub-controls">
+                <button class="btn-secondary" style="flex:1" onclick="toggleHistory()"><svg t="1763989685373" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="74024" width="18" height="18"><path d="M874.3 277L622.6 25.3a56.998 56.998 0 0 0-40.3-16.7H320.9c-31.5 0-57 25.5-57 57v798.2c0 31.5 25.5 57 57 57H834c31.5 0 57-25.5 57-57V317.3c0-15.1-6-29.6-16.7-40.3z" fill="#F2B149" p-id="74025"></path><path d="M819.6 271.9L625 77.2c-16.1-16.2-37.6-25.1-60.5-25.1h-347c-47.2 0-85.5 38.4-85.5 85.5v798.2c0 47.2 38.4 85.5 85.5 85.5h541.6c47.2 0 85.5-38.4 85.5-85.5V332.4c0.1-22.9-8.8-44.4-25-60.5zM577.4 112.7c2.6 1.3 5.1 2.7 7.2 4.8l191.2 191.2H605.9c-15.7 0-28.5-12.8-28.5-28.5V112.7z m210.3 823.2c0 15.7-12.8 28.5-28.5 28.5H217.5c-15.7 0-28.5-12.8-28.5-28.5V137.7c0-15.7 12.8-28.5 28.5-28.5h302.9v171c0 47.2 38.4 85.5 85.5 85.5h181.7v570.2z" fill="#444444" p-id="74026"></path><path d="M288.8 508.3c0 15.7 12.8 28.5 28.5 28.5h342.1c15.7 0 28.5-12.8 28.5-28.5s-12.8-28.5-28.5-28.5H317.3c-15.8 0-28.5 12.8-28.5 28.5zM659.4 622.3H317.3c-15.7 0-28.5 12.8-28.5 28.5s12.8 28.5 28.5 28.5h342.1c15.7 0 28.5-12.8 28.5-28.5s-12.8-28.5-28.5-28.5zM659.4 764.9H317.3c-15.7 0-28.5 12.8-28.5 28.5s12.8 28.5 28.5 28.5h342.1c15.7 0 28.5-12.8 28.5-28.5s-12.8-28.5-28.5-28.5z" fill="#444444" p-id="74027"></path></svg> 记录</button>
+                <button class="btn-secondary" style="flex:1" onclick="openSettings()"><svg t="1763989779882" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="81549" width="18" height="18"><path d="M920 655.2l-77.8-44.9c5.4-23.2 8.4-47.4 8.4-72.3s-3-49.1-8.4-72.3l77.8-44.9c5.7-3.3 7.7-10.6 4.4-16.3l-80-138.6c-3.3-5.7-10.6-7.7-16.3-4.4l-77.8 44.9c-35.2-33-77.9-58.1-125.2-72.4v-89.8c0-6.6-5.4-11.9-11.9-11.9H453c-6.6 0-11.9 5.4-11.9 11.9V234c-47.4 14.3-90.1 39.4-125.2 72.4l-77.9-45c-5.7-3.3-13-1.3-16.3 4.4l-80 138.6c-3.3 5.7-1.3 13 4.4 16.3l77.8 44.9c-5.4 23.2-8.4 47.4-8.4 72.3s3 49.1 8.4 72.3l-77.9 45c-5.7 3.3-7.7 10.6-4.4 16.3l80 138.6c3.3 5.7 10.6 7.7 16.3 4.4l77.8-44.9c35.2 33 77.9 58.1 125.2 72.4v89.8c0 6.6 5.4 11.9 11.9 11.9h160c6.6 0 11.9-5.4 11.9-11.9V842c47.4-14.3 90.1-39.4 125.2-72.4l77.8 44.9c5.7 3.3 13 1.3 16.3-4.4l80-138.6c3.6-5.7 1.7-13.1-4-16.3z" fill="#FFE4B3" p-id="81550"></path><path d="M577.2 925.7h-160c-16.5 0-29.9-13.4-29.9-29.9V819c-40-13.9-77.5-35.6-109.6-63.4L211.1 794c-4.5 2.6-9.7 4-14.9 4-10.7 0-20.6-5.7-25.9-14.9l-80-138.6c-4-6.9-5-14.9-3-22.6 2.1-7.7 7-14.2 13.9-18.1l66.5-38.4c-4-21-6.1-42.2-6.1-63.3s2-42.4 6.1-63.3l-66.5-38.4c-6.9-4-11.8-10.4-13.9-18.1-2.1-7.7-1-15.8 3-22.6l80-138.6c5.3-9.2 15.2-14.9 25.9-14.9 5.2 0 10.4 1.4 14.9 4l66.6 38.4c32.2-27.9 69.7-49.5 109.6-63.4v-76.8c0-16.5 13.4-29.9 29.9-29.9h160c16.5 0 29.9 13.4 29.9 29.9v76.8c40 13.9 77.5 35.6 109.6 63.4l66.6-38.4c4.5-2.6 9.7-4 14.9-4 10.7 0 20.6 5.7 25.9 14.9l80 138.6c4 6.9 5 14.9 3 22.6-2.1 7.7-7 14.1-13.9 18.1l-66.5 38.4c4 21 6.1 42.2 6.1 63.3 0 21.1-2 42.4-6.1 63.3l66.5 38.4c6.9 4 11.8 10.4 13.9 18.1 2.1 7.7 1 15.8-3 22.7l-80 138.6c-5.3 9.2-15.2 14.9-25.9 14.9-5.2 0-10.4-1.4-14.9-4l-66.6-38.4c-32.2 27.9-69.7 49.5-109.6 63.4v76.8c-0.1 16.4-13.5 29.8-29.9 29.8z m-154.1-35.8h148.1V806c0-7.9 5.2-14.9 12.7-17.1 43.7-13.2 84.6-36.8 118.2-68.3 5.8-5.4 14.4-6.4 21.2-2.5l72.7 42 74-128.2-72.6-41.9c-6.8-3.9-10.3-11.9-8.5-19.6 5.2-22.5 7.9-45.5 7.9-68.3s-2.7-45.8-7.9-68.3c-1.8-7.7 1.7-15.6 8.5-19.6l72.6-41.9-74-128.2-72.7 42c-6.8 3.9-15.5 3-21.2-2.5-33.6-31.5-74.4-55.1-118.2-68.3-7.6-2.3-12.7-9.2-12.7-17.1v-83.8H423.1v83.8c0 7.9-5.2 14.9-12.7 17.1-43.7 13.2-84.6 36.8-118.2 68.3-5.8 5.4-14.4 6.4-21.2 2.5l-72.7-42-74 128.2 72.6 41.9c6.8 3.9 10.3 11.9 8.5 19.6-5.2 22.5-7.9 45.5-7.9 68.3s2.7 45.8 7.9 68.3c1.8 7.7-1.7 15.6-8.5 19.6l-72.6 41.9 74 128.2 72.7-42c6.8-3.9 15.5-3 21.2 2.5 33.6 31.5 74.4 55.1 118.2 68.3 7.6 2.3 12.7 9.2 12.7 17.1v83.9z" fill="#EFA716" p-id="81551"></path><path d="M497.2 664.6c-89.6 0-162.5-72.9-162.5-162.5s72.9-162.5 162.5-162.5 162.5 72.9 162.5 162.5-72.9 162.5-162.5 162.5z m0-289.2c-69.8 0-126.7 56.8-126.7 126.7s56.8 126.7 126.7 126.7S623.9 572 623.9 502.1 567 375.4 497.2 375.4z" fill="#EFA716" p-id="81552"></path></svg> 设置</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="image-overlay" class="image-overlay">
+        <img id="image-overlay-img" src="" alt="view" />
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-box">
+            <h2>🔧 游戏设置</h2>
+            <div class="setting-grid">
+                <label>🕹️ 模式</label>
+                <select id="set-mode">
+                    <option value="normal">抢金币 (普通)</option>
+                    <option value="bomb">躲炸弹 (抢到输)</option>
+                </select>
+                <label>🎯 目标数</label>
+                <input type="number" id="set-target" value="9" min="5" max="100">
+                <label>⬇️ 最少抢</label>
+                <input type="number" id="set-min" value="1" disabled style="background:#ddd; color:#888">
+                <label>⬆️ 最多抢</label>
+                <input type="number" id="set-max" value="2" min="2" max="10">
+                <label>🎲 先手</label>
+                <select id="set-starter">
+                    <option value="player">我先手</option>
+                    <option value="ai">AI先手</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-secondary" onclick="closeSettings()">取消</button>
+                <button class="btn-action" style="margin:0; font-size:1em;" onclick="saveSettings()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 核心配置 ---
+        const config = { 
+            target: 9, 
+            minStep: 1, 
+            maxStep: 2, 
+            starter: 'player',
+            mode: 'normal' 
+        };
+        const state = { current: 0, isPlayerTurn: true, gameOver: false, history: [], records: [] };
+        let isDetectiveMode = false;
+        let isHistoryClueStar = false;
+        let isHistoryClueGroup = false;
+
+        window.onload = () => { loadConfig(); initGame(); applyHistoryVisibility(localStorage.getItem('historyVisible') === 'true'); };
+
+        function initGame() {
+            state.current = 0;
+            state.gameOver = false;
+            state.history = [];
+            state.isPlayerTurn = config.starter === 'player';
+            isDetectiveMode = false;
+
+            const titleText = config.mode === 'normal' ? '🎲 抢金币模式' : '💣 躲炸弹模式';
+            document.getElementById('game-title-text').innerText = titleText;
+            const mt = document.getElementById('main-title');
+            if (mt) mt.innerHTML = config.mode === 'normal' ? '<svg t="1763987621395" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="58723" width="40" height="40"><path d="M959.4 635.9c0 18.8-7.2 36.9-20.5 53.8-53.3 68-205.5 117.1-384.9 117.1-179.4 0-331.6-49.2-384.9-117.1-13.3-16.9-20.5-35-20.5-53.8C148.6 541.5 330.2 465 554 465c223.7 0 405.4 76.6 405.4 170.9z m0 0" fill="#FFE05C" p-id="58724"></path><path d="M821.5 635.9c0 12.4-4.7 24.3-13.6 35.5-35.2 44.8-135.7 77.3-254.1 77.3S335 716.3 299.7 671.5c-8.9-11.2-13.6-23.1-13.6-35.5 0-62.3 119.9-112.8 267.7-112.8 147.8-0.1 267.7 50.4 267.7 112.7z m0 0" fill="#FFCD59" p-id="58725"></path><path d="M800.4 680c2.8-2.8 5.4-5.6 7.6-8.5 8.9-11.2 13.6-23.1 13.6-35.5 0-62.3-119.9-112.8-267.7-112.8-146 0-264.9 49.3-267.7 110.6C327 593.3 422 565 532.7 565c147.8 0 267.7 50.5 267.7 112.8 0.1 0.7 0 1.4 0 2.2z m0 0" fill="#FF823C" p-id="58726"></path><path d="M571.1 691.1l-80.9 22.6 15.5-48-65.4-34 90.4-6.9 40.5-43.7 40.3 43.7 90.4 6.9-65.4 34 15.5 48-80.9-22.6z m0 0" fill="#FFFB59" p-id="58727"></path><path d="M959.4 635.9v107.5c0 94.4-181.6 170.9-405.4 170.9-223.8 0-405.4-76.5-405.4-170.9V635.9c0 18.8 7.2 36.9 20.5 53.8 53.3 68 205.5 117.1 384.9 117.1 179.4 0 331.6-49.2 384.9-117.1 13.3-16.9 20.5-34.9 20.5-53.8z" fill="#E29E07" p-id="58728"></path><path d="M874.7 468.4c0 18.8-7.2 36.9-20.5 53.8-53.3 68-205.5 117.1-384.9 117.1-179.4 0-331.6-49.2-384.9-117.1-13.3-16.9-20.5-35-20.5-53.8 0-94.4 181.6-170.9 405.4-170.9 223.8 0.1 405.4 76.6 405.4 170.9z m0 0" fill="#FFE05C" p-id="58729"></path><path d="M736.9 468.4c0 12.4-4.7 24.3-13.6 35.5-35.2 44.9-135.7 77.3-254.1 77.3s-218.8-32.5-254.1-77.3c-8.9-11.2-13.6-23.1-13.6-35.5 0-62.3 119.9-112.8 267.7-112.8 147.8 0 267.7 50.5 267.7 112.8z m0 0" fill="#F9B200" p-id="58730"></path><path d="M715.7 512.5c2.8-2.8 5.4-5.6 7.6-8.5 8.9-11.2 13.6-23.1 13.6-35.5 0-62.3-119.9-112.8-267.7-112.8-146 0-264.9 49.3-267.7 110.6 40.8-40.5 135.8-68.8 246.5-68.8 147.8 0 267.7 50.5 267.7 112.8 0.1 0.7 0 1.5 0 2.2z m0 0" fill="#FF823C" p-id="58731"></path><path d="M486.5 523.6l-80.9 22.6 15.5-48-65.3-34 90.3-6.9 40.5-43.7 40.3 43.7 90.4 6.9-65.4 34 15.5 48-80.9-22.6z m0 0" fill="#FFFB59" p-id="58732"></path><path d="M874.7 468.4v107.5c0 94.4-181.6 170.9-405.4 170.9-223.8 0-405.5-76.5-405.5-170.9V468.4c0 18.8 7.2 36.9 20.5 53.8 53.3 68 205.5 117.1 384.9 117.1 179.4 0 331.6-49.2 384.9-117.1 13.5-16.9 20.6-34.9 20.6-53.8z" fill="#E29E07" p-id="58733"></path><path d="M938.2 280.1c0 18.8-7.2 36.9-20.5 53.8-53.4 68-205.5 117.1-384.9 117.1-179.4 0-331.6-49.2-384.9-117.1-13.3-16.9-20.5-35-20.5-53.8 0-94.3 181.6-170.9 405.4-170.9 223.7 0 405.4 76.4 405.4 170.9z m0 0" fill="#FFE05C" p-id="58734"></path><path d="M800.5 280.1c0 12.4-4.7 24.3-13.6 35.5-35.2 44.9-135.7 77.3-254.1 77.3S314 360.4 278.7 315.6c-8.9-11.2-13.6-23.1-13.6-35.5 0-62.3 119.9-112.8 267.7-112.8 147.8 0 267.7 50.5 267.7 112.8z m0 0" fill="#F9B200" p-id="58735"></path><path d="M779.2 324c2.8-2.8 5.4-5.6 7.6-8.5 8.9-11.2 13.6-23.1 13.6-35.5 0-62.3-119.9-112.8-267.7-112.8-146 0-264.9 49.3-267.7 110.6 40.8-40.5 135.8-68.8 246.5-68.8 147.8 0 267.7 50.5 267.7 112.8 0.1 0.9 0.1 1.5 0 2.2z m0 0" fill="#E29E07" p-id="58736"></path><path d="M549.9 335.2l-80.8 22.6 15.4-48-65.3-34 90.3-7.1 40.5-43.6 40.5 43.6 90.3 7.1-65.3 34 15.4 48-81-22.6z m0 0" fill="#FFDD50" p-id="58737"></path><path d="M938.2 280.1v107.5c0 94.4-181.6 170.9-405.4 170.9-223.8 0-405.4-76.5-405.4-170.9V280.1c0 18.8 7.2 36.9 20.5 53.8 53.3 68 205.5 117.1 384.9 117.1 179.4 0 331.6-49.2 384.9-117.1 13.3-17.1 20.5-35.1 20.5-53.8z" fill="#E29E07" p-id="58738"></path></svg> 抢金币<br/>大作战' : '💣 躲炸弹<br/>大作战';
+            
+            const bgDiv = document.getElementById('board-bg');
+            if (config.mode === 'bomb') bgDiv.classList.add('bomb-mode-bg');
+            else bgDiv.classList.remove('bomb-mode-bg');
+
+            updateStatusUI();
+            renderBoard();
+            renderButtons();
+
+            const btn = document.getElementById('btn-mode');
+            const btnHeader = document.getElementById('btn-mode-header');
+            const body = document.body;
+            if (btn) btn.classList.remove('active');
+            if (btnHeader) btnHeader.classList.remove('active');
+            body.classList.remove('detective-mode');
+            saveConfig();
+
+            if (!state.isPlayerTurn) {
+                disableButtons(true);
+                renderStartAiButton();
+            } else {
+                disableButtons(false);
+                removeStartAiButton();
+            }
+        }
+        
+        function resetGame() { initGame(); }
+
+        function updateStatusUI() {
+            const pBlock = document.getElementById('status-player');
+            const aiBlock = document.getElementById('status-ai');
+            
+            pBlock.classList.remove('active');
+            aiBlock.classList.remove('active');
+
+            if (!state.gameOver) {
+                if (state.isPlayerTurn) pBlock.classList.add('active');
+                else aiBlock.classList.add('active');
+            }
+        }
+
+        function renderBoard() {
+            const board = document.getElementById('game-board');
+            board.innerHTML = '';
+            for (let i = 1; i <= config.target; i++) {
+                const block = document.createElement('div');
+                block.className = 'block';
+                block.innerText = i; 
+                
+                if (i === config.target) {
+                    if (config.mode === 'normal') block.classList.add('target-block');
+                    else block.classList.add('target-bomb');
+                }
+
+                if (i <= state.current) {
+                    const move = state.history.find(m => i > m.start && i <= m.end);
+                    if (move) block.classList.add(move.who === 'player' ? 'taken-player' : 'taken-ai');
+                }
+
+                // 侦探模式逻辑
+                const f = config.minStep + config.maxStep;
+                let isCritical = false;
+
+                if (config.mode === 'normal') {
+                    if ((config.target - i) % f === 0 && i !== config.target) isCritical = true;
+                } else {
+                    const effectiveTarget = config.target - 1;
+                    if ((effectiveTarget - i) % f === 0 && i <= effectiveTarget) isCritical = true;
+                }
+
+                if (isDetectiveMode && isCritical) {
+                    block.classList.add('critical');
+                }
+                board.appendChild(block);
+            }
+            // 自动滚动
+            setTimeout(() => { board.scrollTop = board.scrollHeight; }, 100);
+        }
+
+        function renderButtons() {
+            const container = document.getElementById('action-buttons-container');
+            container.innerHTML = '';
+            for (let i = config.minStep; i <= config.maxStep; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'btn-action';
+                btn.innerText = `抢 ${i} 个`;
+                btn.onclick = () => playerMove(i);
+                container.appendChild(btn);
+            }
+        }
+
+        function disableButtons(disabled) {
+            const btns = document.querySelectorAll('#action-buttons-container .btn-action');
+            btns.forEach(b => b.disabled = disabled);
+        }
+
+        function playerMove(step) {
+            if (state.gameOver) return;
+            if (state.current + step > config.target) {
+                alert("不可超出目标！");
+                return;
+            }
+            executeMove('player', step);
+        }
+
+        function aiMove() {
+            if (state.gameOver) return;
+            const f = config.minStep + config.maxStep;
+            
+            const effectiveTarget = config.mode === 'normal' ? config.target : config.target - 1;
+            const remainder = (effectiveTarget - state.current) % f;
+            let step;
+
+            if (remainder === 0) {
+                step = Math.floor(Math.random() * (config.maxStep - config.minStep + 1)) + config.minStep;
+            } else {
+                if (remainder >= config.minStep && remainder <= config.maxStep) {
+                    step = remainder;
+                } else {
+                    step = config.minStep;
+                }
+            }
+            
+            if (state.current + step > config.target) step = config.target - state.current;
+            
+            if (config.mode === 'bomb' && state.current === config.target - 1) {
+                step = 1; 
+            }
+
+            executeMove('ai', step);
+        }
+
+        function executeMove(who, step) {
+            const start = state.current;
+            const end = state.current + step;
+            state.history.push({ who, start, end });
+            state.current = end;
+            renderBoard();
+
+            if (state.current >= config.target) {
+                endGame(who);
+                return;
+            }
+
+            state.isPlayerTurn = !state.isPlayerTurn;
+            updateStatusUI();
+
+            if (!state.isPlayerTurn) {
+                disableButtons(true);
+                setTimeout(aiMove, 1000);
+            } else {
+                disableButtons(false);
+            }
+        }
+
+        function endGame(lastMover) {
+            state.gameOver = true;
+            disableButtons(true);
+            updateStatusUI();
+
+            const isPlayerWin = config.mode === 'normal' ? (lastMover === 'player') : (lastMover !== 'player');
+
+            if (isPlayerWin) createRain();
+            addHistory(isPlayerWin);
+        }
+
+        function addHistory(isWin) {
+            const movesCopy = JSON.parse(JSON.stringify(state.history));
+            state.records.unshift({
+                id: state.records.length + 1,
+                target: config.target,
+                mode: config.mode,
+                isWin: isWin,
+                moves: movesCopy
+            });
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            if (state.records.length === 0) return;
+            list.innerHTML = '';
+            
+            const f = config.minStep + config.maxStep;
+            state.records.forEach(rec => {
+                const li = document.createElement('li');
+                li.className = 'history-item';
+                
+                let squaresHtml = '<div class="history-squares">';
+                let start = 1;
+                while (start <= rec.target) {
+                    const end = Math.min(start + f - 1, rec.target);
+                    const groupClass = isHistoryClueGroup ? 'sq-group highlight' : 'sq-group';
+                    squaresHtml += `<div class="${groupClass}">`;
+                    for (let k = start; k <= end; k++) {
+                        let owner = null;
+                        for (let m of rec.moves) {
+                            if (k > m.start && k <= m.end) { owner = m.who; break; }
+                        }
+                        let cssClass = 'sq-item' + (owner === 'player' ? ' sq-p' : (owner === 'ai' ? ' sq-ai' : ''));
+                        let critical = false;
+                        if (rec.mode === 'normal') {
+                            critical = ((rec.target - k) % f === 0 && k !== rec.target);
+                        } else {
+                            const effectiveTarget = rec.target - 1;
+                            critical = ((effectiveTarget - k) % f === 0 && k <= effectiveTarget);
+                        }
+                        if (isHistoryClueStar && critical) cssClass += ' sq-critical';
+                        const star = (isHistoryClueStar && critical) ? '<svg t="1763988116194" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="64921" width="28" height="28"><path d="M512.249976 0C229.47759 0 0.299971 229.177619 0.299971 511.950005s229.177619 511.950005 511.950005 511.950005 511.950005-229.177619 511.950004-511.950005-229.177619-511.950005-511.950004-511.950005z m243.276242 468.154282L657.935748 563.344986c-9.399082 9.099111-13.698662 22.297822-11.398886 35.196563l23.097744 134.386876c1.699834 10.199004-8.899131 17.998242-18.098233 13.098721l-120.688214-63.4938c-11.598867-6.099404-25.39752-6.099404-36.996387 0L373.063568 746.027146c-9.099111 4.799531-19.798067-2.999707-18.098233-13.098721l22.997755-134.386876c2.199785-12.89874-2.099795-26.097451-11.398887-35.196563L268.973733 468.154282c-7.399277-7.199297-3.299678-19.798067 6.899326-21.29792l134.886828-19.598086c12.998731-1.899814 24.197637-9.999024 29.99707-21.797872l60.294112-122.288058c4.599551-9.299092 17.798262-9.299092 22.397813 0l60.294112 122.288058c5.799434 11.698858 16.99834 19.898057 29.99707 21.797872l134.886828 19.598086c10.298994 1.499854 14.298604 14.098623 6.899326 21.29792z" fill="#f99808" p-id="64922"></path></svg>' : '';
+                        squaresHtml += `<div class="${cssClass}">${k}${k===rec.target?'<svg t="1763987548080" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="57459" width="28" height="28"><path d="M0 512c0 283.306667 228.693333 512 512 512s512-228.693333 512-512S795.306667 0 512 0 0 228.693333 0 512z" fill="#FBE945" p-id="57460"></path><path d="M119.466667 512c0 139.946667 75.093333 269.653333 194.56 337.92s269.653333 71.68 392.533333 0 194.56-197.973333 194.56-337.92c0-215.04-174.08-392.533333-392.533333-392.533333S119.466667 296.96 119.466667 512z" fill="#FBB11B" p-id="57461"></path><path d="M904.533333 512c0-85.333333-27.306667-167.253333-78.506666-232.106667C764.586667 232.106667 679.253333 204.8 597.333333 204.8 378.88 204.8 204.8 378.88 204.8 597.333333c0 85.333333 27.306667 167.253333 78.506667 232.106667 61.44 47.786667 146.773333 78.506667 232.106666 78.506667 215.04-3.413333 389.12-177.493333 389.12-395.946667z" fill="#FDC72F" p-id="57462"></path><path d="M552.96 286.72l85.333333 170.666667 180.906667 34.133333-126.293333 139.946667 20.48 187.733333-160.426667-81.92-167.253333 81.92 27.306666-187.733333-126.293333-139.946667 177.493333-34.133333 88.746667-170.666667" fill="#FBB11B" p-id="57463"></path><path d="M512 245.76l92.16 167.253333 174.08 37.546667-126.293333 139.946667 20.48 187.733333-160.426667-85.333333-160.426667 85.333333 20.48-187.733333-126.293333-139.946667 174.08-37.546667L512 245.76" fill="#FBE945" p-id="57464"></path></svg>':''}${star}</div>`;
+                    }
+                    squaresHtml += '</div>';
+                    start = end + 1;
+                }
+                squaresHtml += '</div>';
+
+                const resultText = rec.isWin ? '胜利' : '失败';
+                const resultColor = rec.isWin ? 'var(--player-main)' : 'var(--ai-main)';
+
+                li.innerHTML = `
+                    <div style="width:60px; flex-shrink:0; font-size:0.9em; text-align:center; font-weight:900;">
+                        <div>#${rec.id}</div>
+                        <div style="color:${resultColor}; margin-top:4px;">${resultText}</div>
+                    </div>
+                    ${squaresHtml}
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function toggleHistoryClue1() {
+            isHistoryClueStar = !isHistoryClueStar;
+            const btn = document.getElementById('btn-clue1');
+            if (btn) btn.classList.toggle('active', isHistoryClueStar);
+            renderHistory();
+        }
+
+        function toggleHistoryClue2() {
+            isHistoryClueGroup = !isHistoryClueGroup;
+            const btn = document.getElementById('btn-clue2');
+            if (btn) btn.classList.toggle('active', isHistoryClueGroup);
+            renderHistory();
+        }
+
+        function toggleMode() {
+            isDetectiveMode = !isDetectiveMode;
+            const btn = document.getElementById('btn-mode');
+            const btnHeader = document.getElementById('btn-mode-header');
+            const body = document.body;
+            if (isDetectiveMode) {
+                if (btn) btn.classList.add('active');
+                if (btnHeader) btnHeader.classList.add('active');
+                body.classList.add('detective-mode');
+            } else {
+                if (btn) btn.classList.remove('active');
+                if (btnHeader) btnHeader.classList.remove('active');
+                body.classList.remove('detective-mode');
+            }
+            renderBoard();
+            saveConfig();
+        }
+
+        function applyHistoryVisibility(visible) {
+            const section = document.getElementById('history-section');
+            const board = document.querySelector('.game-board-wrapper');
+            const body = document.body;
+            const pBlock = document.getElementById('status-player');
+            const aiBlock = document.getElementById('status-ai');
+            if (section) {
+                section.style.display = visible ? '' : 'none';
+                section.style.flex = visible ? '1' : '0 0 auto';
+            }
+            if (board) {
+                board.style.display = visible ? 'none' : '';
+                board.style.flex = visible ? 'unset' : '1';
+            }
+            if (visible) {
+                body.classList.add('history-view');
+                if (pBlock) pBlock.classList.remove('active');
+                if (aiBlock) aiBlock.classList.remove('active');
+            } else {
+                body.classList.remove('history-view');
+                updateStatusUI();
+            }
+        }
+
+        function toggleHistory() {
+            const section = document.getElementById('history-section');
+            const visible = !(section && section.style.display === 'none');
+            applyHistoryVisibility(!visible);
+            localStorage.setItem('historyVisible', (!visible) ? 'true' : 'false');
+        }
+
+        function showBothViews() {
+            const section = document.getElementById('history-section');
+            const board = document.querySelector('.game-board-wrapper');
+            if (section) {
+                section.style.display = '';
+                section.style.flex = 'auto';
+            }
+            if (board) {
+                board.style.display = '';
+                board.style.flex = '1';
+            }
+            document.body.classList.remove('history-view');
+            updateStatusUI();
+        }
+
+        function renderStartAiButton() {
+            const container = document.getElementById('action-buttons-container');
+            if (!container) return;
+            const shouldShow = state.current === 0 && state.history.length === 0 && !state.gameOver && config.starter === 'ai' && !state.isPlayerTurn;
+            let btn = document.getElementById('start-ai-btn');
+            if (shouldShow) {
+                if (!btn) {
+                    btn = document.createElement('button');
+                    btn.id = 'start-ai-btn';
+                    btn.className = 'btn-start-ai';
+                    btn.innerText = '确认开始';
+                    btn.onclick = () => { startAiTurn(); };
+                    container.parentNode.insertBefore(btn, container);
+                }
+            } else {
+                if (btn) btn.remove();
+            }
+        }
+
+        function removeStartAiButton() {
+            const btn = document.getElementById('start-ai-btn');
+            if (btn) btn.remove();
+        }
+
+        function startAiTurn() {
+            removeStartAiButton();
+            aiMove();
+        }
+
+        function saveConfig() {
+            const payload = {
+                target: config.target,
+                minStep: config.minStep,
+                maxStep: config.maxStep,
+                starter: config.starter,
+                mode: config.mode,
+                isDetectiveMode: isDetectiveMode
+            };
+            try { localStorage.setItem('gameConfig', JSON.stringify(payload)); } catch(e) {}
+        }
+
+        function loadConfig() {
+            try {
+                const raw = localStorage.getItem('gameConfig');
+                if (raw) {
+                    const saved = JSON.parse(raw);
+                    if (typeof saved.target === 'number') config.target = saved.target;
+                    if (typeof saved.minStep === 'number') config.minStep = saved.minStep;
+                    if (typeof saved.maxStep === 'number') config.maxStep = saved.maxStep;
+                    if (typeof saved.starter === 'string') config.starter = saved.starter;
+                    if (typeof saved.mode === 'string') config.mode = saved.mode;
+                    if (typeof saved.isDetectiveMode === 'boolean') isDetectiveMode = saved.isDetectiveMode;
+                }
+            } catch(e) {}
+        }
+
+        function quickSetStarter(who) {
+            if (state.gameOver || (state.history.length === 0 && state.current === 0)) {
+                config.starter = who;
+                const sel = document.getElementById('set-starter');
+                if (sel) sel.value = who;
+                saveConfig();
+                initGame();
+            }
+        }
+
+        function createRain() {
+            const container = document.createElement('div');
+            container.className = 'rain-container';
+            document.body.appendChild(container);
+            const symbols = config.mode === 'normal' ? ['💰', '💎', '🏆'] : [ '✨', '✌️', '😎'];
+            for (let i = 0; i < 50; i++) {
+                const drop = document.createElement('div');
+                drop.className = 'rain-drop';
+                drop.innerText = symbols[Math.floor(Math.random() * symbols.length)];
+                drop.style.left = Math.random() * 100 + 'vw';
+                drop.style.animationDuration = (Math.random() * 2 + 1.5) + 's';
+                container.appendChild(drop);
+            }
+            setTimeout(() => { container.remove(); }, 3000);
+        }
+
+        function openSettings() {
+            const m = document.getElementById('settings-modal');
+            m.style.display = 'flex';
+            document.getElementById('set-mode').value = config.mode;
+            document.getElementById('set-target').value = config.target;
+            document.getElementById('set-min').value = config.minStep;
+            document.getElementById('set-max').value = config.maxStep;
+            document.getElementById('set-starter').value = config.starter;
+            const confirmBtn = document.querySelector('#settings-modal .btn-action');
+            if (confirmBtn) confirmBtn.disabled = false;
+            document.addEventListener('keydown', onSettingsKeyDown);
+        }
+        function closeSettings() {
+            document.getElementById('settings-modal').style.display = 'none';
+            document.removeEventListener('keydown', onSettingsKeyDown);
+        }
+        function onSettingsKeyDown(e) {
+            const m = document.getElementById('settings-modal');
+            if (m.style.display === 'flex' && (e.key === 'Enter' || e.keyCode === 13)) { saveSettings(); }
+        }
+        function saveSettings() {
+            const t = parseInt(document.getElementById('set-target').value);
+            const m = parseInt(document.getElementById('set-max').value);
+            const s = document.getElementById('set-starter').value;
+            const mode = document.getElementById('set-mode').value;
+            
+            if (t && m) {
+                config.target = t; 
+                config.maxStep = m; 
+                config.starter = s;
+                config.mode = mode;
+                closeSettings(); 
+                saveConfig();
+                initGame(); 
+            } else { alert("请输入有效数字"); }
+        }
+
+        function toggleFullscreen() {
+            const doc = document;
+            const docEl = document.documentElement;
+            const isFs = doc.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement;
+            if (!isFs) {
+                if (docEl.requestFullscreen) docEl.requestFullscreen();
+                else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+                else if (docEl.msRequestFullscreen) docEl.msRequestFullscreen();
+            } else {
+                if (doc.exitFullscreen) doc.exitFullscreen();
+                else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+                else if (doc.msExitFullscreen) doc.msExitFullscreen();
+            }
+        }
+
+        function adjustTarget(delta) {
+            let nt = config.target + delta;
+            if (nt < 5) nt = 5;
+            if (nt > 100) nt = 100;
+            if (nt === config.target) return;
+            config.target = nt;
+            const input = document.getElementById('set-target');
+            if (input) input.value = nt;
+            saveConfig();
+            initGame();
+        }
+
+        let currentOverlayImage = null;
+        function showImageOverlay(src) {
+            const ov = document.getElementById('image-overlay');
+            const img = document.getElementById('image-overlay-img');
+            if (!ov || !img) return;
+            img.src = src;
+            ov.classList.add('show');
+            currentOverlayImage = src;
+        }
+        function hideImageOverlay() {
+            const ov = document.getElementById('image-overlay');
+            if (ov) ov.classList.remove('show');
+            currentOverlayImage = null;
+        }
+        document.addEventListener('keydown', function(e) {
+            const k = e.key;
+            if (k === 'Escape') { hideImageOverlay(); return; }
+            if (k === '1' || k === '2' || k === '3' || k === '4') {
+                const t = e.target;
+                const isForm = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+                if (isForm) return;
+                const ov = document.getElementById('image-overlay');
+                const src = 'qjb-' + k + '.jpg';
+                const isShown = ov && ov.classList.contains('show');
+                if (isShown && currentOverlayImage === src) { hideImageOverlay(); return; }
+                showImageOverlay(src);
+            }
+        });
+    </script>
+</body>
+</html>
