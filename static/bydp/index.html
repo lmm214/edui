@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>两个相同半圆叠拼，面积是多少？</title>
+    <style>
+        /* 基础重置与布局 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #ffffff;
+            color: #334155;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative; /* 为绝对定位元素提供参考 */
+        }
+
+        /* 画布区域 */
+        #canvas-area {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        @media (min-width: 768px) {
+            #canvas-area { padding: 2rem; }
+        }
+
+        /* 步骤指示器 */
+        #step-indicator {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            font-size: 0.85rem;
+            font-family: monospace;
+            color: #cbd5e1;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        /* SVG 样式 */
+        svg {
+            width: 100%;
+            height: 100%;
+            max-width: 42rem;
+            max-height: 85vh;
+            display: block;
+            user-select: none;
+            overflow: visible;
+        }
+
+        /* 动画类 */
+        .transition-opacity { transition: opacity 0.5s ease; }
+        .transition-transform { transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1); } 
+        .duration-300 { transition-duration: 300ms; }
+        .duration-500 { transition-duration: 500ms; }
+        .duration-1000 { transition-duration: 1000ms; } 
+        .ease-in-out { transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+
+        .opacity-0 { opacity: 0; }
+        .opacity-10 { opacity: 0.1; }
+        .opacity-20 { opacity: 0.2; }
+        .opacity-50 { opacity: 0.5; }
+        .opacity-100 { opacity: 1; }
+        .hidden { display: none; }
+
+        /* 控制区域 - 强制右侧垂直居中 */
+        #control-panel {
+            position: absolute;
+            z-index: 50;
+            display: flex;
+            gap: 1rem;
+            pointer-events: none; /* 面板容器透传点击 */
+            
+            /* 垂直居中定位 */
+            top: 50%;
+            right: 1rem;
+            bottom: auto;
+            transform: translateY(-50%);
+            
+            /* 纵向排列 */
+            flex-direction: column;
+            align-items: center;
+        }
+
+        @media (min-width: 768px) {
+            right: 2.5rem;
+        }
+
+        /* 按钮容器 */
+        .btn-group {
+            pointer-events: auto; /* 按钮恢复点击 */
+            display: flex;
+            flex-direction: column; /* 确保按钮纵向排列 */
+            gap: 1rem;
+        }
+
+        /* 按钮样式 */
+        button {
+            border: none;
+            cursor: pointer;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            outline: none;
+            width: 3.5rem; 
+            height: 3.5rem;
+        }
+        @media (min-width: 768px) {
+            width: 4rem; 
+            height: 4rem;
+        }
+
+        button:active { transform: scale(0.95); }
+        button:hover { transform: scale(1.05); }
+
+        #btn-prev {
+            background-color: white;
+            color: #475569;
+            border: 1px solid #e2e8f0;
+        }
+        #btn-prev:hover { color: #f97316; } 
+        #btn-prev:disabled {
+            background-color: #f1f5f9;
+            color: #cbd5e1;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        #btn-next {
+            background-color: #f97316;
+            color: white;
+            border: 1px solid #ea580c;
+        }
+        #btn-next:hover { background-color: #ea580c; }
+        
+        #btn-next.restart {
+            background-color: #22c55e;
+            border-color: #16a34a;
+        }
+        #btn-next.restart:hover { background-color: #16a34a; }
+
+        .icon { width: 1.5rem; height: 1.5rem; }
+        @media (min-width: 768px) { .icon { width: 2rem; height: 2rem; } }
+
+    </style>
+</head>
+<body>
+
+    <!-- 画布区域 -->
+    <div id="canvas-area">
+        <div id="step-indicator">Step 1 / 6</div>
+        
+        <svg viewBox="0 0 300 300">
+            <g transform="translate(20, 10) scale(0.90)">
+                
+                <defs>
+                    <style>
+                        :root {
+                            --stroke: #FF6B35;
+                            --fill-leaf: #FFDCC2;
+                        }
+                    </style>
+                </defs>
+
+                <!-- === 1. 逻辑底层 (半圆) === -->
+                <!-- Step 2 (3): 右侧半圆 (静态) -->
+                <path id="logic-semi-right" class="transition-opacity duration-500"
+                      d="M 50 250 A 100 100 0 0 1 250 250 L 50 250 Z" 
+                      fill="#FFDCC2" stroke="none" opacity="0"/>
+                
+                <!-- Step 3, 4, 5: 左侧半圆 -->
+                <path id="logic-semi-left" class="transition-opacity duration-500"
+                      d="M 50 50 A 100 100 0 0 1 50 250 L 50 50 Z" 
+                      fill="#FFDCC2" stroke="none" opacity="0"/>
+
+                <!-- === 2. 逻辑减法层 (三角形) === -->
+                <!-- Step 2 (3): 右侧三角形 (静态) -->
+                <path id="logic-tri-right" class="transition-opacity duration-1000 ease-in-out"
+                      d="M 250 250 L 50 250 L 150 150 Z"
+                      fill="#FFFFFF" stroke="none" opacity="0"/>
+                
+                <!-- Step 3, 4, 5: 左侧三角形 -->
+                <path id="logic-tri-left" class="transition-opacity duration-1000 ease-in-out"
+                      d="M 50 50 L 50 250 L 150 150 Z"
+                      fill="#FFFFFF" stroke="none" opacity="0"/>
+
+                <!-- === 旋转演示组 (Step 5, 6 使用) === -->
+                <!-- 包含右侧的半圆和三角形，用于整体旋转 -->
+                <!-- 旋转中心点 B (50, 250) -->
+                <g id="step4-rotate-group" class="transition-transform" 
+                   style="transform-origin: 50px 250px; opacity: 0; pointer-events: none;">
+                    
+                    <!-- 右半圆 (带高亮边框 width=2) -->
+                    <path d="M 50 250 A 100 100 0 0 1 250 250 L 50 250 Z" 
+                          fill="#FFDCC2" stroke="#FF6B35" stroke-width="2"/>
+                    
+                    <!-- 右三角形 (白色，带高亮边框 width=2) -->
+                    <path d="M 250 250 L 50 250 L 150 150 Z"
+                          fill="#FFFFFF" stroke="#FF6B35" stroke-width="2" stroke-dasharray="6,4"/>
+                </g>
+
+                <!-- === 3. 基础视觉层 (默认橙色弓形) === -->
+                <path id="visual-leaf-left" class="transition-opacity duration-500"
+                      d="M 50 50 A 100 100 0 0 1 50 250 L 150 150 L 50 50 Z"
+                      fill="#FFDCC2" stroke="none"/>
+                
+                <path id="visual-leaf-right" class="transition-opacity duration-500"
+                      d="M 50 250 A 100 100 0 0 1 250 250 L 150 150 L 50 250 Z"
+                      fill="#FFDCC2" stroke="none"/>
+
+                <!-- === 4. 轮廓线与高亮 === -->
+                
+                <!-- Step 2 高亮组 -->
+                <g id="highlight-step2" class="transition-opacity duration-500" opacity="0">
+                    <path d="M 50 250 A 100 100 0 0 1 250 250" fill="none" stroke="#FF6B35" stroke-width="2"/>
+                    <line x1="50" y1="250" x2="250" y2="250" stroke="#FF6B35" stroke-width="2"/>
+                    
+                    <path id="highlight-tri-right" class="transition-opacity duration-500"
+                          d="M 250 250 L 50 250 L 150 150 Z"
+                          fill="none" stroke="#FF6B35" stroke-width="2" stroke-dasharray="6,4" opacity="0"/>
+                </g>
+
+                <!-- Step 3 高亮组 -->
+                <g id="highlight-step3" class="transition-opacity duration-500" opacity="0">
+                    <path d="M 50 50 A 100 100 0 0 1 50 250" fill="none" stroke="#FF6B35" stroke-width="2"/>
+                    <line x1="50" y1="50" x2="50" y2="250" stroke="#FF6B35" stroke-width="2"/>
+                    
+                    <path id="highlight-tri-left" class="transition-opacity duration-500"
+                          d="M 50 50 L 50 250 L 150 150 Z"
+                          fill="none" stroke="#FF6B35" stroke-width="2" stroke-dasharray="6,4" opacity="0"/>
+                </g>
+
+                <!-- 基础轮廓 -->
+                <g id="base-outlines" class="transition-opacity duration-500">
+                    <path d="M 50 50 L 50 250 L 250 250 Z" fill="none" stroke="#FF6B35" stroke-width="2"/>
+                    <path d="M 50 50 A 100 100 0 0 1 50 250" fill="none" stroke="#FF6B35" stroke-width="2"/>
+                    <path d="M 50 250 A 100 100 0 0 1 250 250" fill="none" stroke="#FF6B35" stroke-width="2"/>
+                </g>
+
+                <!-- 辅助线 BD -->
+                <line id="line-bd" class="transition-opacity duration-300"
+                      x1="50" y1="250" x2="150" y2="150" 
+                      stroke="#666" stroke-width="2" stroke-dasharray="6,4" opacity="0"/>
+
+                <!-- 标注 -->
+                <g id="labels" class="transition-opacity duration-500">
+                    <text x="35" y="50" font-size="18" fill="#333" font-family="serif">A</text>
+                    <text x="35" y="270" font-size="18" fill="#333" font-family="serif">B</text>
+                    <text id="label-c" x="260" y="270" font-size="18" fill="#333" font-family="serif">C</text>
+                    <text x="155" y="140" font-size="18" fill="#333" font-family="serif">D</text>
+                    
+                    <text id="label-10dm-ab" x="5" y="150" font-size="14" fill="#666" transform="rotate(-90 20,150)">10 dm</text>
+                    <text id="label-10dm-bc" x="130" y="290" font-size="14" fill="#666">10 dm</text>
+                </g>
+
+            </g>
+        </svg>
+    </div>
+
+    <!-- 控制区域 -->
+    <div id="control-panel">
+        <div class="btn-group">
+            <button id="btn-prev" title="上一步" disabled>
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+            </button>
+
+            <button id="btn-next" title="下一步">
+                <svg id="icon-arrow-right" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                <svg id="icon-restart" class="icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74-2.74L3 12"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // === 状态管理 ===
+        let step = 0;
+        const totalSteps = 6; 
+        let animationTimer = null;
+        let rotateTimer = null;
+
+        // === DOM 元素获取 ===
+        const els = {
+            stepIndicator: document.getElementById('step-indicator'),
+            btnPrev: document.getElementById('btn-prev'),
+            btnNext: document.getElementById('btn-next'),
+            iconArrow: document.getElementById('icon-arrow-right'),
+            iconRestart: document.getElementById('icon-restart'),
+            
+            logicSemiRight: document.getElementById('logic-semi-right'),
+            logicSemiLeft: document.getElementById('logic-semi-left'),
+            logicTriRight: document.getElementById('logic-tri-right'),
+            logicTriLeft: document.getElementById('logic-tri-left'),
+            
+            visualLeafRight: document.getElementById('visual-leaf-right'),
+            visualLeafLeft: document.getElementById('visual-leaf-left'),
+            
+            highlightStep2: document.getElementById('highlight-step2'),
+            highlightTriRight: document.getElementById('highlight-tri-right'),
+            highlightStep3: document.getElementById('highlight-step3'),
+            highlightTriLeft: document.getElementById('highlight-tri-left'),
+            
+            step4RotateGroup: document.getElementById('step4-rotate-group'),
+            
+            baseOutlines: document.getElementById('base-outlines'),
+            lineBd: document.getElementById('line-bd'),
+            labels: document.getElementById('labels'),
+            labelC: document.getElementById('label-c'),
+            label10dmBc: document.getElementById('label-10dm-bc')
+        };
+
+        // === 更新视图的核心函数 ===
+        function updateView() {
+            // 1. UI更新
+            els.stepIndicator.textContent = `Step ${step + 1} / ${totalSteps}`;
+            els.btnPrev.disabled = (step === 0);
+            
+            if (step === totalSteps - 1) {
+                els.btnNext.classList.add('restart');
+                els.btnNext.title = "重新开始";
+                els.iconArrow.classList.add('hidden');
+                els.iconRestart.classList.remove('hidden');
+            } else {
+                els.btnNext.classList.remove('restart');
+                els.btnNext.title = "下一步";
+                els.iconArrow.classList.remove('hidden');
+                els.iconRestart.classList.add('hidden');
+            }
+
+            // 2. 重置动画与样式
+            if (animationTimer) clearTimeout(animationTimer);
+            if (rotateTimer) clearTimeout(rotateTimer);
+
+            // 逻辑层重置
+            els.logicSemiRight.style.opacity = '0';
+            els.logicSemiLeft.style.opacity = '0';
+            els.logicTriRight.style.opacity = '0';
+            els.logicTriLeft.style.opacity = '0';
+            
+            // 高亮层重置
+            els.highlightStep2.style.opacity = '0';
+            els.highlightStep3.style.opacity = '0';
+            els.highlightTriRight.style.opacity = '0';
+            els.highlightTriLeft.style.opacity = '0';
+
+            // 旋转组重置
+            els.step4RotateGroup.style.opacity = '0';
+            els.step4RotateGroup.style.transform = 'rotate(0deg)'; 
+
+            // 视觉层默认状态
+            els.visualLeafLeft.style.opacity = '1';
+            els.visualLeafRight.style.opacity = '1';
+            els.baseOutlines.style.opacity = '1';
+            
+            // 默认所有标签显示
+            els.labels.style.opacity = '1';
+            els.labelC.style.opacity = '1';
+            els.label10dmBc.style.opacity = '1';
+
+            // 辅助线 BD 逻辑 (仅 Step 1 显示)
+            els.lineBd.style.opacity = (step === 1) ? '1' : '0';
+
+            // === 3. 步骤逻辑 ===
+
+            if (step === 2) {
+                // Step 2 (UI Step 3): 右侧减法
+                els.logicSemiRight.style.opacity = '1';
+                els.highlightStep2.style.opacity = '1';
+                els.visualLeafRight.style.opacity = '0'; 
+                els.visualLeafLeft.style.opacity = '0.1';
+                els.baseOutlines.style.opacity = '0.2';
+                els.labels.style.opacity = '0.5';
+
+                animationTimer = setTimeout(() => {
+                    els.logicTriRight.style.opacity = '1';
+                    els.highlightTriRight.style.opacity = '1';
+                }, 1000);
+            }
+
+            if (step === 3) {
+                // Step 3 (UI Step 4): 左侧减法
+                els.logicSemiLeft.style.opacity = '1';
+                els.highlightStep3.style.opacity = '1';
+                els.visualLeafLeft.style.opacity = '0';
+                els.visualLeafRight.style.opacity = '0.1';
+                els.baseOutlines.style.opacity = '0.2';
+                els.labels.style.opacity = '0.5';
+
+                animationTimer = setTimeout(() => {
+                    els.logicTriLeft.style.opacity = '1';
+                    els.highlightTriLeft.style.opacity = '1';
+                }, 1000);
+            }
+
+            if (step === 4) {
+                // Step 4 (UI Step 5): 准备旋转 (静态)
+                
+                // 左侧显示
+                els.logicSemiLeft.style.opacity = '1';
+                els.logicTriLeft.style.opacity = '1';
+                els.highlightStep3.style.opacity = '1';
+                els.highlightTriLeft.style.opacity = '1';
+                
+                // 隐藏底图和多余线条
+                els.visualLeafLeft.style.opacity = '0';
+                els.visualLeafRight.style.opacity = '0';
+                els.baseOutlines.style.opacity = '0'; 
+                
+                // 显示右侧旋转组 (初始位置)
+                els.step4RotateGroup.style.opacity = '1';
+            }
+
+            if (step === 5) {
+                // Step 5 (UI Step 6): 执行旋转 (动态)
+                
+                // 保持 Step 4 的所有状态
+                els.logicSemiLeft.style.opacity = '1';
+                els.logicTriLeft.style.opacity = '1';
+                els.highlightStep3.style.opacity = '1';
+                els.highlightTriLeft.style.opacity = '1';
+                els.visualLeafLeft.style.opacity = '0';
+                els.visualLeafRight.style.opacity = '0';
+                els.baseOutlines.style.opacity = '0'; 
+                els.step4RotateGroup.style.opacity = '1';
+
+                // 隐藏 C 点和 BC 边长 (让画面更干净)
+                els.labelC.style.opacity = '0';
+                els.label10dmBc.style.opacity = '0';
+
+                // 立即触发旋转
+                rotateTimer = setTimeout(() => {
+                    els.step4RotateGroup.style.transform = 'rotate(270deg)';
+                }, 100);
+            }
+        }
+
+        // === 事件监听 ===
+        els.btnNext.addEventListener('click', () => {
+            if (step === totalSteps - 1) {
+                step = 0;
+            } else {
+                step = Math.min(step + 1, totalSteps - 1);
+            }
+            updateView();
+        });
+
+        els.btnPrev.addEventListener('click', () => {
+            step = Math.max(step - 1, 0);
+            updateView();
+        });
+
+        // 初始化
+        updateView();
+
+    </script>
+</body>
+</html>
