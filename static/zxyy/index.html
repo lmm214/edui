@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>直线与圆的位置关系</title>
+    <style>
+        /* --- CSS Reset & Base Styles --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            color: #1d1d1f;
+            background-color: #F5F5F7;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* --- Utility Classes Simulation --- */
+        .absolute { position: absolute; }
+        .relative { position: relative; }
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .w-full { width: 100%; }
+        .h-full { height: 100%; }
+        .hidden { display: none !important; }
+        .pointer-events-none { pointer-events: none; }
+        .cursor-pointer { cursor: pointer; }
+        
+        /* --- Dynamic Background --- */
+        #bg-layer {
+            position: absolute;
+            inset: 0;
+            transition: background 0.5s ease;
+            z-index: 0;
+        }
+
+        /* --- Title --- */
+        .title-card {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            z-index: 40;
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 12px 20px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        /* --- Main Interactive Area --- */
+        #main-area {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            cursor: ns-resize;
+        }
+
+        /* Line l */
+        .line-l {
+            position: absolute;
+            width: 100%;
+            top: 50%;
+            border-bottom: 4px solid #000;
+            z-index: 30; /* Higher than circle */
+        }
+        .line-label {
+            position: absolute;
+            right: 40px;
+            top: -56px;
+            font-family: serif;
+            font-style: italic;
+            font-weight: bold;
+            font-size: 2.25rem;
+            color: #000;
+        }
+
+        /* Circle O */
+        #circle-o {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            /* r = 120px, so w=240, h=240. Margin handled in JS or CSS calc */
+            width: 240px;
+            height: 240px;
+            margin-left: -120px;
+            margin-top: -120px;
+            background-color: #B4E0F0;
+            border: 3px solid #000;
+            border-radius: 50%;
+            z-index: 20;
+            /* Performance optimization */
+            will-change: transform; 
+            /* Transition handled by JS loop or CSS if not dragging. 
+               We used CSS transition in React for smooth settling, 
+               but for drag we need instant. We'll add a class for transition. */
+        }
+        .smooth-transition {
+            transition: transform 0.1s linear; /* Fast response */
+        }
+
+        /* Center Point & Hotspot */
+        #center-hotspot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            z-index: 50;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #center-hotspot:hover {
+            background-color: rgba(0,0,0,0.05);
+        }
+        #center-dot {
+            width: 12px;
+            height: 12px;
+            background-color: #DC2626; /* Red-600 */
+            border-radius: 50%;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            position: relative;
+            transition: transform 0.2s;
+        }
+        #center-hotspot:hover #center-dot {
+            transform: scale(1.25);
+        }
+        #label-o {
+            position: absolute;
+            top: -28px;
+            left: -24px;
+            font-family: serif;
+            font-weight: bold;
+            font-style: italic;
+            font-size: 1.5rem;
+            color: #000;
+        }
+
+        /* Measurements */
+        #measure-r {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 50%;
+            height: 3px;
+            background-color: #000;
+            transform-origin: left;
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        #measure-r.visible { opacity: 1; }
+        .text-r {
+            transform: rotate(45deg) translateY(-20px);
+            font-family: serif;
+            font-weight: bold;
+            font-style: italic;
+            font-size: 1.25rem;
+            color: #000;
+        }
+
+        #measure-d-container {
+            position: absolute;
+            left: 50%;
+            width: 0;
+            border-left: 3px solid #000;
+            z-index: 25; /* Updated z-index to be higher than circle-o (20) */
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        #measure-d-container.visible { opacity: 1; }
+        .text-d {
+            position: absolute;
+            right: 8px;
+            background: rgba(255,255,255,0.9);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: serif;
+            font-weight: bold;
+            font-style: italic;
+            font-size: 1.25rem;
+            color: #000;
+            white-space: nowrap;
+        }
+        #right-angle-symbol {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-left: 3px solid #000;
+            left: 0;
+        }
+
+        /* Intersection Points */
+        .intersection-point {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background-color: #FF3B30;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            z-index: 40;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            transition: left 0.1s linear;
+        }
+
+        /* --- Control Panel (Bottom Right) --- */
+        .control-panel {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            z-index: 50;
+            width: 280px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            transition: transform 0.2s;
+        }
+        .control-panel:hover {
+            transform: scale(1.01);
+        }
+
+        /* Status Header */
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        #status-text {
+            font-size: 1.5rem;
+            font-weight: 900;
+            letter-spacing: -0.025em;
+        }
+        #math-text {
+            font-family: monospace;
+            font-size: 0.875rem;
+            color: #6b7280;
+            background: #f3f4f6;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        /* Slider */
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            outline: none;
+            cursor: pointer;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #000;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #9ca3af;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        #label-tangent { transition: all 0.2s; }
+
+        /* Buttons */
+        .button-group {
+            display: flex;
+            gap: 8px;
+        }
+        .btn {
+            flex: 1;
+            height: 36px;
+            border-radius: 12px;
+            border: 1px solid transparent;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f9fafb;
+            color: #4b5563;
+            border-color: #f3f4f6;
+        }
+        .btn:hover { background: #f3f4f6; }
+        
+        /* Specific Button Colors */
+        .btn-green { background: #f0fdf4; color: #15803d; border-color: #dcfce7; }
+        .btn-green:hover { background: #dcfce7; }
+        .btn-orange { background: #fff7ed; color: #c2410c; border-color: #ffedd5; }
+        .btn-orange:hover { background: #ffedd5; }
+
+        /* Colors for JS injection */
+        .text-green { color: #16A34A; }
+        .text-blue { color: #2563EB; }
+        .text-orange { color: #EA580C; }
+        .scale-up { transform: scale(1.1); font-weight: 900; color: #16A34A; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Background Layer -->
+    <div id="bg-layer"></div>
+
+    <!-- Title -->
+    <div class="title-card">
+        <!-- SVG Sun Icon -->
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2"></path>
+            <path d="M12 20v2"></path>
+            <path d="M4.93 4.93l1.41 1.41"></path>
+            <path d="M17.66 17.66l1.41 1.41"></path>
+            <path d="M2 12h2"></path>
+            <path d="M20 12h2"></path>
+            <path d="M6.34 17.66l-1.41 1.41"></path>
+            <path d="M19.07 4.93l-1.41 1.41"></path>
+        </svg>
+        <span>直线与圆的位置关系</span>
+    </div>
+
+    <!-- Main Visual Area -->
+    <div id="main-area">
+        
+        <!-- Line l -->
+        <div class="line-l">
+            <div class="line-label">l</div>
+        </div>
+
+        <!-- Distance Measure d -->
+        <div id="measure-d-container">
+            <div class="text-d">d</div>
+            <div id="right-angle-symbol"></div>
+        </div>
+
+        <!-- Circle O -->
+        <div id="circle-o">
+            <!-- Radius Measure r -->
+            <div id="measure-r">
+                <span class="text-r">r</span>
+            </div>
+            
+            <!-- Center Hotspot -->
+            <div id="center-hotspot">
+                <div id="center-dot">
+                    <span id="label-o">O</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Intersection Points Container -->
+        <div id="points-container">
+            <!-- Points will be injected by JS -->
+        </div>
+
+    </div>
+
+    <!-- Control Panel -->
+    <div class="control-panel">
+        <div class="status-header">
+            <div id="status-text">相交</div>
+            <div id="math-text">d < r</div>
+        </div>
+
+        <div class="slider-container">
+            <input type="range" id="d-slider" min="-150" max="220" step="1" value="0">
+            <div class="slider-labels">
+                <span>相交</span>
+                <span id="label-tangent">d=r</span>
+                <span>相离</span>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button id="btn-zero" class="btn">d = 0</button>
+            <button id="btn-tangent" class="btn btn-green">相切</button>
+            <button id="btn-separated" class="btn btn-orange">相离</button>
+        </div>
+    </div>
+
+    <script>
+    // 使用代码块作用域来避免变量重声明错误
+    {
+        // --- Constants & State ---
+        const r = 120; // radius
+        let d = 0;     // distance
+        let showMeasurements = false;
+        let isDragging = false;
+        let animationFrameId = null;
+
+        // --- DOM Elements ---
+        const bgLayer = document.getElementById('bg-layer');
+        const circle = document.getElementById('circle-o');
+        const measureDContainer = document.getElementById('measure-d-container');
+        const measureR = document.getElementById('measure-r');
+        const rightAngleSymbol = document.getElementById('right-angle-symbol');
+        const pointsContainer = document.getElementById('points-container');
+        const statusText = document.getElementById('status-text');
+        const mathText = document.getElementById('math-text');
+        const slider = document.getElementById('d-slider');
+        const labelTangent = document.getElementById('label-tangent');
+        const mainArea = document.getElementById('main-area');
+        const centerHotspot = document.getElementById('center-hotspot');
+        const btnZero = document.getElementById('btn-zero');
+        const btnTangent = document.getElementById('btn-tangent');
+        const btnSeparated = document.getElementById('btn-separated');
+
+        // --- Core Logic ---
+
+        function updateUI() {
+            // 1. Calculate Relationship
+            const absD = Math.abs(d);
+            let status = '', type = '', colorClass = '', mathStr = '';
+
+            if (Math.abs(absD - r) <= 1.5) {
+                status = '相切'; type = 'tangent'; colorClass = 'text-green'; mathStr = 'd = r';
+            } else if (absD < r) {
+                status = '相交'; type = 'intersecting'; colorClass = 'text-blue'; mathStr = 'd < r';
+            } else {
+                status = '相离'; type = 'separated'; colorClass = 'text-orange'; mathStr = 'd > r';
+            }
+
+            // 2. Update Background Gradient
+            if (type === 'intersecting') {
+                bgLayer.style.background = 'linear-gradient(to bottom, #ebf8ff 0%, #ffffff 100%)';
+            } else if (type === 'tangent') {
+                bgLayer.style.background = 'linear-gradient(to bottom, #f0fdf4 0%, #ffffff 100%)';
+            } else {
+                bgLayer.style.background = 'linear-gradient(to bottom, #fff7ed 0%, #ffffff 100%)';
+            }
+
+            // 3. Update Text & Colors
+            statusText.textContent = status;
+            statusText.className = ''; // reset
+            statusText.classList.add(colorClass);
+            mathText.textContent = mathStr;
+
+            // 4. Update Slider Label Highlight
+            if (Math.abs(absD - r) < 2) {
+                labelTangent.classList.add('scale-up');
+            } else {
+                labelTangent.classList.remove('scale-up');
+            }
+            slider.value = d;
+
+            // 5. Move Circle
+            // transform: translateY(-d px)
+            circle.style.transform = `translateY(${-d}px)`;
+
+            // 6. Update Distance Measure Line (d)
+            if (showMeasurements && absD > 0) {
+                measureDContainer.classList.add('visible');
+                measureDContainer.style.height = `${absD}px`;
+                
+                // Position logic
+                
+                if (d > 0) {
+                    measureDContainer.style.top = `calc(50% - ${d}px)`;
+                    // Right angle symbol at bottom
+                    rightAngleSymbol.style.bottom = '0';
+                    rightAngleSymbol.style.top = 'auto';
+                    rightAngleSymbol.style.borderTop = 'none';
+                    rightAngleSymbol.style.borderBottom = '3px solid #000';
+                } else {
+                    measureDContainer.style.top = '50%';
+                    // Right angle symbol at top
+                    rightAngleSymbol.style.top = '0';
+                    rightAngleSymbol.style.bottom = 'auto';
+                    rightAngleSymbol.style.borderTop = '3px solid #000';
+                    rightAngleSymbol.style.borderBottom = 'none';
+                }
+
+            } else {
+                measureDContainer.classList.remove('visible');
+            }
+
+            // 7. Update Radius Measure Visibility
+            if (showMeasurements) {
+                measureR.classList.add('visible');
+            } else {
+                measureR.classList.remove('visible');
+            }
+
+            // 8. Render Intersection Points
+            renderPoints(absD);
+        }
+
+        function renderPoints(absD) {
+            pointsContainer.innerHTML = '';
+            
+            // If separated, no points
+            if (absD > r && Math.abs(absD - r) > 1.5) return;
+
+            // Calculate dx offset from center
+            let dx = 0;
+            if (absD <= r) {
+                dx = Math.sqrt(r * r - absD * absD);
+            }
+
+            // Helper to create point div
+            const createPoint = (xOffset) => {
+                const p = document.createElement('div');
+                p.className = 'intersection-point';
+                // left: 50% +/- dx
+                p.style.left = `calc(50% + ${xOffset}px)`;
+                return p;
+            };
+
+            // Left point
+            pointsContainer.appendChild(createPoint(-dx));
+            
+            // Right point (if distinct enough)
+            if (dx > 1) {
+                pointsContainer.appendChild(createPoint(dx));
+            }
+        }
+
+        function setD(val) {
+            // Snap logic
+            const snapThreshold = 6;
+            let newVal = parseFloat(val);
+
+            // Snap to r (tangent)
+            if (Math.abs(Math.abs(newVal) - r) < snapThreshold) {
+                newVal = newVal > 0 ? r : -r;
+            }
+            // Snap to 0
+            else if (Math.abs(newVal) < snapThreshold) {
+                newVal = 0;
+            }
+
+            // Clamp
+            d = Math.max(-r - 100, Math.min(r + 150, newVal));
+            updateUI();
+        }
+
+        // --- Event Listeners ---
+        
+        // Button Listeners (Replaces inline onclick)
+        btnZero.addEventListener('click', () => setD(0));
+        btnTangent.addEventListener('click', () => setD(120));
+        btnSeparated.addEventListener('click', () => setD(200));
+
+        // Slider
+        slider.addEventListener('input', (e) => {
+            setD(e.target.value);
+        });
+
+        // Toggle Measurements
+        centerHotspot.addEventListener('click', (e) => {
+            e.stopPropagation(); // prevent drag start if needed, though simple click is fine
+            showMeasurements = !showMeasurements;
+            updateUI();
+        });
+
+        // Background Drag
+        const handleStart = (clientY) => {
+            isDragging = true;
+            // Disable transition during drag for responsiveness
+            circle.classList.remove('smooth-transition');
+            document.body.style.cursor = 'ns-resize';
+        };
+
+        const handleMove = (clientY) => {
+            if (!isDragging) return;
+            const centerY = window.innerHeight / 2;
+            // Damping factor 1.2
+            const newD = (centerY - clientY) * 1.2;
+            setD(newD);
+        };
+
+        const handleEnd = () => {
+            isDragging = false;
+            circle.classList.add('smooth-transition');
+            document.body.style.cursor = 'default';
+        };
+
+        // Mouse Events
+        mainArea.addEventListener('mousedown', (e) => {
+            // Only start drag if not clicking controls
+            if (e.target.closest('.control-panel') || e.target.closest('#center-hotspot')) return;
+            handleStart(e.clientY);
+        });
+        window.addEventListener('mousemove', (e) => {
+            handleMove(e.clientY);
+        });
+        window.addEventListener('mouseup', handleEnd);
+
+        // Touch Events
+        mainArea.addEventListener('touchstart', (e) => {
+            if (e.target.closest('.control-panel') || e.target.closest('#center-hotspot')) return;
+            handleStart(e.touches[0].clientY);
+        }, { passive: false });
+        window.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault(); // prevent scrolling
+            handleMove(e.touches[0].clientY);
+        }, { passive: false });
+        window.addEventListener('touchend', handleEnd);
+
+
+        // --- Initial Animation ---
+        function startAnimation() {
+            let startTimestamp = null;
+            const duration = 1800;
+
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                
+                // Ease Out Cubic
+                const ease = 1 - Math.pow(1 - progress, 3);
+                
+                // Animate from -50 to 150 (approx)
+                const currentD = -50 + (200 * ease);
+                
+                // Directly set d without snap during animation
+                d = currentD;
+                updateUI();
+
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        // Init
+        // Wait a tiny bit for layout to settle? No need.
+        updateUI();
+        startAnimation();
+    } // End Block Scope
+    </script>
+</body>
+</html>
