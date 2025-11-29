@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>小明上学有几条路</title>
+    <style>
+        /* Apple Font Stack */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #fefefe;
+            color: #1D1D1F;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+        }
+
+        /* Container - Fullscreen */
+        #mainCard {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            /* Limit max width to prevent it from becoming too large on wide screens */
+            max-width: 1400px; 
+            overflow: visible;
+        }
+
+        /* Path Styles */
+        .path-outline {
+            fill: none;
+            stroke: #333;
+            stroke-width: 16;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: opacity 0.3s ease;
+        }
+        
+        .path-fill {
+            fill: none;
+            stroke: #E8F5E9;
+            stroke-width: 14;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: opacity 0.3s ease;
+        }
+
+        /* Node Styles */
+        .node-group {
+            cursor: pointer;
+            transition: opacity 0.3s ease;
+        }
+        
+        /* Dragging cursor */
+        .node-group.expanded {
+            cursor: grab;
+        }
+        .node-group.expanded:active {
+            cursor: grabbing;
+        }
+
+        .node-circle {
+            fill: #007AFF;
+            stroke: #333;
+            stroke-width: 1;
+            transition: fill 0.3s ease, transform 0.3s ease;
+            filter: drop-shadow(0 2px 4px rgba(0, 122, 255, 0.2));
+        }
+
+        .node-group:hover .node-circle {
+            transform: scale(1.2); /* Slightly larger on hover */
+            fill: #0062CC;
+        }
+
+        /* Active State - No color change, just scale */
+        .node-group.active .node-circle {
+            /* fill: #FF3B30;  <-- Removed color change */
+            transform: scale(1.2); 
+            box-shadow: 0 0 10px rgba(0, 122, 255, 0.3);
+        }
+        
+        .node-placeholder {
+            fill: none;
+            stroke: #C7C7CC;
+            stroke-width: 2;
+            stroke-dasharray: 4 4;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .path-handle {
+            fill: #FF3B30;
+            stroke: white;
+            stroke-width: 2;
+            r: 5; /* Slightly smaller handles */
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .label-text {
+            font-size: 24px;
+            font-weight: 600;
+            fill: #1D1D1F;
+            text-anchor: middle;
+            pointer-events: none;
+            text-shadow: 0 2px 4px rgba(255,255,255,0.8);
+            transition: opacity 0.3s;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.2s, transform 0.2s;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            font-size: 14px;
+            color: #86868B;
+            opacity: 0.8;
+            pointer-events: none;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="mainCard">
+        <!-- Expanded viewBox from -100 to 1000 to add horizontal padding -->
+        <svg viewBox="-100 0 1000 500" preserveAspectRatio="xMidYMid meet" id="mapSvg">
+            <!-- Background Layer for Placeholders -->
+            <g id="placeholders">
+                <circle cx="150" cy="200" r="8" class="node-placeholder" id="ph-home" />
+                <circle cx="650" cy="200" r="8" class="node-placeholder" id="ph-school" />
+            </g>
+
+            <!-- Paths Layer -->
+            <g id="paths-layer">
+                <!-- 1. Home to Post Office -->
+                <g class="path-group" id="pg-post-left">
+                    <path id="p1-outline" class="path-outline" />
+                    <path id="p1-fill" class="path-fill" />
+                </g>
+
+                <!-- 2. Post Office to School -->
+                <g class="path-group" id="pg-post-right">
+                    <path id="p2-outline" class="path-outline" />
+                    <path id="p2-fill" class="path-fill" />
+                </g>
+
+                <!-- 3. Direct -->
+                <g class="path-group" id="pg-direct">
+                    <path d="M 150 200 L 650 200" class="path-outline" />
+                    <path d="M 150 200 L 650 200" class="path-fill" />
+                </g>
+
+                <!-- 4. Shop Curve Left -->
+                <g class="path-group" id="pg-shop-left">
+                    <path id="p4a-outline" class="path-outline" />
+                    <path id="p4a-fill" class="path-fill" />
+                </g>
+
+                <!-- 5. Shop Curve Right -->
+                <g class="path-group" id="pg-shop-right">
+                    <path id="p4b-outline" class="path-outline" />
+                    <path id="p4b-fill" class="path-fill" />
+                </g>
+            </g>
+
+            <!-- Moving Handles -->
+            <circle id="handle-post-L" class="path-handle" />
+            <circle id="handle-post-R" class="path-handle" />
+            <circle id="handle-shop-L" class="path-handle" />
+            <circle id="handle-shop-R" class="path-handle" />
+
+            <!-- Fixed Nodes (Home/School) -->
+            <g class="node-group" id="node-home" transform="translate(150, 200)">
+                <!-- Reduced r to 8 -->
+                <circle r="11" class="node-circle" />
+                <text x="-20" y="8" class="label-text" style="text-anchor: end;">小明家</text>
+            </g>
+
+            <g class="node-group" id="node-school" transform="translate(650, 200)">
+                <!-- Reduced r to 8 -->
+                <circle r="11" class="node-circle" />
+                <text x="20" y="8" class="label-text" style="text-anchor: start;">学校</text>
+            </g>
+
+            <!-- Interactive Nodes (Post/Shop) - Animated via JS -->
+            <g class="node-group" id="node-post">
+                <!-- Reduced r to 8 -->
+                <circle r="11" class="node-circle" />
+                <text y="-25" class="label-text" id="label-post">邮局</text>
+            </g>
+
+            <g class="node-group" id="node-shop">
+                <!-- Reduced r to 8 -->
+                <circle r="11" class="node-circle" />
+                <text y="35" class="label-text" id="label-shop">商店</text>
+            </g>
+
+        </svg>
+        <div id="tooltip" class="tooltip">Info</div>
+        <div class="instructions">点击邮局、商店可展开/收起，展开后可拖动</div>
+    </div>
+
+    <script>
+        // --- Constants ---
+        const HOME = { x: 150, y: 200 };
+        const SCHOOL = { x: 650, y: 200 };
+        const POST_DEFAULT = { x: 400, y: 50 };
+        const SHOP_DEFAULT = { x: 400, y: 370 };
+
+        // --- Calculation ---
+        const vecPostL = { x: HOME.x - POST_DEFAULT.x, y: HOME.y - POST_DEFAULT.y };
+        const lenPostL = Math.hypot(vecPostL.x, vecPostL.y); 
+        const angPostL_Start = Math.atan2(vecPostL.y, vecPostL.x); 
+
+        const vecPostR = { x: SCHOOL.x - POST_DEFAULT.x, y: SCHOOL.y - POST_DEFAULT.y };
+        const lenPostR = Math.hypot(vecPostR.x, vecPostR.y);
+        const angPostR_Start = Math.atan2(vecPostR.y, vecPostR.x);
+
+        const vecShopL = { x: HOME.x - SHOP_DEFAULT.x, y: HOME.y - SHOP_DEFAULT.y };
+        const distShopL = Math.hypot(vecShopL.x, vecShopL.y); 
+        const lenShopCurve = distShopL * 1.12; 
+        const angShopL_Start = Math.atan2(vecShopL.y, vecShopL.x);
+
+        const vecShopR = { x: SCHOOL.x - SHOP_DEFAULT.x, y: SCHOOL.y - SHOP_DEFAULT.y };
+        const angShopR_Start = Math.atan2(vecShopR.y, vecShopR.x);
+
+        // --- State ---
+        let state = {
+            postExpanded: false,
+            shopExpanded: false,
+            
+            // Animation Factors (0 to 1)
+            postFactor: 0, 
+            shopFactor: 0,
+
+            // Dynamic Positions
+            postPos: { ...POST_DEFAULT },
+            shopPos: { ...SHOP_DEFAULT }
+        };
+
+        // --- Interaction State ---
+        let dragInfo = {
+            active: null, // 'post' or 'shop'
+            offset: { x: 0, y: 0 }
+        };
+
+        // --- Event Listeners ---
+        const nodePost = document.getElementById('node-post');
+        const nodeShop = document.getElementById('node-shop');
+
+        // Post Office Events
+        nodePost.addEventListener('mousedown', (e) => startDrag(e, 'post'));
+        nodePost.addEventListener('touchstart', (e) => startDrag(e, 'post'), {passive: false});
+        nodePost.addEventListener('click', (e) => toggleExpand(e, 'post'));
+
+        // Shop Events
+        nodeShop.addEventListener('mousedown', (e) => startDrag(e, 'shop'));
+        nodeShop.addEventListener('touchstart', (e) => startDrag(e, 'shop'), {passive: false});
+        nodeShop.addEventListener('click', (e) => toggleExpand(e, 'shop'));
+
+        // Global Events for Dragging
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('touchmove', onMove, {passive: false});
+        window.addEventListener('mouseup', endDrag);
+        window.addEventListener('touchend', endDrag);
+
+        function toggleExpand(e, type) {
+            // If we just dragged, don't toggle
+            if (dragInfo.wasDragging) return;
+
+            if (type === 'post') {
+                state.postExpanded = !state.postExpanded;
+                nodePost.classList.toggle('active', state.postExpanded);
+                nodePost.classList.toggle('expanded', state.postExpanded);
+            } else if (type === 'shop') {
+                state.shopExpanded = !state.shopExpanded;
+                nodeShop.classList.toggle('active', state.shopExpanded);
+                nodeShop.classList.toggle('expanded', state.shopExpanded);
+            }
+            startAnimation();
+        }
+
+        function startDrag(e, type) {
+            // Only allow drag if expanded
+            if ((type === 'post' && !state.postExpanded) || 
+                (type === 'shop' && !state.shopExpanded)) return;
+
+            dragInfo.active = type;
+            dragInfo.wasDragging = false;
+            
+            const pt = getEventPoint(e);
+            const currentPos = type === 'post' ? state.postPos : state.shopPos;
+            
+            dragInfo.offset = {
+                x: pt.x - currentPos.x,
+                y: pt.y - currentPos.y
+            };
+            
+            e.stopPropagation(); // prevent card click
+        }
+
+        function onMove(e) {
+            if (!dragInfo.active) return;
+            
+            e.preventDefault();
+            dragInfo.wasDragging = true;
+            const pt = getEventPoint(e);
+            
+            const newX = pt.x - dragInfo.offset.x;
+            const newY = pt.y - dragInfo.offset.y;
+
+            if (dragInfo.active === 'post') {
+                state.postPos.x = newX;
+                state.postPos.y = newY;
+            } else {
+                state.shopPos.x = newX;
+                state.shopPos.y = newY;
+            }
+            startAnimation(); // Keep rendering
+        }
+
+        function endDrag() {
+            dragInfo.active = null;
+            setTimeout(() => { dragInfo.wasDragging = false; }, 0);
+            startAnimation();
+        }
+
+        function getEventPoint(e) {
+            const svg = document.getElementById('mapSvg');
+            const pt = svg.createSVGPoint();
+            // Handle touch or mouse
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            pt.x = clientX;
+            pt.y = clientY;
+            return pt.matrixTransform(svg.getScreenCTM().inverse());
+        }
+
+
+        // --- Animation Loop ---
+        let animationFrame;
+        function lerp(a, b, t) { return a + (b - a) * t; }
+
+        function startAnimation() {
+            if (!animationFrame) animate();
+        }
+
+        function animate() {
+            const k = 0.15; // Animation speed
+            let needsRender = false;
+
+            // 1. Animate Expansion Factors
+            const targetPostFactor = state.postExpanded ? 1 : 0;
+            if (Math.abs(state.postFactor - targetPostFactor) > 0.001) {
+                state.postFactor = lerp(state.postFactor, targetPostFactor, k);
+                needsRender = true;
+            } else {
+                state.postFactor = targetPostFactor;
+            }
+
+            const targetShopFactor = state.shopExpanded ? 1 : 0;
+            if (Math.abs(state.shopFactor - targetShopFactor) > 0.001) {
+                state.shopFactor = lerp(state.shopFactor, targetShopFactor, k);
+                needsRender = true;
+            } else {
+                state.shopFactor = targetShopFactor;
+            }
+
+            // 2. Animate Position Reset (only if NOT dragging and NOT expanded)
+            if (!dragInfo.active) {
+                if (!state.postExpanded) {
+                    const dx = POST_DEFAULT.x - state.postPos.x;
+                    const dy = POST_DEFAULT.y - state.postPos.y;
+                    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+                        state.postPos.x += dx * k;
+                        state.postPos.y += dy * k;
+                        needsRender = true;
+                    } else {
+                         state.postPos.x = POST_DEFAULT.x;
+                         state.postPos.y = POST_DEFAULT.y;
+                    }
+                }
+                
+                if (!state.shopExpanded) {
+                    const dx = SHOP_DEFAULT.x - state.shopPos.x;
+                    const dy = SHOP_DEFAULT.y - state.shopPos.y;
+                    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+                        state.shopPos.x += dx * k;
+                        state.shopPos.y += dy * k;
+                        needsRender = true;
+                    } else {
+                         state.shopPos.x = SHOP_DEFAULT.x;
+                         state.shopPos.y = SHOP_DEFAULT.y;
+                    }
+                }
+            } else {
+                needsRender = true; // dragging
+            }
+
+            render();
+
+            if (needsRender) {
+                animationFrame = requestAnimationFrame(animate);
+            } else {
+                animationFrame = null;
+            }
+        }
+
+        function render() {
+            const pf = state.postFactor;
+            const sf = state.shopFactor;
+            
+            const curPost = state.postPos;
+            const curShop = state.shopPos;
+
+            // --- Post Office Logic ---
+            const angL_Post = lerp(angPostL_Start, Math.PI, pf);
+            const endL_Post = {
+                x: curPost.x + lenPostL * Math.cos(angL_Post),
+                y: curPost.y + lenPostL * Math.sin(angL_Post)
+            };
+
+            const angR_Post = lerp(angPostR_Start, 0, pf);
+            const endR_Post = {
+                x: curPost.x + lenPostR * Math.cos(angR_Post),
+                y: curPost.y + lenPostR * Math.sin(angR_Post)
+            };
+
+            updatePath('p1', `M ${endL_Post.x} ${endL_Post.y} L ${curPost.x} ${curPost.y}`);
+            updatePath('p2', `M ${curPost.x} ${curPost.y} L ${endR_Post.x} ${endR_Post.y}`);
+            
+            // Move Post Node
+            document.getElementById('node-post').setAttribute('transform', `translate(${curPost.x}, ${curPost.y})`);
+            
+            // REMOVED Opacity Toggle: Labels are always visible now
+            // document.getElementById('label-post').style.opacity = pf > 0.5 ? 0 : 1; 
+
+            // --- Shop Logic ---
+            const targetAngL_Shop = -Math.PI; 
+            const angL_Shop = lerp(angShopL_Start, targetAngL_Shop, sf);
+            
+            const currentLenL = lerp(distShopL, lenShopCurve, sf);
+            const endL_Shop = {
+                x: curShop.x + currentLenL * Math.cos(angL_Shop),
+                y: curShop.y + currentLenL * Math.sin(angL_Shop)
+            };
+
+            const angR_Shop = lerp(angShopR_Start, 0, sf);
+            const currentLenR = lerp(distShopL, lenShopCurve, sf);
+            const endR_Shop = {
+                x: curShop.x + currentLenR * Math.cos(angR_Shop),
+                y: curShop.y + currentLenR * Math.sin(angR_Shop)
+            };
+
+            const straightCpL = { x: (endL_Shop.x + curShop.x)/2, y: (endL_Shop.y + curShop.y)/2 };
+            const straightCpR = { x: (endR_Shop.x + curShop.x)/2, y: (endR_Shop.y + curShop.y)/2 };
+            
+            const maxCurveHeight = 85; 
+            const curveHeight = lerp(maxCurveHeight, 0, sf);
+            
+            const dxL = curShop.x - endL_Shop.x;
+            const dyL = curShop.y - endL_Shop.y;
+            const distL_Seg = Math.hypot(dxL, dyL);
+            const nxL = -dyL / distL_Seg;
+            const nyL = dxL / distL_Seg;
+            
+            const dxR = endR_Shop.x - curShop.x;
+            const dyR = endR_Shop.y - curShop.y;
+            const distR_Seg = Math.hypot(dxR, dyR);
+            const nxR = -dyR / distR_Seg;
+            const nyR = dxR / distR_Seg;
+
+            const cpL = { x: straightCpL.x + nxL * curveHeight, y: straightCpL.y + nyL * curveHeight };
+            const cpR = { x: straightCpR.x + nxR * curveHeight, y: straightCpR.y + nyR * curveHeight };
+
+            updatePath('p4a', `M ${endL_Shop.x} ${endL_Shop.y} Q ${cpL.x} ${cpL.y} ${curShop.x} ${curShop.y}`);
+            updatePath('p4b', `M ${curShop.x} ${curShop.y} Q ${cpR.x} ${cpR.y} ${endR_Shop.x} ${endR_Shop.y}`);
+            
+            // Move Shop Node
+            document.getElementById('node-shop').setAttribute('transform', `translate(${curShop.x}, ${curShop.y})`);
+            
+            // REMOVED Opacity Toggle: Labels are always visible now
+            // document.getElementById('label-shop').style.opacity = sf > 0.5 ? 0 : 1;
+
+            // --- Update Handles ---
+            updateHandle('handle-post-L', endL_Post, pf);
+            updateHandle('handle-post-R', endR_Post, pf);
+            updateHandle('handle-shop-L', endL_Shop, sf);
+            updateHandle('handle-shop-R', endR_Shop, sf);
+
+            // --- Visibility ---
+            document.getElementById('pg-direct').style.opacity = 1;
+
+            document.getElementById('pg-post-left').style.opacity = 1;
+            document.getElementById('pg-post-right').style.opacity = 1;
+            document.getElementById('pg-shop-left').style.opacity = 1;
+            document.getElementById('pg-shop-right').style.opacity = 1;
+
+            const maxFactor = Math.max(pf, sf);
+            document.getElementById('ph-home').style.opacity = maxFactor;
+            document.getElementById('ph-school').style.opacity = maxFactor;
+            
+            //document.getElementById('node-home').style.opacity = 1 - 0.5 * maxFactor;
+            //document.getElementById('node-school').style.opacity = 1 - 0.5 * maxFactor;
+        }
+
+        function updatePath(id, d) {
+            document.getElementById(id + '-outline').setAttribute('d', d);
+            document.getElementById(id + '-fill').setAttribute('d', d);
+        }
+
+        function updateHandle(id, pos, opacity) {
+            const el = document.getElementById(id);
+            el.setAttribute('cx', pos.x);
+            el.setAttribute('cy', pos.y);
+            el.style.opacity = opacity > 0.1 ? 1 : 0;
+        }
+
+        render();
+
+    </script>
+</body>
+</html>
