@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>圆绕正方形滚动</title>
+    
+    <style>
+        :root {
+            --primary-blue: #3b82f6;
+            --primary-blue-dark: #2563eb;
+            --bg-gray: #f9fafb;
+            --orange: #f97316;
+            --orange-dark: #ea580c;
+            --red: #ef4444;
+            --green: #22c55e;
+            --gray-400: #9ca3af;
+            --gray-600: #4b5563;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-gray);
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            touch-action: none; /* 禁止默认触摸行为 */
+            user-select: none;  /* 禁止选中文本 */
+            -webkit-user-select: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* SVG Container */
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: default;
+        }
+        
+        svg {
+            width: 100%;
+            height: 100%;
+            max-width: 100vmin;
+            max-height: 100vmin;
+            /* 防止 iOS 上的点击高亮 */
+            -webkit-tap-highlight-color: transparent; 
+        }
+
+        /* Interactive Elements Cursors */
+        .cursor-pointer { cursor: pointer; }
+        .cursor-grab { cursor: grab; }
+        .cursor-grabbing { cursor: grabbing; }
+
+        /* Controls Container */
+        .controls {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 10;
+        }
+
+        /* Button Styles */
+        .btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background-color: white;
+            color: var(--gray-400);
+            border: 2px solid #e5e7eb;
+        }
+
+        .btn:active {
+            transform: scale(0.9);
+        }
+
+        .btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        /* Play Button Specifics */
+        .btn.play-btn {
+            background-color: var(--primary-blue);
+            color: white;
+            border: none;
+        }
+        .btn.play-btn.playing {
+            background-color: var(--orange);
+        }
+        .btn.play-btn.reset {
+            background-color: var(--gray-600);
+        }
+
+        /* Toggle Button Active States */
+        .btn.active-area {
+            border-color: var(--red);
+            color: var(--red);
+        }
+        
+        .btn.active-traj {
+            border-color: var(--green);
+            color: var(--green);
+        }
+
+        /* SVG Element Styles */
+        .hidden { display: none; }
+        
+        /* Transitions for SVG fills/strokes */
+        path, circle, line {
+            transition: fill 0.2s, stroke 0.2s;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Main Container -->
+    <div id="canvas-container">
+        <!-- SVG will be injected here or written inline -->
+        <svg id="main-svg" viewBox="-7 -7 14 14">
+            <defs>
+                <pattern id="grid" x="0.5" y="0.5" width="1" height="1" patternUnits="userSpaceOnUse">
+                    <path d="M 1 0 L 0 0 0 1" fill="none" stroke="#e2e8f0" stroke-width="0.05"/>
+                </pattern>
+            </defs>
+
+            <!-- 1. Background Grid -->
+            <rect x="-50" y="-50" width="100" height="100" fill="url(#grid)" style="pointer-events: none;" />
+
+            <!-- 2. Swept Area Group (Initially Hidden) -->
+            <g id="swept-area-group" class="hidden">
+                <!-- Static Rectangles -->
+                <g fill="rgba(59, 130, 246, 0.2)" style="pointer-events: none;">
+                    <rect x="-2.5" y="-4.5" width="5" height="2" />
+                    <rect x="2.5" y="-2.5" width="2" height="5" />
+                    <rect x="-2.5" y="2.5" width="5" height="2" />
+                    <rect x="-4.5" y="-2.5" width="2" height="5" />
+                </g>
+                <!-- Interactive Corners (TR, BR, BL, TL) -->
+                <!-- id format: corner-swept-{index} -->
+                <path id="corner-swept-0" class="cursor-pointer" stroke="none" fill="rgba(59, 130, 246, 0.2)" />
+                <path id="corner-swept-1" class="cursor-pointer" stroke="none" fill="rgba(59, 130, 246, 0.2)" />
+                <path id="corner-swept-2" class="cursor-pointer" stroke="none" fill="rgba(59, 130, 246, 0.2)" />
+                <path id="corner-swept-3" class="cursor-pointer" stroke="none" fill="rgba(59, 130, 246, 0.2)" />
+            </g>
+
+            <!-- 3. Trajectory Group (Initially Hidden) -->
+            <g id="trajectory-group" class="hidden">
+                <!-- Straight Lines -->
+                <g stroke="#10b981" stroke-width="0.08" stroke-dasharray="0.3 0.3" stroke-linecap="round" style="pointer-events: none;">
+                    <line x1="-2.5" y1="-3.5" x2="2.5" y2="-3.5" />
+                    <line x1="3.5" y1="-2.5" x2="3.5" y2="2.5" />
+                    <line x1="2.5" y1="3.5" x2="-2.5" y2="3.5" />
+                    <line x1="-3.5" y1="2.5" x2="-3.5" y2="-2.5" />
+                </g>
+                <!-- Interactive Corners -->
+                <!-- id format: corner-traj-{index}, plus hit areas -->
+                <g id="corner-traj-group-0" class="cursor-pointer">
+                    <path id="corner-traj-hit-0" fill="transparent" stroke="none" />
+                    <path id="corner-traj-line-0" fill="none" stroke="#10b981" stroke-width="0.08" stroke-dasharray="0.3 0.3" stroke-linecap="round" style="pointer-events: none;" />
+                </g>
+                <g id="corner-traj-group-1" class="cursor-pointer">
+                    <path id="corner-traj-hit-1" fill="transparent" stroke="none" />
+                    <path id="corner-traj-line-1" fill="none" stroke="#10b981" stroke-width="0.08" stroke-dasharray="0.3 0.3" stroke-linecap="round" style="pointer-events: none;" />
+                </g>
+                <g id="corner-traj-group-2" class="cursor-pointer">
+                    <path id="corner-traj-hit-2" fill="transparent" stroke="none" />
+                    <path id="corner-traj-line-2" fill="none" stroke="#10b981" stroke-width="0.08" stroke-dasharray="0.3 0.3" stroke-linecap="round" style="pointer-events: none;" />
+                </g>
+                <g id="corner-traj-group-3" class="cursor-pointer">
+                    <path id="corner-traj-hit-3" fill="transparent" stroke="none" />
+                    <path id="corner-traj-line-3" fill="none" stroke="#10b981" stroke-width="0.08" stroke-dasharray="0.3 0.3" stroke-linecap="round" style="pointer-events: none;" />
+                </g>
+            </g>
+
+            <!-- 4. The Square (Static) -->
+            <rect x="-2.5" y="-2.5" width="5" height="5" fill="#3b82f6" stroke="#2563eb" stroke-width="0.05" style="pointer-events: none;" />
+            <text x="0" y="0" text-anchor="middle" dominant-baseline="middle" fill="white" font-size="0.8" font-weight="bold" opacity="0.9" style="pointer-events: none;">5</text>
+
+            <!-- 5. The Rolling Circle (Group that moves) -->
+            <g id="rolling-circle-group" class="cursor-grab">
+                <!-- Large Hit Area for Dragging -->
+                <circle r="1.5" fill="transparent" />
+                
+                <!-- Visual Circle -->
+                <circle r="1" fill="rgba(251, 146, 60, 0.3)" stroke="#f97316" stroke-width="0.08" style="pointer-events: none;" />
+                <line x1="0" y1="0" x2="1" y2="0" stroke="#f97316" stroke-width="0.05" style="pointer-events: none;" />
+                
+                <!-- Center Point -->
+                <!-- Visual Dot -->
+                <circle id="center-point-visual" r="0.12" fill="white" stroke="#dc2626" stroke-width="0.02" style="pointer-events: none;" />
+                <!-- Center Interaction Hit Area -->
+                <circle id="center-point-hit" r="0.5" fill="transparent" class="cursor-pointer" />
+            </g>
+
+        </svg>
+    </div>
+
+    <!-- Controls UI -->
+    <div class="controls">
+        <!-- Play Button -->
+        <button id="btn-play" class="btn play-btn" title="播放">
+            <!-- Icons are swapped via JS -->
+            <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg id="icon-pause" class="hidden" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            <svg id="icon-reset" class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+
+        <!-- Area Toggle -->
+        <button id="btn-area" class="btn" title="显示面积">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        </button>
+
+        <!-- Trajectory Toggle -->
+        <button id="btn-traj" class="btn" title="显示轨迹">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+        </button>
+    </div>
+
+    <script>
+        // --- Geometry Constants ---
+        const SQUARE_SIDE = 5;
+        const CIRCLE_RADIUS = 1;
+        const HALF_SIDE = SQUARE_SIDE / 2;
+        const STRAIGHT_LENGTH = SQUARE_SIDE;
+        const CORNER_ARC_LENGTH = 0.5 * Math.PI * CIRCLE_RADIUS;
+        const TOTAL_PERIMETER = 4 * STRAIGHT_LENGTH + 4 * CORNER_ARC_LENGTH;
+
+        // --- State ---
+        let state = {
+            progress: 0,
+            isPlaying: false,
+            isDragging: false,
+            showSweptArea: false,
+            showTrajectory: false,
+            isCenterActive: false,
+            activeCorners: [false, false, false, false],
+            activePathCorners: [false, false, false, false]
+        };
+
+        // --- DOM Elements ---
+        const svgElement = document.getElementById('main-svg');
+        const circleGroup = document.getElementById('rolling-circle-group');
+        const sweptAreaGroup = document.getElementById('swept-area-group');
+        const trajectoryGroup = document.getElementById('trajectory-group');
+        const centerPointVisual = document.getElementById('center-point-visual');
+        
+        const btnPlay = document.getElementById('btn-play');
+        const btnArea = document.getElementById('btn-area');
+        const btnTraj = document.getElementById('btn-traj');
+        const iconPlay = document.getElementById('icon-play');
+        const iconPause = document.getElementById('icon-pause');
+        const iconReset = document.getElementById('icon-reset');
+
+        // --- Initialization ---
+        
+        // Pre-calculate paths for corners to insert into DOM
+        function initPaths() {
+            // Swept Area Corners (Sectors)
+            const rSwept = 2 * CIRCLE_RADIUS;
+            const corners = [
+                { cx: HALF_SIDE, cy: -HALF_SIDE, start: -90 }, // TR
+                { cx: HALF_SIDE, cy: HALF_SIDE, start: 0 },    // BR
+                { cx: -HALF_SIDE, cy: HALF_SIDE, start: 90 },  // BL
+                { cx: -HALF_SIDE, cy: -HALF_SIDE, start: 180 } // TL
+            ];
+
+            corners.forEach((c, i) => {
+                // Swept Sector Path
+                const startRad = c.start * Math.PI / 180;
+                const endRad = startRad + Math.PI/2;
+                const x1 = c.cx + rSwept * Math.cos(startRad);
+                const y1 = c.cy + rSwept * Math.sin(startRad);
+                const x2 = c.cx + rSwept * Math.cos(endRad);
+                const y2 = c.cy + rSwept * Math.sin(endRad);
+                const dSector = `M ${c.cx} ${c.cy} L ${x1} ${y1} A ${rSwept} ${rSwept} 0 0 1 ${x2} ${y2} Z`;
+                document.getElementById(`corner-swept-${i}`).setAttribute('d', dSector);
+
+                // Trajectory Path & Hit Area
+                const rTraj = CIRCLE_RADIUS;
+                const tx1 = c.cx + rTraj * Math.cos(startRad);
+                const ty1 = c.cy + rTraj * Math.sin(startRad);
+                const tx2 = c.cx + rTraj * Math.cos(endRad);
+                const ty2 = c.cy + rTraj * Math.sin(endRad);
+                
+                const dTrajLine = `M ${tx1} ${ty1} A ${rTraj} ${rTraj} 0 0 1 ${tx2} ${ty2}`;
+                const dTrajHit = `M ${c.cx} ${c.cy} L ${tx1} ${ty1} A ${rTraj} ${rTraj} 0 0 1 ${tx2} ${ty2} Z`;
+
+                document.getElementById(`corner-traj-line-${i}`).setAttribute('d', dTrajLine);
+                document.getElementById(`corner-traj-hit-${i}`).setAttribute('d', dTrajHit);
+            });
+        }
+
+        initPaths();
+
+        // --- Logic Functions ---
+
+        function getPosition(dist) {
+            const segmentLen = STRAIGHT_LENGTH + CORNER_ARC_LENGTH;
+            const segmentIdx = Math.floor(dist / segmentLen); 
+            const distInSegment = dist % segmentLen;
+            const offset = CIRCLE_RADIUS;
+            
+            let lx, ly;
+
+            if (distInSegment < STRAIGHT_LENGTH) {
+                // Straight
+                const t = distInSegment;
+                lx = -HALF_SIDE + t;
+                ly = -HALF_SIDE - offset;
+            } else {
+                // Corner
+                const arcDist = distInSegment - STRAIGHT_LENGTH;
+                const angleRad = arcDist / CIRCLE_RADIUS;
+                lx = HALF_SIDE + offset * Math.sin(angleRad);
+                ly = -HALF_SIDE - offset * Math.cos(angleRad);
+            }
+
+            const safeIdx = segmentIdx % 4;
+            let cx, cy;
+
+            // Rotation logic
+            if (safeIdx === 0) { cx = lx; cy = ly; }
+            if (safeIdx === 1) { cx = -ly; cy = lx; }
+            if (safeIdx === 2) { cx = -lx; cy = -ly; }
+            if (safeIdx === 3) { cx = ly; cy = -lx; }
+
+            const totalRotation = dist / CIRCLE_RADIUS;
+            return { x: cx, y: cy, rotation: totalRotation };
+        }
+
+        function updateVisuals() {
+            // 1. Circle Position
+            const currentDist = state.progress * TOTAL_PERIMETER;
+            const pos = getPosition(currentDist);
+            const deg = pos.rotation * 180 / Math.PI;
+            circleGroup.setAttribute('transform', `translate(${pos.x}, ${pos.y}) rotate(${deg})`);
+
+            // 2. Center Point Color
+            centerPointVisual.setAttribute('fill', state.isCenterActive ? '#dc2626' : 'white');
+
+            // 3. Play Button State
+            if (state.progress >= 0.999) {
+                btnPlay.className = 'btn play-btn reset';
+                iconPlay.classList.add('hidden');
+                iconPause.classList.add('hidden');
+                iconReset.classList.remove('hidden');
+                btnPlay.title = "重置";
+            } else if (state.isPlaying) {
+                btnPlay.className = 'btn play-btn playing';
+                iconPlay.classList.add('hidden');
+                iconPause.classList.remove('hidden');
+                iconReset.classList.add('hidden');
+                btnPlay.title = "暂停";
+            } else {
+                btnPlay.className = 'btn play-btn';
+                iconPlay.classList.remove('hidden');
+                iconPause.classList.add('hidden');
+                iconReset.classList.add('hidden');
+                btnPlay.title = "播放";
+            }
+
+            // 4. Toggle Buttons
+            btnArea.className = state.showSweptArea ? 'btn active-area' : 'btn';
+            btnTraj.className = state.showTrajectory ? 'btn active-traj' : 'btn';
+
+            // 5. Visibility Groups
+            sweptAreaGroup.classList.toggle('hidden', !state.showSweptArea);
+            trajectoryGroup.classList.toggle('hidden', !state.showTrajectory);
+
+            // 6. Corner Colors (Swept)
+            for(let i=0; i<4; i++) {
+                const el = document.getElementById(`corner-swept-${i}`);
+                if (state.activeCorners[i]) {
+                    el.setAttribute('fill', '#ef4444');
+                } else {
+                    el.setAttribute('fill', 'rgba(59, 130, 246, 0.2)');
+                }
+            }
+
+            // 7. Corner Colors (Trajectory)
+            for(let i=0; i<4; i++) {
+                const line = document.getElementById(`corner-traj-line-${i}`);
+                if (state.activePathCorners[i]) {
+                    line.setAttribute('stroke', '#dc2626');
+                    line.setAttribute('stroke-width', '0.15');
+                    line.setAttribute('stroke-dasharray', 'none');
+                } else {
+                    line.setAttribute('stroke', '#10b981');
+                    line.setAttribute('stroke-width', '0.08');
+                    line.setAttribute('stroke-dasharray', '0.3 0.3');
+                }
+            }
+        }
+
+        // --- Interaction Handlers ---
+
+        // Play Loop
+        let animationId;
+        function animate() {
+            if (!state.isPlaying || state.isDragging) return;
+
+            state.progress += 0.002;
+            if (state.progress >= 1) {
+                state.progress = 1;
+                state.isPlaying = false;
+            }
+            updateVisuals();
+            
+            if (state.isPlaying) {
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+
+        btnPlay.addEventListener('click', () => {
+            if (state.progress >= 0.999) {
+                state.progress = 0;
+                state.isPlaying = true;
+            } else {
+                state.isPlaying = !state.isPlaying;
+            }
+            updateVisuals();
+            if (state.isPlaying) animate();
+            else cancelAnimationFrame(animationId);
+        });
+
+        // Toggle Buttons
+        btnArea.addEventListener('click', () => {
+            state.showSweptArea = !state.showSweptArea;
+            updateVisuals();
+        });
+
+        btnTraj.addEventListener('click', () => {
+            state.showTrajectory = !state.showTrajectory;
+            updateVisuals();
+        });
+
+        // Corner Interactions
+        for(let i=0; i<4; i++) {
+            // Swept Corners
+            document.getElementById(`corner-swept-${i}`).addEventListener('click', (e) => {
+                e.stopPropagation();
+                if(!state.showSweptArea) return;
+                state.activeCorners[i] = !state.activeCorners[i];
+                updateVisuals();
+            });
+
+            // Trajectory Corners
+            document.getElementById(`corner-traj-group-${i}`).addEventListener('click', (e) => {
+                e.stopPropagation();
+                if(!state.showTrajectory) return;
+                state.activePathCorners[i] = !state.activePathCorners[i];
+                updateVisuals();
+            });
+        }
+
+        // Center Point Interaction
+        document.getElementById('center-point-hit').addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.isCenterActive = !state.isCenterActive;
+            if (state.isCenterActive && !state.showTrajectory) {
+                state.showTrajectory = true;
+            }
+            updateVisuals();
+        });
+
+        // --- Dragging Logic ---
+        
+        let lastAngle = 0;
+
+        function getAngle(clientX, clientY) {
+            // Get SVG center relative to viewport
+            const rect = svgElement.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            return Math.atan2(clientY - cy, clientX - cx);
+        }
+
+        function handlePointerDown(e) {
+            state.isDragging = true;
+            state.isPlaying = false;
+            circleGroup.classList.remove('cursor-grab');
+            circleGroup.classList.add('cursor-grabbing');
+            
+            lastAngle = getAngle(e.clientX, e.clientY);
+            
+            // Capture pointer for smooth dragging outside element
+            circleGroup.setPointerCapture(e.pointerId);
+            updateVisuals();
+            cancelAnimationFrame(animationId);
+        }
+
+        function handlePointerMove(e) {
+            if (!state.isDragging) return;
+            
+            const currentAngle = getAngle(e.clientX, e.clientY);
+            let delta = currentAngle - lastAngle;
+
+            // Handle wrap around PI/-PI
+            if (delta > Math.PI) delta -= 2 * Math.PI;
+            if (delta < -Math.PI) delta += 2 * Math.PI;
+
+            // Update progress
+            // Total circle = 2PI. Progress 0->1.
+            let nextProgress = state.progress + delta / (2 * Math.PI);
+            
+            // Normalize
+            if (nextProgress > 1) nextProgress -= 1;
+            if (nextProgress < 0) nextProgress += 1;
+            
+            state.progress = nextProgress;
+            lastAngle = currentAngle;
+            
+            updateVisuals();
+        }
+
+        function handlePointerUp(e) {
+            if(!state.isDragging) return;
+            state.isDragging = false;
+            circleGroup.classList.remove('cursor-grabbing');
+            circleGroup.classList.add('cursor-grab');
+            circleGroup.releasePointerCapture(e.pointerId);
+            updateVisuals();
+        }
+
+        // Attach Drag Events to the Circle Group
+        circleGroup.addEventListener('pointerdown', handlePointerDown);
+        circleGroup.addEventListener('pointermove', handlePointerMove);
+        circleGroup.addEventListener('pointerup', handlePointerUp);
+        // Also attach move/up to window to prevent getting stuck if cursor leaves fast
+        window.addEventListener('pointermove', (e) => {
+            if(state.isDragging && e.target !== circleGroup) handlePointerMove(e);
+        });
+        window.addEventListener('pointerup', (e) => {
+            if(state.isDragging && e.target !== circleGroup) handlePointerUp(e);
+        });
+
+        // Initial Draw
+        updateVisuals();
+
+    </script>
+</body>
+</html>
