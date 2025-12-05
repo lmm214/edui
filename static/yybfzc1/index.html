@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>三角形内的周长</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        .container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80vmin;
+            height: 80vmin;
+            max-width: 600px;
+            max-height: 600px;
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+            overflow: visible;
+        }
+
+        /* --- 样式类 --- */
+        
+        /* 底层背景 */
+        .bg-outline {
+            fill: none;
+            stroke: #000000;
+            stroke-width: 2;
+            stroke-dasharray: 8, 6; /* 虚线标准 */
+            opacity: 0.8;
+        }
+        .bg-fill {
+            fill: #bae6fd; /* 淡蓝色 */
+            stroke: none;
+        }
+
+        /* 交互扇形样式 */
+        .sector-group {
+            cursor: pointer;
+            /* 移除了 transform transition 以便 JS 动画更精准且重置更迅速 */
+        }
+        
+        /* 扇形填充：白色 */
+        .sector-fill {
+            fill: #ffffff;
+            stroke: none;
+        }
+
+        /* 半径：虚线 - 始终保持蓝色，间距与背景一致 */
+        .sector-radii {
+            fill: none;
+            stroke: #2563eb; /* 蓝色 */
+            stroke-width: 2;
+            stroke-dasharray: 8, 6; /* 匹配背景虚线 */
+            stroke-linecap: round;
+            pointer-events: none;
+        }
+
+        /* 弧线：实线 - 默认蓝色 */
+        .sector-arc {
+            fill: none;
+            stroke: #2563eb; /* 蓝色 */
+            stroke-width: 4;
+            stroke-linecap: round;
+            pointer-events: none;
+            transition: stroke 0.3s;
+        }
+
+        /* 隐形点击区 */
+        .sector-hit-area {
+            fill: transparent;
+            stroke: none;
+        }
+
+        /* 高亮状态 - 仅弧线变色 */
+        .sector-group.highlight .sector-arc {
+            stroke: #f97316; /* 橙色 */
+            stroke-width: 5;
+            filter: drop-shadow(0 0 4px rgba(249, 115, 22, 0.4));
+        }
+
+        /* hover效果 */
+        .sector-group:hover .sector-arc {
+            opacity: 0.8;
+        }
+
+        /* --- UI 按钮组 --- */
+        .ui-overlay {
+            position: absolute;
+            top: 50%;
+            right: 30px;
+            transform: translateY(-50%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .btn {
+            background: white;
+            border: 1px solid #cbd5e1;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 15px;
+            color: #334155;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            white-space: nowrap;
+            text-align: center;
+            min-width: 100px;
+        }
+
+        .btn:hover {
+            transform: translateX(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+        }
+
+        .btn:active {
+            transform: translateX(0);
+        }
+        
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+            border: none;
+        }
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+            background: #e2e8f0;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ui-overlay">
+        <button class="btn" id="btn-prev" onclick="prevStep()" disabled>上一步</button>
+        <button class="btn btn-primary" id="btn-next" onclick="nextStep()">下一步</button>
+    </div>
+
+    <div class="container" id="container">
+        <svg viewBox="-100 -100 600 550" xmlns="http://www.w3.org/2000/svg" id="main-svg">
+            <defs>
+                <!-- 定义扇形部件 -->
+                <path id="sector-hit" d="M 0 0 L 200 0 A 200 200 0 0 1 100 173.205 Z" />
+                <path id="sector-radii-path" d="M 200 0 L 0 0 L 100 173.205" />
+                <path id="sector-arc-path" d="M 200 0 A 200 200 0 0 1 100 173.205" />
+            </defs>
+
+            <!-- 1. 背景层 -->
+            <g id="background-layer">
+                <!-- 中心填充：淡蓝色 -->
+                <path d="M 100 173.2 A 200 200 0 0 1 200 346.41 A 200 200 0 0 1 300 173.2 A 200 200 0 0 1 100 173.2 Z" class="bg-fill" />
+                <!-- 虚线边框：黑色 -->
+                <polygon points="200,0 0,346.41 400,346.41" class="bg-outline" />
+                <!-- 标注旋转中心点 -->
+                <circle cx="100" cy="173.205" r="4" fill="#64748b" />
+            </g>
+
+            <!-- 2. 交互层 -->
+            <g id="interactive-layer"></g>
+        </svg>
+    </div>
+
+    <script>
+        // --- 几何常量 ---
+        const SIDE_LEN = 400;
+        const HEIGHT = SIDE_LEN * Math.sqrt(3) / 2; // 346.41
+        
+        const VERTEX_A = { x: 200, y: 0 };
+        const VERTEX_B = { x: 0, y: HEIGHT };
+        const VERTEX_C = { x: 400, y: HEIGHT };
+        const MID_AB = { x: 100, y: HEIGHT / 2 };
+
+        // --- 数据模型 ---
+        // 初始位置：直接对应三角形顶点
+        const sectors = [
+            { id: 's1', x: 200, y: 0, angle: 60, pivot: { x: 0, y: 0 } }, // Top (A)
+            { id: 's2', x: 0, y: HEIGHT, angle: 300, pivot: { x: 0, y: 0 } }, // Left (B)
+            { id: 's3', x: 400, y: HEIGHT, angle: 180, pivot: { x: 0, y: 0 } }  // Right (C)
+        ];
+
+        let isAnimating = false;
+        let currentStep = 0; // 0:初始, 1:右侧平移完成, 2:上方旋转完成
+
+        const layer = document.getElementById('interactive-layer');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+
+        // --- 初始化 ---
+        function init() {
+            layer.innerHTML = ''; 
+            sectors.forEach(s => {
+                const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                g.setAttribute("class", "sector-group");
+                g.setAttribute("id", `group-${s.id}`);
+                g.dataset.id = s.id;
+                
+                // 点击事件：高亮切换
+                g.onclick = (e) => toggleHighlight(s.id);
+
+                // 1. 隐形点击区 (用于接收点击)
+                const hit = document.createElementNS("http://www.w3.org/2000/svg", "use");
+                hit.setAttribute("href", "#sector-hit");
+                hit.setAttribute("class", "sector-hit-area");
+
+                // 2. 白色填充 (新增)
+                const fill = document.createElementNS("http://www.w3.org/2000/svg", "use");
+                fill.setAttribute("href", "#sector-hit");
+                fill.setAttribute("class", "sector-fill");
+
+                // 3. 半径虚线
+                const radii = document.createElementNS("http://www.w3.org/2000/svg", "use");
+                radii.setAttribute("href", "#sector-radii-path");
+                radii.setAttribute("class", "sector-radii");
+
+                // 4. 弧线实线
+                const arc = document.createElementNS("http://www.w3.org/2000/svg", "use");
+                arc.setAttribute("href", "#sector-arc-path");
+                arc.setAttribute("class", "sector-arc");
+
+                // 注意层级顺序
+                g.appendChild(fill); // 填充在最下
+                g.appendChild(radii);
+                g.appendChild(arc);
+                g.appendChild(hit); // 点击区在最上，透明
+                layer.appendChild(g);
+
+                updateTransform(s);
+            });
+            updateButtons();
+        }
+
+        function updateTransform(s) {
+            const el = document.getElementById(`group-${s.id}`);
+            if (el) {
+                el.setAttribute('transform', 
+                    `translate(${s.x}, ${s.y}) rotate(${s.angle}, ${s.pivot.x}, ${s.pivot.y})`
+                );
+            }
+        }
+
+        function updateButtons() {
+            btnPrev.disabled = (currentStep === 0);
+            
+            if (currentStep === 2) {
+                btnNext.textContent = "↺ 重置";
+                btnNext.classList.remove('btn-primary');
+            } else {
+                btnNext.textContent = "下一步";
+                btnNext.classList.add('btn-primary');
+            }
+        }
+
+        // --- 交互逻辑 ---
+        function toggleHighlight(id, forceState = null) {
+            const el = document.getElementById(`group-${id}`);
+            if (el) {
+                if (forceState === true) el.classList.add('highlight');
+                else if (forceState === false) el.classList.remove('highlight');
+                else el.classList.toggle('highlight');
+            }
+        }
+        
+        function isHighlighted(id) {
+            const el = document.getElementById(`group-${id}`);
+            return el && el.classList.contains('highlight');
+        }
+
+        // --- 动画系统 ---
+        function animate(duration, callback) {
+            const start = performance.now();
+            function loop(now) {
+                const progress = Math.min((now - start) / duration, 1);
+                const ease = 1 - Math.pow(1 - progress, 3); // Cubic ease out
+                callback(ease);
+                if (progress < 1) requestAnimationFrame(loop);
+            }
+            requestAnimationFrame(loop);
+        }
+
+        async function wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // --- 步进逻辑 ---
+
+        async function nextStep() {
+            if (isAnimating) return;
+            isAnimating = true;
+
+            try {
+                if (currentStep === 0) {
+                    // 步骤 1: 右侧 s3 平移
+                    if (!isHighlighted('s3')) {
+                        toggleHighlight('s3', true);
+                        await wait(500);
+                    }
+
+                    const s3 = sectors.find(s => s.id === 's3');
+                    const startX = s3.x;
+                    const targetX = 0; // Move to Vertex B x=0
+
+                    await new Promise(resolve => {
+                        animate(1000, (t) => {
+                            s3.x = startX + (targetX - startX) * t;
+                            updateTransform(s3);
+                            if(t===1) resolve();
+                        });
+                    });
+                    currentStep = 1;
+
+                } else if (currentStep === 1) {
+                    // 步骤 2: 上方 s1 旋转
+                    if (!isHighlighted('s1')) {
+                        toggleHighlight('s1', true);
+                        await wait(500);
+                    }
+
+                    const s1 = sectors.find(s => s.id === 's1');
+                    const center = MID_AB;
+                    const startX = VERTEX_A.x;
+                    const startY = VERTEX_A.y;
+                    const startAngle = 60;
+                    const targetRad = -Math.PI; // -180 deg
+
+                    await new Promise(resolve => {
+                        animate(1500, (t) => {
+                            const currRad = targetRad * t;
+                            const cos = Math.cos(currRad);
+                            const sin = Math.sin(currRad);
+                            
+                            const dx = startX - center.x;
+                            const dy = startY - center.y;
+
+                            s1.x = center.x + dx * cos - dy * sin;
+                            s1.y = center.y + dx * sin + dy * cos;
+                            s1.angle = startAngle + (currRad * 180 / Math.PI);
+
+                            updateTransform(s1);
+                            if(t===1) resolve();
+                        });
+                    });
+                    
+                    // 动画结束后，高亮左侧的 s2，完成“三合一”视觉效果
+                    toggleHighlight('s2', true);
+                    
+                    currentStep = 2;
+
+                } else if (currentStep === 2) {
+                    // 重置
+                    resetPositions();
+                }
+            } finally {
+                isAnimating = false;
+                updateButtons();
+            }
+        }
+
+        async function prevStep() {
+            if (isAnimating || currentStep === 0) return;
+            isAnimating = true;
+
+            try {
+                if (currentStep === 1) {
+                    // 撤销步骤 1: s3 移回右侧
+                    const s3 = sectors.find(s => s.id === 's3');
+                    const startX = s3.x; // 0
+                    const targetX = VERTEX_C.x; // 400
+
+                    await new Promise(resolve => {
+                        animate(800, (t) => {
+                            s3.x = startX + (targetX - startX) * t;
+                            updateTransform(s3);
+                            if(t===1) resolve();
+                        });
+                    });
+                    currentStep = 0;
+
+                } else if (currentStep === 2) {
+                    // 撤销时，先取消 s2 的高亮
+                    toggleHighlight('s2', false);
+
+                    // 撤销步骤 2: s1 旋转回上方
+                    const s1 = sectors.find(s => s.id === 's1');
+                    const center = MID_AB;
+                    
+                    const originX = VERTEX_A.x;
+                    const originY = VERTEX_A.y;
+                    const originAngle = 60;
+                    const fullRad = -Math.PI;
+
+                    await new Promise(resolve => {
+                        animate(1000, (t) => {
+                            const reverseT = 1 - t;
+                            const currRad = fullRad * reverseT;
+                            const cos = Math.cos(currRad);
+                            const sin = Math.sin(currRad);
+                            const dx = originX - center.x;
+                            const dy = originY - center.y;
+
+                            s1.x = center.x + dx * cos - dy * sin;
+                            s1.y = center.y + dx * sin + dy * cos;
+                            s1.angle = originAngle + (currRad * 180 / Math.PI);
+
+                            updateTransform(s1);
+                            if(t===1) resolve();
+                        });
+                    });
+                    currentStep = 1;
+                }
+            } finally {
+                isAnimating = false;
+                updateButtons();
+            }
+        }
+
+        function resetPositions() {
+            // 瞬间重置坐标到顶点位置
+            sectors[0].x = 200; sectors[0].y = 0; sectors[0].angle = 60;
+            sectors[1].x = 0; sectors[1].y = HEIGHT; sectors[1].angle = 300;
+            sectors[2].x = 400; sectors[2].y = HEIGHT; sectors[2].angle = 180;
+            
+            // 清除所有高亮
+            document.querySelectorAll('.sector-group').forEach(el => el.classList.remove('highlight'));
+            
+            sectors.forEach(updateTransform);
+            
+            currentStep = 0;
+            updateButtons();
+        }
+
+        init();
+    </script>
+</body>
+</html>
