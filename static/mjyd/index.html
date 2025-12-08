@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>面积一定，周长谁最短？</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8fafc;
+            color: #334155;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            user-select: none;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* 滚动区域容器 */
+        .scroll-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+            overflow-x: auto;
+            cursor: grab;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .scroll-container:active {
+            cursor: grabbing;
+        }
+
+        /* 滚动条样式 */
+        .scroll-container::-webkit-scrollbar {
+            height: 8px;
+        }
+        .scroll-container::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 4px;
+            margin: 0 20px;
+        }
+        .scroll-container::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 4px;
+        }
+        .scroll-container::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        /* 卡片包装层 */
+        .cards-wrapper {
+            display: flex;
+            height: 100%;
+            align-items: center;
+        }
+
+        /* 单个卡片容器 - 自适应宽度逻辑 */
+        .shape-container {
+            /* 默认移动端：更宽的卡片 */
+            flex: 0 0 85vw; 
+            height: 90vh; 
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            margin-right: 4vw; 
+            border: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            position: relative;
+            box-sizing: border-box;
+        }
+        
+        .shape-container:first-child {
+            margin-left: 7.5vw; 
+        }
+        .shape-container:last-child {
+            margin-right: 7.5vw;
+        }
+        
+        /* 桌面端适配 */
+        @media (min-width: 768px) {
+            .shape-container {
+                flex: 0 0 46vw;
+                margin-right: 2vw;
+            }
+            .shape-container:first-child {
+                margin-left: 27vw; 
+            }
+            .shape-container:last-child {
+                margin-right: 27vw;
+            }
+        }
+
+        /* 标题样式 */
+        .card-header {
+            width: 100%;
+            text-align: center;
+            margin-top: 10px;
+            flex-shrink: 0; 
+        }
+        .card-title {
+            font-size: 1.875rem; 
+            font-weight: 700;
+            color: #475569;
+            margin: 0;
+            margin-bottom: 0.5rem;
+        }
+
+        /* 图形显示区域 - 自适应填充 */
+        .canvas-area {
+            position: relative;
+            flex: 1; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow: hidden; 
+        }
+        
+        /* SVG 自适应样式 */
+        .responsive-svg {
+            width: 100%;
+            height: 100%;
+            max-height: 65vh; 
+            display: block;
+        }
+
+        /* 数据面板 */
+        .data-panel {
+            margin-bottom: 1rem; 
+            width: 100%;
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+            box-sizing: border-box;
+            text-align: center;
+            flex-shrink: 0; 
+        }
+        
+        .stat-label-row {
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 1.25rem;
+            color: #94a3b8;
+            font-weight: 700;
+            display: inline-block;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 2px;
+        }
+        
+        .stat-value-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .stat-value {
+            font-size: 1.3rem; 
+            font-family: monospace;
+            color: #334155;
+            white-space: nowrap;
+        }
+        
+        /* 结果高亮样式 */
+        .result-highlight {
+            color: #2563eb; 
+            font-weight: 800;
+            font-size: 1.875rem;
+            margin-left: 0.5rem;
+        }
+        
+        .text-green .result-highlight { color: #16a34a; }
+
+        /* 特效与过渡 */
+        .winner-glow {
+            filter: drop-shadow(0 0 20px rgba(34, 197, 94, 0.4));
+        }
+        .svg-transition {
+            transition: all 500ms ease-out;
+            overflow: visible;
+        }
+        
+        /* SVG 内部文本样式 */
+        .label-text {
+            font-size: 26px; 
+            fill: #475569; 
+            text-anchor: middle;
+            font-family: monospace;
+            font-weight: 800;
+            text-shadow: 0 2px 4px rgba(255,255,255,1);
+            pointer-events: none;
+        }
+        
+        /* 网格线样式 - 修正：移除 non-scaling-stroke，使用 SVG 单位 */
+        .grid-line {
+            stroke: #cbd5e1;
+            stroke-width: 0.8px; /* 随缩放变粗，保持视觉比例 */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 主滚动区域 -->
+    <main class="scroll-container" id="main-scroll-container">
+        <div class="cards-wrapper" id="shapes-wrapper">
+            <!-- 图形将通过 JS 插入这里 -->
+        </div>
+    </main>
+
+    <script>
+        // 配置数据
+        const shapes = [
+            { id: 'triangle', name: '正三角形', color: '#ef4444' }, 
+            { id: 'rectangle', name: '长方形', color: '#f97316', ratio: 0.5 },
+            { id: 'square', name: '正方形', color: '#eab308', ratio: 1 },
+            { id: 'hexagon', name: '正六边形', color: '#8b5cf6' }, 
+            { id: 'circle', name: '圆', color: '#22c55e' } 
+        ];
+
+        // 状态
+        const currentArea = 100;
+        const svgSize = 400; 
+        const center = svgSize / 2;
+        const pixelsPerUnit = 25; 
+
+        // 边长标签格式化
+        function formatLabelNum(num) {
+            if (Math.abs(num - Math.round(num)) < 0.001) {
+                return Math.round(num).toString();
+            }
+            return `≈${num.toFixed(1)}`;
+        }
+
+        // 公式数值格式化
+        function formatFormulaNum(num) {
+            if (Math.abs(num - Math.round(num)) < 0.001) {
+                return Math.round(num).toString();
+            }
+            return parseFloat(num.toFixed(1)).toString();
+        }
+
+        const wrapper = document.getElementById('shapes-wrapper');
+        const mainContainer = document.getElementById('main-scroll-container');
+
+        // 初始化鼠标拖拽功能
+        function initDragScroll() {
+            let isDown = false;
+            let startX;
+            let scrollLeft;
+
+            mainContainer.addEventListener('mousedown', (e) => {
+                isDown = true;
+                mainContainer.style.cursor = 'grabbing';
+                startX = e.pageX - mainContainer.offsetLeft;
+                scrollLeft = mainContainer.scrollLeft;
+            });
+
+            const stopDrag = () => {
+                isDown = false;
+                mainContainer.style.cursor = 'grab';
+            };
+
+            mainContainer.addEventListener('mouseleave', stopDrag);
+            mainContainer.addEventListener('mouseup', stopDrag);
+
+            mainContainer.addEventListener('mousemove', (e) => {
+                if (!isDown) return;
+                e.preventDefault();
+                const x = e.pageX - mainContainer.offsetLeft;
+                const walk = (x - startX) * 1; 
+                mainContainer.scrollLeft = scrollLeft - walk;
+            });
+        }
+
+        function init() {
+            wrapper.innerHTML = '';
+            
+            shapes.forEach(shape => {
+                const el = document.createElement('div');
+                el.className = 'shape-container';
+                el.id = `card-${shape.id}`;
+                
+                el.innerHTML = `
+                    <div class="card-header">
+                        <h3 class="card-title">${shape.name}</h3>
+                    </div>
+
+                    <div class="canvas-area">
+                        <svg viewBox="0 0 ${svgSize} ${svgSize}" preserveAspectRatio="xMidYMid meet" class="responsive-svg svg-transition ${shape.id === 'circle' ? 'winner-glow' : ''}">
+                            <defs>
+                                <pattern id="grid-${shape.id}" width="${pixelsPerUnit}" height="${pixelsPerUnit}" patternUnits="userSpaceOnUse" x="${center % pixelsPerUnit}" y="${center % pixelsPerUnit}">
+                                    <!-- 此时 stroke-width 随 SVG 缩放而变化 -->
+                                    <path d="M ${pixelsPerUnit} 0 L 0 0 0 ${pixelsPerUnit}" fill="none" class="grid-line"/>
+                                </pattern>
+                            </defs>
+                            
+                            <!-- 网格背景 -->
+                            <rect width="100%" height="100%" fill="url(#grid-${shape.id})" />
+
+                            <g id="group-${shape.id}" transform="translate(${center}, ${center})">
+                                <!-- 填充层 -->
+                                <path id="fill-${shape.id}" d="" fill="${shape.color}" fill-opacity="0.1" />
+                                <!-- 辅助装饰线 (半径等) -->
+                                <path id="deco-${shape.id}" d="" fill="none" stroke="${shape.color}" stroke-width="2" stroke-dasharray="6,6" opacity="0.8" />
+                                <!-- 主图形路径 -->
+                                <path id="path-${shape.id}" d="" fill="none" stroke="${shape.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                                <!-- 边长标注文字 -->
+                                <g id="labels-${shape.id}"></g>
+                            </g>
+                        </svg>
+                    </div>
+                    
+                    <div class="data-panel">
+                        <div class="stat-label-row">
+                            <span class="stat-label">周长</span>
+                        </div>
+                        <div class="stat-value-row">
+                            <span id="peri-formula-${shape.id}" class="stat-value ${shape.id === 'circle' ? 'text-green' : ''}"></span>
+                        </div>
+                    </div>
+                `;
+                wrapper.appendChild(el);
+            });
+            
+            initDragScroll();
+            updateAll(currentArea);
+
+            // 初始定位到正方形
+            setTimeout(() => {
+                const squareCard = document.getElementById('card-square');
+                if (squareCard) {
+                    squareCard.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'center' });
+                }
+            }, 100);
+        }
+
+        function calculateGeometry(area, type, ratio = 1) {
+            let side, w, h, r;
+            switch(type) {
+                case 'square':
+                    side = Math.sqrt(area);
+                    return { side, perimeter: side * 4, drawSide: side * pixelsPerUnit };
+                case 'rectangle':
+                    // ratio = 0.5 (w = 0.5h) -> Area = 0.5h*h -> h = sqrt(Area/0.5)
+                    h = Math.sqrt(area / ratio);
+                    w = h * ratio;
+                    return { w, h, perimeter: 2 * (w + h), drawW: w * pixelsPerUnit, drawH: h * pixelsPerUnit };
+                case 'triangle':
+                    side = Math.sqrt((area * 4) / Math.sqrt(3));
+                    return { side, perimeter: side * 3, drawSide: side * pixelsPerUnit };
+                case 'hexagon':
+                    side = Math.sqrt((area * 2) / (3 * Math.sqrt(3)));
+                    return { side, perimeter: side * 6, drawSide: side * pixelsPerUnit };
+                case 'circle':
+                    r = Math.sqrt(area / Math.PI);
+                    return { r, perimeter: 2 * Math.PI * r, drawR: r * pixelsPerUnit };
+            }
+        }
+
+        function updateShape(id, area) {
+            const shapeData = shapes.find(s => s.id === id);
+            const stats = calculateGeometry(area, id, shapeData.ratio);
+            
+            const pathEl = document.getElementById(`path-${id}`);
+            const fillEl = document.getElementById(`fill-${id}`);
+            const decoEl = document.getElementById(`deco-${id}`);
+            const labelGroup = document.getElementById(`labels-${id}`);
+            
+            const periFormulaEl = document.getElementById(`peri-formula-${id}`);
+
+            let d = '';
+            let decoD = '';
+            let labels = '';
+            let periStr = '';
+
+            const highlightResult = (text) => `<span class="result-highlight">${text}</span>`;
+
+            switch(id) {
+                case 'square':
+                    const s_fmt = formatFormulaNum(stats.side);
+                    const s_label = formatLabelNum(stats.side);
+                    const hs = stats.drawSide / 2;
+                    d = `M ${-hs},${-hs} L ${hs},${-hs} L ${hs},${hs} L ${-hs},${hs} Z`;
+                    labels = `<text x="0" y="${hs + 45}" class="label-text">${s_label}</text>`;
+                    
+                    periStr = `4 × ${s_fmt} = ${highlightResult(formatFormulaNum(stats.side * 4))}`;
+                    break;
+
+                case 'rectangle':
+                    const w_fmt = formatFormulaNum(stats.w);
+                    const h_fmt = formatFormulaNum(stats.h);
+                    const w_label = formatLabelNum(stats.w);
+                    const h_label = formatLabelNum(stats.h);
+                    
+                    const hw = stats.drawW / 2;
+                    const hh = stats.drawH / 2;
+                    d = `M ${-hw},${-hh} L ${hw},${-hh} L ${hw},${hh} L ${-hw},${hh} Z`;
+                    labels = `
+                        <text x="0" y="${hh + 45}" class="label-text">${w_label}</text>
+                        <text x="${hw + 30}" y="0" class="label-text" style="text-anchor:start">${h_label}</text>
+                    `;
+                    
+                    const p_calc = (parseFloat(w_fmt) + parseFloat(h_fmt)) * 2;
+                    periStr = `(${w_fmt} + ${h_fmt}) × 2 = ${highlightResult(formatFormulaNum(p_calc))}`;
+                    break;
+
+                case 'triangle':
+                    const s_tri_fmt = formatFormulaNum(stats.side);
+                    const s_tri_label = formatLabelNum(stats.side);
+                    const h_tri = stats.drawSide * Math.sqrt(3) / 2;
+                    const r_circum = stats.drawSide / Math.sqrt(3); 
+                    const r_in = h_tri / 3;
+                    const p1 = [0, -r_circum];
+                    const p2 = [stats.drawSide/2, r_in];
+                    const p3 = [-stats.drawSide/2, r_in];
+                    
+                    // 定义一个垂直偏移量，使三角形向下移动
+                    const triOffsetY = 20;
+                    
+                    // 在所有 y 坐标上加上偏移量
+                    d = `M ${p1[0]},${p1[1] + triOffsetY} L ${p2[0]},${p2[1] + triOffsetY} L ${p3[0]},${p3[1] + triOffsetY} Z`;
+                    // 标签的 y 坐标也加上相同的偏移量
+                    labels = `<text x="0" y="${p2[1] + 45 + triOffsetY}" class="label-text">${s_tri_label}</text>`;
+                    
+                    const p_tri_calc = 3 * parseFloat(s_tri_fmt);
+                    periStr = `3 × ${s_tri_fmt} = ${highlightResult(formatFormulaNum(p_tri_calc))}`;
+                    break;
+
+                case 'hexagon':
+                    const s_hex_fmt = formatFormulaNum(stats.side);
+                    const s_hex_label = formatLabelNum(stats.side);
+                    const r_hex = stats.drawSide;
+                    let pathStr = "";
+                    for(let i=0; i<6; i++) {
+                        const angle = (60 * i) * (Math.PI / 180);
+                        const x = r_hex * Math.cos(angle);
+                        const y = r_hex * Math.sin(angle);
+                        pathStr += (i===0 ? "M " : "L ") + `${x},${y} `;
+                    }
+                    pathStr += "Z";
+                    d = pathStr;
+                    labels = `<text x="0" y="${r_hex * 0.866 + 45}" class="label-text">${s_hex_label}</text>`;
+                    
+                    const p_hex_calc = 6 * parseFloat(s_hex_fmt);
+                    periStr = `6 × ${s_hex_fmt} = ${highlightResult(formatFormulaNum(p_hex_calc))}`;
+                    break;
+
+                case 'circle':
+                    const r_cir_fmt = formatFormulaNum(stats.r);
+                    const r_cir_label = formatLabelNum(stats.r);
+                    d = `M ${stats.drawR},0 A ${stats.drawR},${stats.drawR} 0 1,1 -${stats.drawR},0 A ${stats.drawR},${stats.drawR} 0 1,1 ${stats.drawR},0`;
+                    decoD = `M 0,0 L ${stats.drawR},0`;
+                    labels = `<text x="${stats.drawR/2}" y="-15" class="label-text">r${r_cir_label}</text>`;
+                    
+                    const p_cir_calc = 2 * 3.14 * parseFloat(r_cir_fmt);
+                    periStr = `2 × 3.14 × ${r_cir_fmt} ≈ ${highlightResult(formatFormulaNum(p_cir_calc))}`;
+                    break;
+            }
+
+            pathEl.setAttribute('d', d);
+            fillEl.setAttribute('d', d);
+            decoEl.setAttribute('d', decoD);
+            labelGroup.innerHTML = labels;
+            
+            periFormulaEl.innerHTML = periStr; 
+        }
+
+        function updateAll(area) {
+            shapes.forEach(shape => updateShape(shape.id, area));
+        }
+
+        init();
+
+    </script>
+</body>
+</html>
