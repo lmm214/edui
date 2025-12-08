@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>月相变化观察站</title>
+    <style>
+        :root {
+            --bg-color: #0B1026;
+            --text-color: #E0E0E0;
+            --accent-color: #FFD700;
+            --earth-water: #24599D;
+            --moon-color: #F4F6F0;
+            --shadow-color: #1A1F35;
+            /* 修改卡片背景为深黑色半透明，以完美融合 */
+            --card-bg: rgba(255, 255, 255, 0.12); 
+        }
+
+        /* 全局盒模型设置，防止padding撑大容器 */
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at 30% 50%, #1B2744 0%, #0B1026 100%);
+            color: var(--text-color);
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部标题栏 */
+        header {
+            flex: 0 0 auto;
+            text-align: center;
+            padding: 10px 0 5px 0;
+            z-index: 10;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            opacity: 0.7;
+            margin-top: 3px;
+        }
+
+        /* 主容器 */
+        #main-container {
+            flex: 1;
+            display: flex;
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 10px 20px 20px 20px;
+            gap: 20px;
+        }
+
+        /* 左侧面板 (4/5) */
+        .left-panel {
+            flex: 4;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: grab; 
+            overflow: hidden;
+        }
+        
+        .left-panel:active {
+            cursor: grabbing;
+        }
+
+        /* 右侧面板 (1/5) */
+        .right-panel {
+            flex: 1;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.14);
+            display: flex;
+            flex-direction: column;
+            padding: 20px 15px; /* 调整内边距 */
+            min-width: 240px; 
+            max-width: 320px; 
+            height: fit-content;
+            align-self: center;
+            z-index: 20;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* SVG 样式 */
+        svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+        }
+
+        /* 右侧内容布局 */
+        .view-earth-container {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 10px;
+            width: 100%; /* 确保宽度不超出 */
+        }
+        
+        #earth-svg {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 1 / 1;
+        }
+
+        .controls-container {
+            flex: 0 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 10px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            width: 100%;
+        }
+
+        /* 信息文字样式 */
+        .info-header {
+            text-align: center;
+            margin-bottom: 8px;
+            width: 100%;
+        }
+
+        .day-display {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: var(--accent-color);
+            margin-bottom: 4px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .phase-name {
+            font-size: 1.2rem;
+            color: #FFF;
+            /* 移除文字背景框，使其更融合 */
+            background: transparent; 
+            text-shadow: 0 2px 4px rgba(0,0,0,1);
+            padding: 5px 0;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* 口诀提示样式 */
+        .mnemonic-tip {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 1);
+            text-align: center;
+            font-style: normal;
+            min-height: 3.5em; 
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.3); /* 深色背景，融合更好 */
+            padding: 5px;
+            border-radius: 12px;
+            margin-top: 5px;
+            line-height: 1.5;
+        }
+
+        /* 滑块样式 */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            margin: 8px 0;
+        }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+            transition: transform 0.2s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        /* 按钮组 */
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+        }
+
+        button {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 0;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            flex: 0 0 auto;
+        }
+
+        button svg { width: 18px; height: 18px; }
+
+        button:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: var(--accent-color);
+        }
+
+        button.active {
+            background: var(--accent-color);
+            color: #000;
+            border-color: var(--accent-color);
+            font-weight: bold;
+        }
+
+        /* SVG 内部样式 */
+        .label-text {
+            font-size: 14px;
+            fill: var(--text-color);
+            opacity: 0.9;
+            pointer-events: none;
+            text-anchor: middle;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        #earth-group-tilted { filter: drop-shadow(0 0 10px rgba(120,200,255,0.35)); }
+        #orbit-moon-group { filter: drop-shadow(0 0 6px rgba(255,255,255,0.5)); }
+
+        /* 太阳本体图标 */
+        .sun-icon circle {
+            fill: var(--accent-color);
+            filter: drop-shadow(0 0 20px rgba(255, 215, 0, 1.0));
+        }
+
+        .orbit-path {
+            fill: none;
+            stroke: rgba(255,255,255,0.25);
+            stroke-width: 1.5;
+            pointer-events: stroke; 
+            cursor: pointer;
+        }
+        
+        #interaction-zone {
+            fill: transparent;
+            cursor: grab;
+        }
+        #interaction-zone:active {
+            cursor: grabbing;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 900px) {
+            #main-container {
+                flex-direction: column;
+                height: auto;
+                overflow-y: auto;
+            }
+            .left-panel {
+                min-height: 400px;
+                flex: none;
+            }
+            .right-panel {
+                max-width: 100%;
+                flex: none;
+                margin-bottom: 20px;
+                width: 90%;
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>🌙 月相变化观察站</h1>
+        <div class="subtitle">拖动月球或滑块，探索“朔望月”的奥秘</div>
+    </header>
+
+    <div id="main-container">
+        <!-- 左侧：上帝视角 (4/5) -->
+        <div class="left-panel" id="left-stage">
+            <!-- 
+               ViewBox 调整说明：
+               原范围: -320(左) 到 320(右)
+               目标: 地球(0,0)向左偏。
+               操作: 将 ViewBox 向右移动(增大起点x)，屏幕显示的中心点就会左移。
+               新设置: -280 -200 640 400 
+               中心点: 40。地球在0，所以地球在中心点左侧 40px 处。
+            -->
+            <svg id="god-svg" viewBox="-280 -200 640 400" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                    <!-- 地球海洋渐变 (纯净蓝) -->
+                    <radialGradient id="earth-water-grad" cx="30%" cy="30%" r="70%">
+                        <stop offset="0%" style="stop-color:#5CB8FF;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#2A6FDE;stop-opacity:1" />
+                    </radialGradient>
+                    
+                    <!-- 地球昼夜阴影渐变 -->
+                    <linearGradient id="earth-shadow-linear" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="30%" stop-color="#000000" stop-opacity="0.7"/> 
+                        <stop offset="60%" stop-color="#000000" stop-opacity="0.25"/> 
+                        <stop offset="100%" stop-color="#000000" stop-opacity="0"/>   
+                    </linearGradient>
+
+                    <!-- 月球渐变 -->
+                    <radialGradient id="tiny-moon-light" cx="30%" cy="30%" r="80%">
+                        <stop offset="0%" style="stop-color:#FFFFFF; stop-opacity:1"/>
+                        <stop offset="100%" style="stop-color:#909090; stop-opacity:1"/>
+                    </radialGradient>
+                    <radialGradient id="tiny-moon-dark" cx="60%" cy="60%" r="70%">
+                        <stop offset="0%" style="stop-color:#222222; stop-opacity:1"/>
+                        <stop offset="100%" style="stop-color:#000000; stop-opacity:1"/>
+                    </radialGradient>
+
+                    <clipPath id="earth-clip"><circle cx="0" cy="0" r="35"></circle></clipPath>
+                    <clipPath id="shadow-clip-half"><rect x="-15" y="-15" width="15" height="30"></rect></clipPath>
+                </defs>
+
+                <!-- 背景星空 -->
+                <g id="stars"></g>
+                
+                <!-- 交互热区 -->
+                <circle id="interaction-zone" cx="0" cy="0" r="240"></circle>
+
+                <!-- 轨道 -->
+                <ellipse class="orbit-path" cx="0" cy="0" rx="200" ry="90"></ellipse>
+                
+                <!-- 太阳 -->
+                <g class="sun-group" transform="translate(280, 0)">
+                    <g class="sun-icon">
+                        <circle cx="20" cy="0" r="25" />
+                    </g>
+                </g>
+
+                <!-- 地球 (无纹理，无自转) -->
+                <g id="earth-group-tilted" transform="rotate(-23.5)">
+                    <!-- 地轴 -->
+                    <line class="earth-axis" x1="0" y1="-50" x2="0" y2="50" stroke="rgba(255,255,255,0.6)" stroke-width="2" stroke-dasharray="4,3"></line>
+                    
+                    <!-- 纯净地球球体 -->
+                    <circle cx="0" cy="0" r="35" fill="url(#earth-water-grad)"></circle>
+                    
+                    <!-- 赤道线 -->
+                    <ellipse class="earth-equator" cx="0" cy="0" rx="35" ry="10" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1.8" stroke-dasharray="4,3"></ellipse>
+                    
+                    <!-- 昼夜阴影遮罩 -->
+                    <g transform="rotate(23.5)"> 
+                         <circle cx="0" cy="0" r="35" fill="url(#earth-shadow-linear)"></circle>
+                    </g>
+
+                    <!-- 大气层光晕 -->
+                    <circle cx="0" cy="0" r="36" fill="none" stroke="rgba(120, 200, 255, 0.85)" stroke-width="1" style="filter: blur(2px);"></circle>
+                </g>
+
+                <!-- 月球容器 -->
+                <g id="orbit-moon-group" style="cursor: grab;">
+                    <!-- 3D小月球 -->
+                    <circle r="13" fill="url(#tiny-moon-light)"></circle>
+                    <circle r="13" fill="url(#tiny-moon-dark)" clip-path="url(#shadow-clip-half)"></circle>
+                    <text x="0" y="30" class="label-text" style="font-size: 11px; opacity: 0.6;">月球</text>
+                </g>
+            </svg>
+        </div>
+
+        <!-- 右侧：地球视角 + 控制 (1/5) -->
+        <div class="right-panel">
+            <div class="view-earth-container">
+                <div class="info-header">
+                    <div class="day-display">🗓️ <span id="day-text">初一</span></div>
+                    <div class="phase-name" id="phase-name">🌑 朔 (新月)</div>
+                    <div class="mnemonic-tip" id="mnemonic-text">初一新月不可见<br>只缘身在日地间</div>
+                </div>
+
+                <svg id="earth-svg" viewBox="-100 -100 200 200" preserveAspectRatio="xMidYMid meet">
+                     <!-- 月亮背景 -->
+                    <circle cx="0" cy="0" r="75" fill="#151922"></circle>
+                    <!-- 月相 -->
+                    <path id="phase-path" d="" fill="#F4F6F0"></path>
+                    <!-- 光晕 -->
+                    <circle cx="0" cy="0" r="75" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1"></circle>
+                    <circle cx="0" cy="0" r="79" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="4"></circle>
+                    
+                    <!-- 纯白色的方位文字 -->
+                    <text x="-90" y="-10" style="font-size:14px; opacity:0.9; fill:#FFF; writing-mode: tb; font-weight:bold;">东 (左)</text>
+                    <text x="90" y="-10" style="font-size:14px; opacity:0.9; fill:#FFF; writing-mode: tb; font-weight:bold;">西 (右)</text>
+                </svg>
+            </div>
+
+            <div class="controls-container">
+                <input type="range" id="day-slider" min="0" max="29.5" step="0.05" value="0">
+                
+                <div class="btn-group">
+                    <button id="btn-play">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </button>
+                    <button id="btn-reset">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM 元素
+        const slider = document.getElementById('day-slider');
+        const orbitGroup = document.getElementById('orbit-moon-group');
+        const godSvg = document.getElementById('god-svg');
+        const earthTiltedGroup = document.getElementById('earth-group-tilted');
+        const phasePath = document.getElementById('phase-path');
+        const dayText = document.getElementById('day-text');
+        const phaseNameDisplay = document.getElementById('phase-name');
+        const mnemonicText = document.getElementById('mnemonic-text');
+        const btnPlay = document.getElementById('btn-play');
+        const btnReset = document.getElementById('btn-reset');
+        const starsGroup = document.getElementById('stars');
+        const leftStage = document.getElementById('left-stage');
+
+        // 状态变量
+        let isPlaying = false;
+        let animationId;
+        let isDragging = false;
+        const totalDays = 29.53; 
+        const orbitRx = 200; // X轴半径
+        const orbitRy = 90;  // Y轴半径
+        
+        // ViewBox 配置 (左偏移)
+        const viewBoxMinX = -280;
+        const viewBoxWidth = 640;
+
+        // 初始化星空
+        function createStars() {
+            for(let i=0; i<100; i++) {
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                // 覆盖范围调整
+                let x = (Math.random() * 800) - 300; 
+                let y = (Math.random() - 0.5) * 400;
+                const r = Math.random() * 1.2;
+                circle.setAttribute("cx", x);
+                circle.setAttribute("cy", y);
+                circle.setAttribute("r", r);
+                circle.setAttribute("fill", "#FFF");
+                circle.setAttribute("opacity", Math.random() * 0.5 + 0.1);
+                starsGroup.appendChild(circle);
+            }
+        }
+        createStars();
+
+        // 核心：更新视图
+        function updateView(day) {
+            const angleDeg = (day / totalDays) * 360; 
+            const rad = angleDeg * (Math.PI / 180);
+
+            // 计算轨道位置
+            const x = orbitRx * Math.cos(rad);
+            const y = -orbitRy * Math.sin(rad); 
+
+            // 透视缩放
+            const depthScale = 1 + (y / orbitRy) * 0.2; 
+
+            // 更新月球位置
+            orbitGroup.setAttribute("transform", `translate(${x}, ${y}) scale(${depthScale})`);
+
+            // Z-Index (遮挡关系)
+            if (y < -5) { 
+                if (orbitGroup.nextElementSibling === earthTiltedGroup) {
+                     godSvg.insertBefore(orbitGroup, earthTiltedGroup);
+                }
+                orbitGroup.style.opacity = 0.8 + (depthScale * 0.2);
+            } else {
+                if (earthTiltedGroup.nextElementSibling !== orbitGroup) {
+                    godSvg.insertBefore(orbitGroup, earthTiltedGroup.nextSibling);
+                }
+                orbitGroup.style.opacity = 1;
+            }
+
+            drawMoonPhase(day);
+            updateText(day);
+        }
+
+        // 月相绘制算法
+        function drawMoonPhase(day) {
+            const r = 75; 
+            const phase = (day / totalDays);
+            const theta = phase * 2 * Math.PI;
+            let lightX = Math.cos(theta) * r; 
+
+            let d = "";
+            if (phase <= 0.5) { 
+                let sweep = lightX > 0 ? 0 : 1; 
+                let rx = Math.abs(lightX);
+                d = `M 0, -${r} A ${r},${r} 0 0,1 0,${r} A ${rx},${r} 0 0,${sweep} 0,-${r} Z`;
+            } else { 
+                let sweep = lightX < 0 ? 0 : 1;
+                let rx = Math.abs(lightX);
+                d = `M 0, -${r} A ${r},${r} 0 0,0 0,${r} A ${rx},${r} 0 0,${sweep} 0,-${r} Z`;
+            }
+            phasePath.setAttribute("d", d);
+        }
+
+        function updateText(day) {
+            const dayInt = Math.floor(day) + 1; 
+            const cnNums = ["", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+            let dateStr = "";
+            if (dayInt <= 10) dateStr = "初" + cnNums[dayInt];
+            else if (dayInt < 20) dateStr = "十" + (dayInt === 10 ? "" : cnNums[dayInt - 10]);
+            else if (dayInt === 20) dateStr = "二十";
+            else if (dayInt < 30) dateStr = "廿" + cnNums[dayInt - 20];
+            else dateStr = "三十";
+
+            dayText.textContent = dateStr;
+
+            let pName = "", tip = "";
+            if (day < 1.5 || day > 28.5) { 
+                pName = "🌑 朔 (新月)"; 
+                tip = "初一新月不可见\n只缘身在日地间"; 
+            }
+            else if (day < 6.5) { 
+                pName = "🌒 娥眉月"; 
+                tip = "弯弯月亮如银钩\n出现在傍晚的西边"; 
+            }
+            else if (day < 8.5) { 
+                pName = "🌓 上弦月"; 
+                tip = "上上上西西\n上半月上半夜亮面朝西"; 
+            }
+            else if (day < 13.5) { 
+                pName = "🌔 盈凸月"; 
+                tip = "月亮越来越圆啦\n亮面大于一半"; 
+            }
+            else if (day < 16.5) { 
+                pName = "🌕 望 (满月)"; 
+                tip = "十五明月圆又圆\n地球位于日月间"; 
+            }
+            else if (day < 21.5) { 
+                pName = "🌖 亏凸月"; 
+                tip = "月亮开始慢慢变缺了\n亮面在东边"; 
+            }
+            else if (day < 23.5) { 
+                pName = "🌗 下弦月"; 
+                tip = "下下下东东\n下半月下半夜亮面朝东"; 
+            }
+            else { 
+                pName = "🌘 残月"; 
+                tip = "黎明前升起在东方\n像个反写的 C"; 
+            }
+
+            phaseNameDisplay.textContent = pName;
+            // 使用 innerText 保持换行符
+            mnemonicText.innerText = tip;
+        }
+
+        // --- 拖拽交互逻辑 ---
+        function handleDrag(e) {
+            const rect = godSvg.getBoundingClientRect();
+            let clientX, clientY;
+            
+            if (e.touches) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            const scaleX = rect.width / viewBoxWidth;
+            const earthScreenX = rect.left + (0 - viewBoxMinX) * scaleX;
+            const earthScreenY = rect.top + rect.height / 2;
+            
+            const dx = clientX - earthScreenX;
+            const dy = clientY - earthScreenY; 
+
+            let angle = Math.atan2(dy, dx); 
+            let theta = -angle; 
+            
+            if (theta < 0) theta += 2 * Math.PI;
+
+            let day = (theta / (2 * Math.PI)) * totalDays;
+            if (day > 29.3 || day < 0.2) day = 0;
+            
+            slider.value = day;
+            updateView(day);
+        }
+
+        function startDrag(e) {
+            isDragging = true;
+            stopAutoPlay();
+            handleDrag(e);
+            leftStage.style.cursor = "grabbing";
+        }
+
+        function endDrag() {
+            isDragging = false;
+            leftStage.style.cursor = "grab";
+        }
+
+        leftStage.addEventListener('mousedown', startDrag);
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                handleDrag(e);
+            }
+        });
+        window.addEventListener('mouseup', endDrag);
+
+        leftStage.addEventListener('touchstart', (e) => {
+            startDrag(e);
+        }, {passive: false});
+        window.addEventListener('touchmove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                handleDrag(e);
+            }
+        }, {passive: false});
+        window.addEventListener('touchend', endDrag);
+
+        slider.addEventListener('input', (e) => {
+            stopAutoPlay();
+            updateView(parseFloat(e.target.value));
+        });
+
+        function play() {
+            let current = parseFloat(slider.value);
+            current += 0.03;
+            if (current >= totalDays) current = 0;
+            slider.value = current;
+            updateView(current);
+            animationId = requestAnimationFrame(play);
+        }
+
+        function stopAutoPlay() {
+            isPlaying = false;
+            cancelAnimationFrame(animationId);
+            btnPlay.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+            btnPlay.classList.remove('active');
+        }
+
+        btnPlay.addEventListener('click', () => {
+            if (isPlaying) {
+                stopAutoPlay();
+            } else {
+                isPlaying = true;
+                btnPlay.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+                btnPlay.classList.add('active');
+                play();
+            }
+        });
+
+        btnReset.addEventListener('click', () => {
+            stopAutoPlay();
+            slider.value = 0;
+            updateView(0);
+        });
+
+        updateView(0);
+
+    </script>
+</body>
+</html>
