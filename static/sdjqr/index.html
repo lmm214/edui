@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扫地机器人</title>
+    <style>
+        body { margin: 0; padding: 0; width: 100vw; height: 100vh; display: flex; flex-direction: column; background-color: #f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+        
+        /* 顶部导航栏 */
+        .glass-bar {
+            height: 72px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+            z-index: 20;
+            flex-shrink: 0;
+            box-sizing: border-box;
+        }
+
+        .title-container {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding-right: 20px;
+        }
+
+        .title-tag {
+            font-size: 13px;
+            font-weight: 700;
+            color: #3b82f6;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 4px;
+        }
+
+        .title-text {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1e293b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            line-height: 1.2;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-icon {
+            background: white;
+            border: 1px solid #e2e8f0;
+            cursor: pointer;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            color: #64748b;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+
+        .btn-icon:hover { background-color: #f8fafc; transform: translateY(-1px); border-color: #cbd5e1; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
+        .btn-icon:active { transform: translateY(0); }
+        .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        
+        /* 播放按钮样式调整：去除文字后的样式 */
+        .btn-play { 
+            color: white; 
+            background-color: #3b82f6; 
+            border-color: #2563eb; 
+            /* width: auto;  去除自适应宽度 */
+            /* padding: 0 20px; 去除内边距 */
+            width: 44px; /* 固定宽度，变回正方形 */
+            height: 44px;
+            font-weight: 600;
+            font-size: 15px;
+            gap: 0; /* 去除间距 */
+        }
+        .btn-play:hover { background-color: #2563eb; }
+        
+        .btn-replay {
+            color: #3b82f6;
+            background-color: #eff6ff;
+            border-color: #dbeafe;
+        }
+
+        .divider {
+            width: 1px;
+            height: 32px;
+            background-color: #cbd5e1;
+            margin: 0 4px;
+        }
+
+        /* 画布区域 */
+        #canvas-container {
+            flex: 1;
+            width: 100%;
+            position: relative;
+            background-color: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #toast {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(30, 41, 59, 0.9);
+            backdrop-filter: blur(4px);
+            color: white;
+            font-size: 15px;
+            font-weight: 500;
+            padding: 10px 24px;
+            border-radius: 9999px;
+            opacity: 0;
+            transition: opacity 0.3s, transform 0.3s;
+            pointer-events: none;
+            z-index: 10;
+            white-space: nowrap;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .interactive-zone { cursor: pointer; }
+        .interactive-zone:hover { opacity: 0.85; }
+        
+        /* 标签样式 */
+        .label-text { font-size: 32px; fill: #334155; font-family: 'Segoe UI', Roboto, sans-serif; font-weight: 800; }
+        
+        /* 简单的淡入动画类 */
+        .fade-in { animation: fadeIn 0.5s forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部导航栏 -->
+    <div class="glass-bar">
+        <div class="title-container">
+            <span class="title-tag" id="q-tag">Q1</span>
+            <h1 class="title-text" id="q-title">机器人始终扫不到的地面面积？</h1>
+        </div>
+
+        <div class="controls">
+            <button onclick="prevQuestion()" id="btn-prev" class="btn-icon" title="上一题">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <button onclick="nextQuestion()" id="btn-next" class="btn-icon" title="下一题">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            
+            <div class="divider"></div>
+            
+            <!-- 播放按钮 (仅图标) -->
+            <button onclick="startPlay()" id="btn-play" class="btn-icon btn-play" title="播放演示">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            
+            <!-- 重播/刷新按钮 (默认隐藏，点击播放后显示) -->
+            <button onclick="startPlay()" id="btn-replay" class="btn-icon btn-replay" style="display: none;" title="重播/刷新">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- SVG 画布 -->
+    <div id="canvas-container">
+        <!-- 提示浮层 -->
+        <div id="toast">点击角落查看详情</div>
+
+        <svg id="main-svg" style="width: 100%; height: 100%; max-width: 1200px; max-height: 900px;" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet">
+            <defs>
+                <!-- 机器人定义 -->
+                <g id="robot-def">
+                    <!-- 机身半透明蓝 -->
+                    <circle cx="0" cy="0" r="40" fill="#3b82f6" fill-opacity="0.2" stroke="#2563eb" stroke-width="2"/>
+                    <!-- 内部结构 -->
+                    <circle cx="0" cy="0" r="4" fill="#2563eb"/> 
+                    <!-- 半径线 r (无箭头，虚线，无端点) -->
+                    <line x1="0" y1="0" x2="40" y2="0" stroke="#2563eb" stroke-width="2" stroke-dasharray="6,4" stroke-linecap="butt" />
+                    <!-- 字号 12 -->
+                    <text x="5" y="-10" font-size="12" fill="#1d4ed8" font-weight="bold">20cm</text>
+                </g>
+
+                <!-- 阴影 -->
+                <filter id="shadow">
+                    <feDropShadow dx="4" dy="4" stdDeviation="4" flood-opacity="0.1"/>
+                </filter>
+            </defs>
+            
+            <g id="scene" transform="translate(400, 300)"></g>
+        </svg>
+    </div>
+
+    <script>
+        // 配置
+        const SCALE = 100; 
+        const ROOM_W = 5 * SCALE;
+        const ROOM_H = 4 * SCALE;
+        const ROBOT_R = 0.4 * SCALE; 
+        
+        // 状态
+        let qIndex = 0;
+        let animId = null;
+        let isPlaying = false;
+        
+        const els = {
+            scene: document.getElementById('scene'),
+            tag: document.getElementById('q-tag'),
+            title: document.getElementById('q-title'),
+            toast: document.getElementById('toast'),
+            prev: document.getElementById('btn-prev'),
+            next: document.getElementById('btn-next'),
+            playBtn: document.getElementById('btn-play'),
+            replayBtn: document.getElementById('btn-replay')
+        };
+
+        const questions = [
+            {
+                tag: "Q1 - 内部清扫",
+                title: "机器人始终扫不到的地面面积？",
+                hint: "点击角落区域查看详情",
+                init: (g) => initQ1(g),
+                anim: (g, cb) => animQ1(g, cb)
+            },
+            {
+                tag: "Q2 - 内部矩形",
+                title: "机器人中心可到达的长方形周长？",
+                init: (g) => initPath(g, true),
+                anim: (g, cb) => animPath(g, true, false, cb)
+            },
+            {
+                tag: "Q3 - 内部路径",
+                title: "沿内缘行走一圈的最大周长？",
+                init: (g) => initPath(g, true),
+                // Q3修改：同步显示扫过的面积，去除虚线轨迹
+                anim: (g, cb) => {
+                     const r = g.querySelector('use');
+                     if(r) r.remove();
+
+                     runPathAnim(g, {
+                        isInternal: true,
+                        showTrace: true, // 显示扫过的区域
+                        traceColor: AREA_COLOR,
+                        showDashedLine: false // 去除虚线轨迹
+                    }, cb);
+                }
+            },
+            {
+                tag: "Q4 - 外部路径",
+                title: "沿外壁行走一圈的路径长度？",
+                hint: "点击角落轨迹查看详情",
+                init: (g) => initQ4(g),
+                anim: (g, cb) => animPath(g, false, true, cb)
+            },
+            {
+                tag: "Q5 - 外部覆盖",
+                title: "外部行走覆盖的区域面积？",
+                hint: "点击角落扇形查看详情",
+                init: (g) => initQ5(g),
+                anim: (g, cb) => animQ5(g, cb)
+            }
+        ];
+
+        function init() {
+            loadQ(0);
+        }
+
+        function loadQ(idx) {
+            qIndex = idx;
+            const q = questions[idx];
+            
+            els.tag.textContent = q.tag;
+            els.title.textContent = q.title;
+            els.prev.disabled = idx === 0;
+            els.next.disabled = idx === questions.length - 1;
+            
+            if(q.hint) showToast(q.hint);
+            else hideToast();
+
+            stopAnim();
+            // 切换问题时，恢复播放按钮
+            els.playBtn.style.display = 'flex';
+            els.replayBtn.style.display = 'none';
+            
+            els.scene.innerHTML = '';
+            q.init(els.scene);
+        }
+
+        function startPlay() {
+            // 允许重播：即使正在播放，也先停止当前动画，重置状态
+            stopAnim();
+
+            const q = questions[qIndex];
+            
+            // 点击后立即切换到刷新图标
+            els.playBtn.style.display = 'none';
+            els.replayBtn.style.display = 'flex';
+            
+            els.scene.innerHTML = '';
+            q.init(els.scene);
+            
+            isPlaying = true;
+            q.anim(els.scene, () => {
+                isPlaying = false;
+                // 动画结束，保持刷新图标，不需要变回播放图标
+            });
+        }
+
+        function stopAnim() {
+            if(animId) cancelAnimationFrame(animId);
+            isPlaying = false;
+        }
+
+        function prevQuestion() { if(qIndex > 0) loadQ(qIndex - 1); }
+        function nextQuestion() { if(qIndex < questions.length - 1) loadQ(qIndex + 1); }
+
+        // --- 绘图组件 ---
+
+        function drawRoom(parent, filled = true) {
+            const g = createSVG('g');
+            // 房间填充色逻辑：始终使用 #f8fafc
+            const rect = createSVG('rect', {
+                x: -ROOM_W/2, y: -ROOM_H/2, width: ROOM_W, height: ROOM_H,
+                fill: "#f8fafc", 
+                stroke: "#334155", "stroke-width": 4, filter: "url(#shadow)"
+            });
+            g.appendChild(rect);
+            drawDims(g);
+            parent.appendChild(g);
+        }
+
+        function drawDims(parent) {
+            const pad = 40;
+            drawDimText(parent, 0, -ROOM_H/2 - pad, "5m");
+            drawDimText(parent, -ROOM_W/2 - pad, 0, "4m", true); 
+        }
+
+        function drawDimText(parent, x, y, txt, rotate = false) {
+            const text = createSVG('text', {
+                x: x, y: y, "text-anchor": "middle",
+                class: "label-text",
+                fill: "#334155"
+            });
+            text.setAttribute("dy", "0.35em"); 
+            if (rotate) text.setAttribute("transform", `rotate(-90 ${x} ${y})`);
+            text.textContent = txt;
+            parent.appendChild(text);
+        }
+
+        function createRobot(parent, x, y) {
+            const use = createSVG('use', {
+                href: "#robot-def",
+                transform: `translate(${x},${y}) scale(${ROBOT_R/40})`
+            });
+            parent.appendChild(use);
+            return use;
+        }
+
+        // --- 逻辑实现 ---
+
+        const AREA_COLOR = "#bfdbfe"; // 淡蓝 (扫过的颜色)
+        const OUTER_AREA_COLOR = "#86efac"; // 淡绿
+
+        // Q1: 内部清扫 (弓字形 + 死角)
+        function initQ1(parent) {
+            drawRoom(parent, true);
+            
+            // 绘制死角交互区 (透明，点击变橙)
+            const corners = [
+                {x: -ROOM_W/2, y: -ROOM_H/2, r:0}, 
+                {x: ROOM_W/2 - ROBOT_R, y: -ROOM_H/2, r:90},
+                {x: ROOM_W/2 - ROBOT_R, y: ROOM_H/2 - ROBOT_R, r:180}, 
+                {x: -ROOM_W/2, y: ROOM_H/2 - ROBOT_R, r:270}
+            ];
+            
+            corners.forEach(c => {
+                const g = createSVG('g', {
+                    transform: `translate(${c.x},${c.y}) rotate(${c.r} ${ROBOT_R/2} ${ROBOT_R/2})`,
+                    class: "interactive-zone",
+                    onclick: "toggleHighlight(this, '#f97316')"
+                });
+                
+                // 死角形状 (尖角)
+                const deadZonePath = `M 0,0 L ${ROBOT_R},0 A ${ROBOT_R},${ROBOT_R} 0 0 0 0,${ROBOT_R} Z`;
+                const zone = createSVG('path', { 
+                    d: deadZonePath, 
+                    fill: "#f97316", 
+                    opacity: 0 // 默认完全透明，无色
+                }); 
+                
+                const hit = createSVG('rect', { width: ROBOT_R, height: ROBOT_R, fill: "transparent" });
+                g.appendChild(zone); g.appendChild(hit);
+                g._target = zone; 
+                parent.appendChild(g);
+            });
+            
+            createRobot(parent, -ROOM_W/2 + ROBOT_R, -ROOM_H/2 + ROBOT_R);
+        }
+
+        function animQ1(parent, cb) {
+            const r = parent.querySelector('use');
+            if(r) r.remove();
+            
+            // 构造弓字形路径
+            const startX = -ROOM_W/2 + ROBOT_R;
+            const startY = -ROOM_H/2 + ROBOT_R;
+            const endX = ROOM_W/2 - ROBOT_R;
+            const endY = ROOM_H/2 - ROBOT_R;
+            
+            const stepY = ROBOT_R * 2; 
+            
+            let d = `M ${startX} ${startY}`;
+            let currentY = startY;
+            let goingRight = true;
+            
+            // 1. 弓字形清扫
+            while (currentY < endY + 1) { 
+                const targetX = goingRight ? endX : startX;
+                d += ` L ${targetX} ${currentY}`;
+                if (currentY >= endY - 1) break; 
+                let nextY = currentY + stepY;
+                if (nextY > endY) nextY = endY; 
+                d += ` L ${targetX} ${nextY}`;
+                currentY = nextY;
+                goingRight = !goingRight;
+            }
+
+            // 2. 内侧逆时针绕一圈
+            const TR = { x: endX, y: startY };
+            const BR = { x: endX, y: endY };
+            const BL = { x: startX, y: endY };
+            const TL = { x: startX, y: startY };
+            
+            d += ` L ${BR.x} ${BR.y}`; // 走到右下
+            d += ` L ${TR.x} ${TR.y}`; // 向上到右上
+            d += ` L ${TL.x} ${TL.y}`; // 向左到左上
+            d += ` L ${BL.x} ${BL.y}`; // 向下到左下
+            d += ` L ${BR.x} ${BR.y}`; // 向右回右下
+
+            runPathAnim(parent, {
+                customPath: d,
+                isInternal: true, 
+                showTrace: true, 
+                traceColor: AREA_COLOR, 
+                hideDashedLine: true 
+            }, cb);
+        }
+
+        // Q2, Q3 (Path)
+        function initPath(parent, isInternal) {
+            drawRoom(parent, isInternal); // 传入 true (或者任意值，现在drawRoom内部统一了)
+            let x, y;
+            if(isInternal) {
+                x = -ROOM_W/2 + ROBOT_R; y = -ROOM_H/2 + ROBOT_R;
+            } else {
+                x = -ROOM_W/2; y = -(ROOM_H/2 + ROBOT_R);
+            }
+            createRobot(parent, x, y);
+        }
+
+        function animPath(parent, isInternal, isExternalPath, cb) {
+             const r = parent.querySelector('use');
+             if(r) r.remove();
+
+             runPathAnim(parent, {
+                isInternal: isInternal,
+                showTrace: false, 
+                showDashedLine: true // 开启虚线
+            }, cb);
+        }
+
+        // Q4 - 外部虚线轨迹 (这里也统一为白色填充)
+        function initQ4(parent) {
+            drawRoom(parent, false); // 这里的 false 实际上被 drawRoom 忽略了，统一用白色
+            const w = ROOM_W, h = ROOM_H, r = ROBOT_R;
+            const arcs = [
+                { d: `M ${-w/2} ${-(h/2+r)} A ${r} ${r} 0 0 0 ${-(w/2+r)} ${-h/2}`, cx: -w/2, cy: -h/2 },
+                { d: `M ${-(w/2+r)} ${h/2} A ${r} ${r} 0 0 0 ${-w/2} ${h/2+r}`, cx: -w/2, cy: h/2 },
+                { d: `M ${w/2} ${h/2+r} A ${r} ${r} 0 0 0 ${w/2+r} ${h/2}`, cx: w/2, cy: h/2 },
+                { d: `M ${w/2+r} ${-h/2} A ${r} ${r} 0 0 0 ${w/2} ${-(h/2+r)}`, cx: w/2, cy: -h/2 }
+            ];
+            const interactGroup = createSVG('g');
+            arcs.forEach(arc => {
+                const g = createSVG('g', { class: "interactive-zone", onclick: "toggleStrokeHighlight(this)" });
+                const highlight = createSVG('path', { d: arc.d, fill: "none", stroke: "#f97316", "stroke-width": 4, opacity: 0 });
+                const hit = createSVG('path', { d: arc.d, fill: "none", stroke: "transparent", "stroke-width": 14 });
+                g.appendChild(highlight); g.appendChild(hit);
+                g._target = highlight;
+                interactGroup.appendChild(g);
+            });
+            parent.appendChild(interactGroup);
+            createRobot(parent, -ROOM_W/2, -(ROOM_H/2 + ROBOT_R));
+        }
+
+        // Q5 - 扇形默认透明
+        function initQ5(parent) {
+            drawRoom(parent, false); // 统一白色
+            const w = ROOM_W, h = ROOM_H;
+            const bigR = 2 * ROBOT_R;
+            const corners = [
+                { cx: -w/2, cy: -h/2, startAngle: 180 },
+                { cx: w/2, cy: -h/2, startAngle: 270 },
+                { cx: w/2, cy: h/2, startAngle: 0 },
+                { cx: -w/2, cy: h/2, startAngle: 90 }
+            ];
+            const sectorGroup = createSVG('g');
+            sectorGroup.setAttribute('id', 'q5-sectors'); 
+            corners.forEach(c => {
+                const g = createSVG('g', { class: "interactive-zone", onclick: "toggleHighlight(this, '#f97316')" });
+                const sectorPath = `M 0 0 L ${bigR} 0 A ${bigR} ${bigR} 0 0 1 0 ${bigR} Z`;
+                const wrapper = createSVG('g', { transform: `translate(${c.cx},${c.cy}) rotate(${c.startAngle})` });
+                // 默认 opacity: 0 (透明)
+                const normal = createSVG('path', { d: sectorPath, fill: OUTER_AREA_COLOR, opacity: 0, class: "q5-sector" });
+                const highlight = createSVG('path', { d: sectorPath, fill: "#f97316", opacity: 0 });
+                const hit = createSVG('path', { d: sectorPath, fill: "transparent", stroke: "none" });
+                wrapper.appendChild(normal); wrapper.appendChild(highlight); wrapper.appendChild(hit);
+                g.appendChild(wrapper);
+                g._target = highlight;
+                sectorGroup.appendChild(g);
+            });
+            parent.insertBefore(sectorGroup, parent.firstChild);
+            createRobot(parent, -ROOM_W/2, -(ROOM_H/2 + ROBOT_R));
+        }
+
+        function animQ5(parent, cb) {
+            const r = parent.querySelector('use');
+            if(r) r.remove();
+            
+            runPathAnim(parent, {
+                isInternal: false,
+                showTrace: true,
+                traceColor: OUTER_AREA_COLOR,
+                showDashedLine: false, 
+                traceOpacity: 0.5
+            }, cb); 
+        }
+
+
+        // --- 核心动画 ---
+        function runPathAnim(parent, opts = {}, onComplete) {
+            const w = ROOM_W, h = ROOM_H, r = ROBOT_R;
+            const { 
+                isInternal, 
+                showTrace, 
+                traceColor, 
+                traceOpacity = 0.5, 
+                showDashedLine, 
+                hideDashedLine,
+                customPath 
+            } = opts;
+
+            let pathD, startPt;
+
+            if (customPath) {
+                pathD = customPath;
+                const match = pathD.match(/M\s*([\d.-]+)\s+([\d.-]+)/);
+                startPt = { x: parseFloat(match[1]), y: parseFloat(match[2]) };
+            } else if (isInternal) {
+                const x0 = -w/2+r, y0 = -h/2+r;
+                const x1 = w/2-r, y1 = h/2-r;
+                pathD = `M ${x0} ${y0} L ${x1} ${y0} L ${x1} ${y1} L ${x0} ${y1} Z`;
+                startPt = {x: x0, y: y0};
+            } else {
+                pathD = `M ${-w/2} ${-(h/2+r)} H ${w/2} A ${r} ${r} 0 0 1 ${w/2+r} ${-h/2} V ${h/2} A ${r} ${r} 0 0 1 ${w/2} ${h/2+r} H ${-w/2} A ${r} ${r} 0 0 1 ${-(w/2+r)} ${h/2} V ${-h/2} A ${r} ${r} 0 0 1 ${-w/2} ${-(h/2+r)} Z`;
+                startPt = {x: -w/2, y: -(h/2+r)};
+            }
+
+            const pathEl = createSVG('path', { d: pathD, fill: "none", stroke: "none" });
+            const totalLen = pathEl.getTotalLength();
+
+            // 痕迹层
+            let traceEl;
+            if (showTrace) {
+                traceEl = createSVG('path', {
+                    d: pathD, fill: "none", stroke: traceColor, "stroke-width": r*2,
+                    opacity: traceOpacity, 
+                    "stroke-linecap": isInternal ? "round" : "butt", 
+                    "stroke-linejoin": "round",
+                    "pointer-events": "none" 
+                });
+                
+                if (parent.firstChild) {
+                    parent.insertBefore(traceEl, parent.firstChild.nextSibling);
+                } else {
+                    parent.appendChild(traceEl);
+                }
+                
+                traceEl.style.strokeDasharray = totalLen;
+                traceEl.style.strokeDashoffset = totalLen;
+            }
+
+            // 虚线层 (Mask实现)
+            let dashEl;
+            let maskPath;
+            
+            if (showDashedLine && !hideDashedLine) {
+                const maskId = 'mask-' + Math.random().toString(36).substr(2, 9);
+                const mask = createSVG('mask', { id: maskId });
+                maskPath = createSVG('path', {
+                    d: pathD, fill: "none", stroke: "white", 
+                    "stroke-width": 5 // Mask稍粗
+                });
+                maskPath.style.strokeDasharray = totalLen;
+                maskPath.style.strokeDashoffset = totalLen;
+                mask.appendChild(maskPath);
+                parent.appendChild(mask);
+
+                dashEl = createSVG('path', {
+                    d: pathD, fill: "none", stroke: "#10b981", 
+                    "stroke-width": 2, "stroke-dasharray": "8,4",
+                    "mask": `url(#${maskId})`
+                });
+                parent.appendChild(dashEl); 
+            }
+
+            const robot = createRobot(parent, startPt.x, startPt.y);
+
+            const duration = customPath ? 8000 : 4000;
+
+            animate(duration, (p) => {
+                const len = totalLen * p;
+                const offset = totalLen - len;
+                if(traceEl) traceEl.style.strokeDashoffset = offset;
+                if(maskPath) maskPath.style.strokeDashoffset = offset; // 动画Mask
+                const pt = pathEl.getPointAtLength(len);
+                const selfRot = (len / (2*Math.PI*ROBOT_R)) * 360;
+                robot.setAttribute("transform", `translate(${pt.x},${pt.y}) rotate(${selfRot}) scale(${ROBOT_R/40})`);
+            }, onComplete);
+        }
+
+        function createSVG(type, attrs = {}) {
+            const el = document.createElementNS("http://www.w3.org/2000/svg", type);
+            for (let k in attrs) el.setAttribute(k, attrs[k]);
+            return el;
+        }
+
+        function animate(duration, cb, onComplete) {
+            let start = null;
+            function step(ts) {
+                if (!start) start = ts;
+                const p = Math.min((ts - start) / duration, 1);
+                cb(p);
+                if (p < 1) animId = requestAnimationFrame(step);
+                else if (onComplete) onComplete();
+            }
+            animId = requestAnimationFrame(step);
+        }
+
+        window.toggleHighlight = function(el, color) {
+            const target = el._target;
+            const op = parseFloat(target.getAttribute('opacity'));
+            target.setAttribute('opacity', op > 0.5 ? 0 : 0.8);
+            if(color) target.setAttribute('fill', color);
+        };
+        
+        window.toggleStrokeHighlight = function(el) {
+            const target = el._target;
+            const op = parseFloat(target.getAttribute('opacity'));
+            target.setAttribute('opacity', op > 0.5 ? 0 : 1);
+        };
+        
+        function showToast(msg) {
+            els.toast.textContent = msg;
+            els.toast.style.opacity = 1;
+            els.toast.style.transform = "translateX(-50%) translateY(0)";
+            setTimeout(hideToast, 4000);
+        }
+        function hideToast() { 
+            els.toast.style.opacity = 0; 
+            els.toast.style.transform = "translateX(-50%) translateY(10px)";
+        }
+
+        init();
+    </script>
+</body>
+</html>
