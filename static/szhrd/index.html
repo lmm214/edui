@@ -99,6 +99,7 @@
             max-height: 500px;
             max-width: 500px;
             z-index: 10;
+            position: relative; /* 确保遮罩层相对于棋盘定位 */
         }
 
         .board-inner {
@@ -110,6 +111,51 @@
             box-shadow: inset 6px 6px 10px rgba(0,0,0,0.2);
             padding: 6px;
         }
+
+        /* 加载遮罩层样式 */
+        .loading-mask {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(3px); /* 毛玻璃效果 */
+            border-radius: 20px; /* 与 board-outer 圆角一致 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .loading-mask.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #ffdbb0;
+            border-top: 4px solid var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        .loading-text {
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 1.1rem;
+            letter-spacing: 1px;
+            animation: breathe 1.5s infinite ease-in-out;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         /* 棋子样式 */
         .tile {
@@ -312,6 +358,11 @@
 
         <div class="board-outer">
             <div class="board-inner" id="board"></div>
+            <!-- 加载遮罩层 -->
+            <div id="loading-mask" class="loading-mask">
+                <div class="spinner"></div>
+                <div class="loading-text">AI 正在全速思考中……</div>
+            </div>
         </div>
     </div>
 
@@ -426,13 +477,19 @@
         const algo = document.getElementById('algo-select').value;
         const listEl = document.getElementById('step-list');
         const goalEl = document.getElementById('goal-display');
+        const mask = document.getElementById('loading-mask'); // 获取遮罩层
         
+        // 立即显示遮罩
+        mask.classList.add('active');
+
         if (currentPath.length === 0) {
             listEl.innerHTML = '<div class="empty-tip">AI 思考中...</div>';
         }
 
         isComputing = true;
         
+        // 使用 setTimeout 让 UI 线程有机会渲染遮罩
+        // 增加延迟到 50ms 确保遮罩动画开始
         setTimeout(() => {
             let result = null;
 
@@ -459,8 +516,10 @@
             updateLockedUI(state, algo);
             renderBoard();
             
+            // 计算完成后隐藏遮罩
+            mask.classList.remove('active');
             isComputing = false;
-        }, 30);
+        }, 50);
     }
     
     function getLayerClass(val) {
