@@ -392,6 +392,57 @@
     const TARGET_POS = {}; 
     GOAL.forEach((v, i) => TARGET_POS[v] = i);
 
+    // 预计算所有位置的邻居索引，避免运行时计算 (性能优化核心)
+    const NEIGHBOR_MAP = [];
+    for(let i=0; i<16; i++) {
+        const r = Math.floor(i/4), c = i%4;
+        const neighbors = [];
+        if (r > 0) neighbors.push(i - 4);
+        if (r < 3) neighbors.push(i + 4);
+        if (c > 0) neighbors.push(i - 1);
+        if (c < 3) neighbors.push(i + 1);
+        NEIGHBOR_MAP[i] = neighbors;
+    }
+
+    // 简单的最小二叉堆实现 (O(logN) 替代 Array.sort 的 O(NlogN))
+    class MinHeap {
+        constructor() { this.data = []; }
+        push(val) {
+            this.data.push(val);
+            this.bubbleUp(this.data.length - 1);
+        }
+        pop() {
+            if (this.data.length === 0) return null;
+            const top = this.data[0];
+            const bottom = this.data.pop();
+            if (this.data.length > 0) {
+                this.data[0] = bottom;
+                this.sinkDown(0);
+            }
+            return top;
+        }
+        size() { return this.data.length; }
+        bubbleUp(i) {
+            while (i > 0) {
+                const p = Math.floor((i - 1) / 2);
+                if (this.data[p].f <= this.data[i].f) break;
+                [this.data[p], this.data[i]] = [this.data[i], this.data[p]];
+                i = p;
+            }
+        }
+        sinkDown(i) {
+            const length = this.data.length;
+            while (true) {
+                let left = 2 * i + 1, right = 2 * i + 2, swap = null;
+                if (left < length && this.data[left].f < this.data[i].f) swap = left;
+                if (right < length && this.data[right].f < (swap === null ? this.data[i].f : this.data[left].f)) swap = right;
+                if (swap === null) break;
+                [this.data[i], this.data[swap]] = [this.data[swap], this.data[i]];
+                i = swap;
+            }
+        }
+    }
+
     let state = [];
     let moves = 0;
     let currentPath = []; 
@@ -477,9 +528,8 @@
         const algo = document.getElementById('algo-select').value;
         const listEl = document.getElementById('step-list');
         const goalEl = document.getElementById('goal-display');
-        const mask = document.getElementById('loading-mask'); // 获取遮罩层
+        const mask = document.getElementById('loading-mask'); 
         
-        // 立即显示遮罩
         mask.classList.add('active');
 
         if (currentPath.length === 0) {
@@ -488,17 +538,31 @@
 
         isComputing = true;
         
-        // 使用 setTimeout 让 UI 线程有机会渲染遮罩
-        // 增加延迟到 50ms 确保遮罩动画开始
         setTimeout(() => {
             let result = null;
+            const startTime = Date.now();
 
-            if (algo === 'regular') {
-                result = solveRegularSmart([...state]);
-            } else if (algo === 'intermediate') {
-                result = solveIntermediate([...state]);
-            } else {
-                result = { path: solveAdvanced([...state]), goalName: "全局最优" };
+            try {
+                if (algo === 'regular') {
+                    result = solveRegularSmart([...state]);
+                } else if (algo === 'intermediate') {
+                    result = solveIntermediate([...state]);
+                } else {
+                    // 高阶算法
+                    const advancedPath = solveAdvanced([...state], startTime);
+                    if (advancedPath) {
+                        result = { path: advancedPath, goalName: "全局最优" };
+                    } else {
+                        // 熔断保护：如果超时或找不到，降级到中阶
+                        console.warn("IDA* timed out or failed, falling back to Intermediate.");
+                        result = solveIntermediate([...state]);
+                        result.goalName = "快速解法 (超时降级)";
+                    }
+                }
+            } catch (e) {
+                console.error("AI Error:", e);
+                // 发生错误时的保底
+                result = { path: [], goalName: "计算出错" };
             }
 
             if (result && result.goalName) {
@@ -516,7 +580,6 @@
             updateLockedUI(state, algo);
             renderBoard();
             
-            // 计算完成后隐藏遮罩
             mask.classList.remove('active');
             isComputing = false;
         }, 50);
@@ -534,20 +597,17 @@
     function solveRegularSmart(currState) {
         const isCorrect = (val, idx) => currState[idx] === val;
         
-        // 第一层逐个
         if (!isCorrect(1, 0)) return { goalName: "目标: 1", path: solveStage(currState, {1:0}, [])?.path };
         if (!isCorrect(2, 1)) return { goalName: "目标: 2", path: solveStage(currState, {2:1}, [0])?.path };
         if (!isCorrect(3, 2)) return { goalName: "目标: 3", path: solveStage(currState, {3:2}, [0, 1])?.path };
         if (!isCorrect(4, 3)) return { goalName: "目标: 4", path: solveStage(currState, {3:2, 4:3}, [0, 1])?.path };
 
         const L1_Locks = [0, 1, 2, 3];
-        // 第二层逐个
         if (!isCorrect(5, 4)) return { goalName: "目标: 5", path: solveStage(currState, {5:4}, L1_Locks)?.path };
         if (!isCorrect(6, 5)) return { goalName: "目标: 6", path: solveStage(currState, {6:5}, [...L1_Locks, 4])?.path };
         if (!isCorrect(7, 6)) return { goalName: "目标: 7", path: solveStage(currState, {7:6}, [...L1_Locks, 4, 5])?.path };
         if (!isCorrect(8, 7)) return { goalName: "目标: 8", path: solveStage(currState, {7:6, 8:7}, [...L1_Locks, 4, 5])?.path };
 
-        // 剩余整体
         const Bottom_Locks = [0, 1, 2, 3, 4, 5, 6, 7];
         const finalTargets = {};
         for(let v=9; v<=15; v++) finalTargets[v] = v-1;
@@ -556,7 +616,6 @@
 
     // --- 2. 中阶算法 (逐层击破) ---
     function solveIntermediate(currState) {
-        // 第一层整体
         const isL1Done = [1,2,3,4].every(v => currState[v-1] === v);
         if (!isL1Done) {
              return { 
@@ -565,7 +624,6 @@
              };
         }
 
-        // 第二层整体 (锁定第一层)
         const isL2Done = [5,6,7,8].every(v => currState[v-1] === v);
         const L1_Locks = [0, 1, 2, 3];
         if (!isL2Done) {
@@ -575,7 +633,6 @@
              };
         }
 
-        // 第三四层整体 (锁定一二层)
         const Bottom_Locks = [0, 1, 2, 3, 4, 5, 6, 7];
         const finalTargets = {};
         for(let v=9; v<=15; v++) finalTargets[v] = v-1;
@@ -586,100 +643,201 @@
         };
     }
 
-    // --- 3. 高阶算法 (全局IDA*) ---
-    function solveAdvanced(startState) {
+    // --- 3. 高阶算法 (优化版 IDA*) ---
+    // 增加 Linear Conflict 启发函数，并增加超时熔断
+    function solveAdvanced(startState, startTime) {
         lockedIndices = []; 
-        let limit = getGlobalHeuristic(startState);
+        let limit = getGlobalHeuristicEnhanced(startState);
         const path = [];
-        for (let i = 0; i < 80; i++) { 
-            const res = dfs([...startState], 0, limit, -1, path);
+        const MAX_TIME = 15000; // 调整超时为 10 秒
+
+        // IDA* 主循环
+        while(true) {
+            // 时间熔断检查
+            if (Date.now() - startTime > MAX_TIME) return null;
+
+            const res = dfs(startState, 0, limit, -1, path, startTime, MAX_TIME);
             if (res === "FOUND") return path;
             if (res === Infinity) return null;
             limit = res;
+            
+            // 如果深度过大(超过70步对15拼图来说极罕见)，也熔断
+            if (limit > 70) return null;
         }
-        return null;
     }
 
-    // --- 优化后的 A* 求解器 ---
-    function solveStage(startState, targetGoals, fixedIndices) {
-        // 性能优化：初始容量设置，避免频繁扩容
-        // 实际上JS数组是动态的，但我们可以控制 maxIter
+    function dfs(curr, g, limit, lastMove, path, startTime, maxTime) {
+        // 启发式函数
+        const h = getGlobalHeuristicEnhanced(curr);
+        const f = g + h;
+        if (f > limit) return f;
+        if (h === 0) return "FOUND";
+
+        // 间歇性检查时间 (每1000节点检查一次太慢，放在循环外层控制，这里仅做轻量递归)
+        // 但为了彻底防卡死，每当 g 较小时检查一下
+        if (g < 5 && (Date.now() - startTime > maxTime)) return Infinity;
+
+        let min = Infinity;
+        const emptyIdx = curr.indexOf(0);
         
-        let openList = [{
+        // 使用预计算的邻居表
+        const neighbors = NEIGHBOR_MAP[emptyIdx]; 
+        
+        for (let i = 0; i < neighbors.length; i++) {
+            const nIdx = neighbors[i];
+            const val = curr[nIdx];
+            
+            if (val === lastMove) continue; // 避免来回走
+
+            // Swap
+            curr[emptyIdx] = val;
+            curr[nIdx] = 0;
+            path.push(val);
+
+            const t = dfs(curr, g + 1, limit, val, path, startTime, maxTime);
+            
+            if (t === "FOUND") return "FOUND";
+            if (t < min) min = t;
+
+            // Backtrack
+            path.pop();
+            curr[nIdx] = val;
+            curr[emptyIdx] = 0;
+            
+            // 如果子搜索返回超时/熔断信号
+            if (min === Infinity && (Date.now() - startTime > maxTime)) return Infinity;
+        }
+        return min;
+    }
+
+    // --- 增强版全局启发函数：Manhattan + Linear Conflict ---
+    function getGlobalHeuristicEnhanced(arr) {
+        let h = 0;
+        let conflict = 0;
+        const size = 4;
+
+        // 1. 曼哈顿距离
+        for (let i = 0; i < 16; i++) {
+            let val = arr[i];
+            if (val === 0) continue;
+            let targetIdx = val - 1;
+            
+            let rCurr = (i >> 2); // i / 4
+            let cCurr = (i & 3);  // i % 4
+            let rTarg = (targetIdx >> 2);
+            let cTarg = (targetIdx & 3);
+            
+            h += Math.abs(rCurr - rTarg) + Math.abs(cCurr - cTarg);
+
+            // 2. 行内线性冲突检测
+            // 如果当前块和目标块都在同一行
+            if (rCurr === rTarg) {
+                // 检查这行右侧的其他块
+                for (let k = cCurr + 1; k < 4; k++) {
+                    let otherVal = arr[rCurr * 4 + k];
+                    if (otherVal === 0) continue;
+                    let otherTarget = otherVal - 1;
+                    let rOtherTarg = (otherTarget >> 2);
+                    
+                    // 如果右侧的块也属于这一行，并且它的目标列在当前块目标列的左侧 -> 冲突
+                    if (rOtherTarg === rCurr && (otherTarget & 3) < cTarg) {
+                        conflict += 2;
+                    }
+                }
+            }
+            // 列冲突检测可以进一步增加精度，但在JS中可能得不偿失，行冲突性价比最高
+        }
+        return h + conflict;
+    }
+
+    // --- 优化后的 A* 求解器 (使用 MinHeap) ---
+    function solveStage(startState, targetGoals, fixedIndices) {
+        let heap = new MinHeap();
+        let startH = getStageHeuristic(startState, targetGoals);
+        
+        heap.push({
             state: [...startState],
             g: 0,
-            h: getStageHeuristic(startState, targetGoals),
+            h: startH,
+            f: 0 + startH, // f = g + h
             path: [],
             emptyIdx: startState.indexOf(0)
-        }];
+        });
         
         let closedSet = new Set();
         let fixedSet = new Set(fixedIndices);
         
-        // 步数上限设为 60000，配合加权启发函数，足够解决所有子问题
-        let maxIter = 60000; 
+        // 限制步数防止特殊情况卡死
+        let maxIter = 200000; // 增加计算步数上限至 200,000，解决复杂情况算不出的问题
 
-        while (openList.length > 0 && maxIter-- > 0) {
-            // 对 openList 排序，取 f = g + h 最小的
-            // 注意：这里 h 已经包含了权重 (Weighted A*)
-            openList.sort((a, b) => (a.g + a.h) - (b.g + b.h));
-            let current = openList.shift();
+        while (heap.size() > 0 && maxIter-- > 0) {
+            let current = heap.pop(); // O(logN) operation
 
             let stateStr = current.state.join(',');
             if (closedSet.has(stateStr)) continue;
             closedSet.add(stateStr);
 
-            // 检查目标是否达成 (h == 0 表示所有目标归位且无冲突)
             if (current.h === 0) {
                 return { path: current.path, state: current.state };
             }
 
-            const neighbors = getNeighbors(current.emptyIdx, fixedSet);
+            // 使用预计算邻居
+            const neighbors = NEIGHBOR_MAP[current.emptyIdx];
             
-            for (let nIdx of neighbors) {
+            for (let i = 0; i < neighbors.length; i++) {
+                let nIdx = neighbors[i];
+                if (fixedSet.has(nIdx)) continue; // 锁定块不可动
+
                 let newState = [...current.state];
                 let moveVal = newState[nIdx];
                 
-                // 交换
-                [newState[current.emptyIdx], newState[nIdx]] = [newState[nIdx], newState[current.emptyIdx]];
+                newState[current.emptyIdx] = moveVal;
+                newState[nIdx] = 0;
 
-                // 只有未访问过的状态才加入
+                // 简单的状态查重检查，只有未访问才计算H放入堆
                 if (!closedSet.has(newState.join(','))) {
                     let h = getStageHeuristic(newState, targetGoals);
-                    openList.push({
+                    let newG = current.g + 1;
+                    heap.push({
                         state: newState,
-                        g: current.g + 1,
+                        g: newG,
                         h: h,
+                        f: newG + h,
                         path: [...current.path, moveVal],
                         emptyIdx: nIdx
                     });
                 }
             }
         }
-        return null;
+        return null; // 未找到解
     }
 
-    // --- 启发函数优化：曼哈顿 + 线性冲突 + 贪婪权重 ---
+    // --- 阶段性启发函数 (保持原有逻辑，已包含冲突检测) ---
     function getStageHeuristic(arr, targets) {
         let h = 0;
         let conflict = 0;
         
-        // 1. 曼哈顿距离
+        // 预处理目标数据结构以便快速查找
+        // 实际使用中 targets 对象很小，遍历开销不大
+        
         for (let tileStr in targets) {
             let tile = parseInt(tileStr);
             let currIdx = arr.indexOf(tile);
             if (currIdx === -1) continue;
             let targetIdx = targets[tile];
             
-            let r1 = Math.floor(currIdx / 4);
-            let c1 = currIdx % 4;
-            let r2 = Math.floor(targetIdx / 4);
-            let c2 = targetIdx % 4;
+            let r1 = (currIdx >> 2), c1 = (currIdx & 3);
+            let r2 = (targetIdx >> 2), c2 = (targetIdx & 3);
             
             h += Math.abs(r1 - r2) + Math.abs(c1 - c2);
         }
 
-        // 2. 线性冲突 (Linear Conflict) - 解决整行卡顿的关键
+        // 简化版线性冲突计算 (针对局部目标)
+        // 为保持性能，此处仅做简单估算或沿用之前的逻辑
+        // 之前的逻辑比较重，这里稍微精简一下，只算 H 也足够解决局部问题，
+        // 但加上冲突权重(3.0)非常重要，保持不变
+        
+        // 复用之前的逻辑...
         const rowGroups = {};
         for (let tileStr in targets) {
             let tile = parseInt(tileStr);
@@ -692,78 +850,22 @@
         for (let r in rowGroups) {
             let tRow = parseInt(r);
             let group = rowGroups[tRow];
-            
-            // 找出该行当前有哪些目标块
             let inRowTiles = [];
             for (let c = 0; c < 4; c++) {
                 let val = arr[tRow * 4 + c];
                 let targetInfo = group.find(g => g.tile === val);
-                if (targetInfo) {
-                    inRowTiles.push({ val: val, currCol: c, tCol: targetInfo.tCol });
-                }
+                if (targetInfo) inRowTiles.push({ val: val, currCol: c, tCol: targetInfo.tCol });
             }
-            
-            // 计算冲突
             for (let i = 0; i < inRowTiles.length; i++) {
                 for (let j = i + 1; j < inRowTiles.length; j++) {
                     let t1 = inRowTiles[i];
                     let t2 = inRowTiles[j];
-                    // t1 在 t2 左边，但 t1 的目标在 t2 右边 => 冲突
-                    if (t1.tCol > t2.tCol) {
-                        conflict += 2;
-                    }
+                    if (t1.tCol > t2.tCol) conflict += 2;
                 }
             }
         }
         
-        // 3. 贪婪权重 (Weighted A*)
-        // 乘以 3.0，大幅减少搜索空间，实现秒出结果
         return (h + conflict) * 3;
-    }
-
-    function getGlobalHeuristic(arr) {
-        let d = 0;
-        for (let i = 0; i < 16; i++) {
-            if (arr[i] === 0) continue;
-            let target = arr[i] - 1;
-            d += getManhattanDist(i, target);
-        }
-        return d;
-    }
-
-    function getManhattanDist(idx1, idx2) {
-        return Math.abs(Math.floor(idx1 / 4) - Math.floor(idx2 / 4)) + Math.abs(idx1 % 4 - idx2 % 4);
-    }
-
-    function getNeighbors(idx, fixedSet) {
-        const r = Math.floor(idx/4), c = idx%4;
-        const potential = [];
-        if (r > 0) potential.push(idx - 4);
-        if (r < 3) potential.push(idx + 4);
-        if (c > 0) potential.push(idx - 1);
-        if (c < 3) potential.push(idx + 1);
-        return potential.filter(nIdx => !fixedSet.has(nIdx));
-    }
-
-    function dfs(curr, g, limit, lastMove, path) {
-        const h = getGlobalHeuristic(curr);
-        if (g + h > limit) return g + h;
-        if (h === 0) return "FOUND";
-        let min = Infinity;
-        const emptyIdx = curr.indexOf(0);
-        const neighbors = getNeighbors(emptyIdx, new Set()); 
-        for (let nIdx of neighbors) {
-            const val = curr[nIdx];
-            if (val === lastMove) continue;
-            [curr[emptyIdx], curr[nIdx]] = [curr[nIdx], curr[emptyIdx]];
-            path.push(val);
-            const t = dfs(curr, g + 1, limit, val, path);
-            if (t === "FOUND") return "FOUND";
-            if (t < min) min = t;
-            path.pop();
-            [curr[emptyIdx], curr[nIdx]] = [curr[nIdx], curr[emptyIdx]];
-        }
-        return min;
     }
 
     function displayPath(path) {
