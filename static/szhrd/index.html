@@ -177,24 +177,20 @@
             align-items: center;
             flex: 1; 
             width: 100%;
-            padding-bottom: 80px; 
-            margin-top: -10vh; /* 调整后的 margin-top */
+            padding-bottom: 180px; 
+            margin-top: -10vh; 
         }
 
         .controls { 
             width: 95%;
             max-width: 500px;
-            margin-bottom: 25px;
-            display: grid; 
-            grid-template-columns: 1fr auto 1fr;
+            margin:1rem auto 2rem;
+            display: flex; 
+            justify-content: space-between;
             align-items: center; 
             gap: 10px;
         }
         
-        .style-select-wrapper {
-            justify-self: start;
-        }
-
         .style-selector {
             appearance: none;
             -webkit-appearance: none;
@@ -239,29 +235,35 @@
         }
 
         #status {
-            justify-self: center;
             font-weight: bold;
-            font-size: 1.2rem;
+            font-size: 0.9rem;
             color: var(--accent);
             background: rgba(255,255,255,0.8);
-            padding: 6px 20px;
-            border-radius: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            padding: 4px 12px;
+            border-radius: 12px;
             white-space: nowrap;
             cursor: pointer;
             user-select: none;
             transition: transform 0.1s;
+            border: 1px solid var(--accent);
+            margin-left: 8px;
         }
         
+        body.theme-dark #status {
+             background: rgba(0, 230, 118, 0.1);
+             color: #00e676;
+             border: 1px solid #00e676;
+        }
+
         #status:active {
             transform: scale(0.95);
         }
 
         .btn-wrapper {
-            justify-self: end;
             display: flex;
-            gap: 6px;
+            gap: 8px;
         }
+
         .btn {
             padding: 8px 20px; 
             background: var(--btn-bg); 
@@ -275,21 +277,25 @@
             font-size: 0.95rem;
             z-index: 20; 
             white-space: nowrap;
+            outline: none;
+            font-family: inherit;
         }
         .btn:active { 
             transform: translateY(3px); 
             box-shadow: 0 2px 0 var(--board-shadow); 
         }
         
-        /* 右上角速通按钮样式 */
-        .btn-top-right {
-            position: absolute;
-            top: 15px;
-            right: 20px;
-            padding: 8px 14px;
-            z-index: 50;
+        /* 切换按钮专用样式 */
+        .mode-switch-btn {
+            padding: 8px 12px;
+            font-size: 1.1rem;
+            line-height: 1;
+            width: 42px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
-        
+
         body.theme-minimal .btn {
             border: 2px solid #000;
             box-shadow: 2px 2px 0 #000;
@@ -311,7 +317,7 @@
             padding: 12px;
             border-radius: 20px;
             box-shadow: 0 8px 0 var(--board-shadow), 0 10px 20px rgba(0,0,0,0.15);
-            width: 90%; 
+            width: 95%; 
             aspect-ratio: 1 / 1; 
             display: flex;
             align-items: center;
@@ -545,7 +551,7 @@
             border-bottom: 1px solid #333;
         }
 
-        .header-left { display: flex; align-items: center; gap: 10px; flex: 1; }
+        .header-left { display: flex; align-items: center; gap: 8px; flex: 1; overflow: hidden; }
         
         .header-title {
             font-size: 1rem;
@@ -737,29 +743,24 @@
 <canvas id="confetti-canvas"></canvas>
 
 <div class="container">
-    <!-- 速通按钮（右上角） -->
-    <button class="btn btn-top-right" onclick="initEasyGame()" title="速通模式：直接进入后两行">= </button>
-
     <div class="game-main">
         <div class="controls">
-            <!-- 左侧：风格切换 -->
+            <!-- 左侧：风格切换 (简化名称) -->
             <div class="style-select-wrapper">
                 <select class="style-selector" onchange="changeTheme(this.value)">
-                    <option value="default">多彩</option>
+                    <option value="default">缤纷</option>
                     <option value="blue">蓝墨</option>
                     <option value="retro">复古</option>
-                    <option value="dark">霓虹</option>
+                    <option value="dark">暗夜</option>
                     <option value="wood">原木</option>
-                    <option value="minimal">黑白</option>
+                    <option value="minimal">极简</option>
                 </select>
             </div>
 
-            <!-- 中间：步数显示 -->
-            <div id="status" onclick="toggleFullScreen()">0</div>
-
-            <!-- 右侧：新挑战按钮 -->
+            <!-- 右侧：新挑战按钮 + 模式切换 -->
             <div class="btn-wrapper">
-                <button class="btn" onclick="initGame()">新挑战</button>
+                <button id="start-game-btn" class="btn" onclick="handleStartGame()">新挑战</button>
+                <button class="btn mode-switch-btn" onclick="toggleGameMode()" title="切换模式">⇄</button>
             </div>
         </div>
 
@@ -780,7 +781,8 @@
     <div class="sidebar">
         <div class="sidebar-header">
             <div class="header-left">
-                <div class="header-title">AI 助手</div>
+                <!-- 步数显示移至此处 -->
+                <div id="status" onclick="toggleFullScreen()">步数: 0</div>
                 <div id="goal-display" class="current-goal">
                     <span>准备就绪</span>
                 </div>
@@ -858,6 +860,7 @@
     let isComputing = false;
     let lockedIndices = []; 
     let isAIActive = false; // 控制 AI 是否激活
+    let isSpeedRunMode = false; // 记录当前是否为速通模式
 
     function initGame() {
         moves = 0;
@@ -880,7 +883,7 @@
         triggerAI(true);
     }
     
-    // --- 新增：初始化简单模式（前两行已解） ---
+    // 初始化简单模式（前两行已解）
     function initEasyGame() {
         moves = 0;
         currentPath = [];
@@ -896,6 +899,26 @@
         updateUI();
 
         triggerAI(true);
+    }
+
+    // 处理游戏模式切换
+    function toggleGameMode() {
+        isSpeedRunMode = !isSpeedRunMode;
+        const btn = document.getElementById('start-game-btn');
+        if (isSpeedRunMode) {
+            btn.innerText = "新速通";
+        } else {
+            btn.innerText = "新挑战";
+        }
+    }
+
+    // 根据当前模式开始游戏
+    function handleStartGame() {
+        if (isSpeedRunMode) {
+            initEasyGame();
+        } else {
+            initGame();
+        }
     }
 
     function generateEasyState() {
@@ -1393,7 +1416,7 @@
     }
 
     function updateUI() {
-        document.getElementById('status').innerText = `${moves}`;
+        document.getElementById('status').innerText = `步数: ${moves}`;
         const algo = document.getElementById('algo-select').value;
         updateLockedUI(state, algo);
     }
