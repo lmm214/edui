@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>自由几何重构交互</title>
+    <style>
+        :root {
+            --bg-color: #f2f4f2;
+            --stroke-color: #000000;
+            --fill-color: #C8E6C9;
+            --highlight-color: #FFE0B2;
+            --ghost-fill: #e8eee8;
+            --ghost-stroke: #cccccc;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #container {
+            width: 90vw;
+            height: 90vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        svg {
+            width: 100%;
+            height: auto;
+            max-width: 600px; 
+            aspect-ratio: 24 / 18;
+            touch-action: none;
+            background: #ffffff;
+            border: 1px solid #ddd;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            user-select: none;
+        }
+        .piece {
+            cursor: grab;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+            transition: fill 0.2s ease, opacity 0.2s;
+        }
+        .piece:active {
+            cursor: grabbing;
+        }
+        .piece.dragging {
+            fill: var(--highlight-color) !important;
+            opacity: 0.95;
+            stroke-width: 1px !important; /* 强制保持 1px 边框 */
+            /* 移除了 drop-shadow 阴影 */
+        }
+        .ghost {
+            pointer-events: none;
+            fill: var(--ghost-fill);
+            stroke: var(--ghost-stroke);
+            stroke-width: 1;
+        }
+        
+        /* 通道控制样式 */
+        .channel-control {
+            fill: #ffffff; /* 白色填充 */
+            transition: fill 0.2s;
+        }
+        .channel-control:hover {
+            fill: #f9f9f9; /* 悬停时微微变灰提示可操作 */
+        }
+        .channel-control:active {
+            fill: #f0f0f0;
+        }
+        /* 竖向通道只能左右移动 */
+        #channel-v {
+            cursor: ew-resize;
+        }
+        /* 斜向通道根据位置不同有不同光标 */
+        #channel-d {
+            cursor: move;
+        }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <svg viewBox="0 0 240 180" id="canvas">
+        
+        <!-- 底层参考图 -->
+        <g id="ghost-layer"></g>
+
+        <!-- 控制层 (放在中间，作为背景交互层，但在 Piece 下面) -->
+        <g id="controls-layer">
+            <!-- 两个白色通道 -->
+            <polygon id="channel-v" class="channel-control" />
+            <polygon id="channel-d" class="channel-control" />
+        </g>
+        
+        <!-- 动态碎片层 (最上层) -->
+        <g id="piece-layer"></g>
+        
+    </svg>
+</div>
+
+<script>
+{
+    const svg = document.getElementById('canvas');
+    const pieceLayer = document.getElementById('piece-layer');
+    const ghostLayer = document.getElementById('ghost-layer');
+    
+    // 引用通道元素
+    const channelV = document.getElementById('channel-v');
+    const channelD = document.getElementById('channel-d');
+    
+    // --- 几何常量 ---
+    const W = 240;
+    const H = 180;
+    const CHANNEL_WIDTH = 20; // 通道固定物理宽度
+    const HALF_W = CHANNEL_WIDTH / 2;
+
+    // --- 状态数据 ---
+    // 垂直通道（Channel V）
+    const stateV = { topX: 120, btmX: 120 };
+    
+    // 斜向通道（Channel D）
+    const stateD = { leftY: 70, rightY: 110 };
+
+    // 碎片数据
+    let pieces = [];
+    const pieceIds = ['tl', 'tr', 'bl', 'br'];
+
+    // --- 核心几何算法 ---
+
+    const getChannelEdges = (x1, y1, x2, y2, halfWidth) => {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len = Math.sqrt(dx*dx + dy*dy);
+        const nx = -dy / len;
+        const ny = dx / len;
+        const ox = nx * halfWidth;
+        const oy = ny * halfWidth;
+        
+        return {
+            edge1: { x1: x1 + ox, y1: y1 + oy, x2: x2 + ox, y2: y2 + oy }, 
+            edge2: { x1: x1 - ox, y1: y1 - oy, x2: x2 - ox, y2: y2 - oy } 
+        };
+    };
+
+    const intersect = (l1, l2) => {
+        const x1 = l1.x1, y1 = l1.y1, x2 = l1.x2, y2 = l1.y2;
+        const x3 = l2.x1, y3 = l2.y1, x4 = l2.x2, y4 = l2.y2;
+        
+        const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+        if (denom === 0) return {x:0, y:0};
+        
+        const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+        return {
+            x: x1 + ua * (x2 - x1),
+            y: y1 + ua * (y2 - y1)
+        };
+    };
+
+    const getBoundaryPt = (line, boundaryType, val) => {
+        if (boundaryType === 'y') { 
+            if (line.y2 === line.y1) return {x: line.x1, y: val};
+            const t = (val - line.y1) / (line.y2 - line.y1);
+            return { x: line.x1 + t * (line.x2 - line.x1), y: val };
+        } else {
+             if (line.x2 === line.x1) return {x: val, y: line.y1};
+             const t = (val - line.x1) / (line.x2 - line.x1);
+             return { x: val, y: line.y1 + t * (line.y2 - line.y1) };
+        }
+    };
+
+    const calculateGeometry = () => {
+        const edgesV = getChannelEdges(stateV.topX, 0, stateV.btmX, H, HALF_W);
+        const edgesD = getChannelEdges(0, stateD.leftY, W, stateD.rightY, HALF_W);
+
+        const p_cross_tl = intersect(edgesV.edge1, edgesD.edge2);
+        const p_cross_tr = intersect(edgesV.edge2, edgesD.edge2);
+        const p_cross_bl = intersect(edgesV.edge1, edgesD.edge1);
+        const p_cross_br = intersect(edgesV.edge2, edgesD.edge1);
+
+        const rawPoints = {};
+        rawPoints.tl = [{x:0, y:0}, getBoundaryPt(edgesV.edge1, 'y', 0), p_cross_tl, getBoundaryPt(edgesD.edge2, 'x', 0)];
+        rawPoints.tr = [getBoundaryPt(edgesV.edge2, 'y', 0), {x:W, y:0}, getBoundaryPt(edgesD.edge2, 'x', W), p_cross_tr];
+        rawPoints.bl = [getBoundaryPt(edgesD.edge1, 'x', 0), p_cross_bl, getBoundaryPt(edgesV.edge1, 'y', H), {x:0, y:H}];
+        rawPoints.br = [p_cross_br, getBoundaryPt(edgesD.edge1, 'x', W), {x:W, y:H}, getBoundaryPt(edgesV.edge2, 'y', H)];
+
+        const vPoints = [
+            getBoundaryPt(edgesV.edge1, 'y', 0), getBoundaryPt(edgesV.edge2, 'y', 0),
+            getBoundaryPt(edgesV.edge2, 'y', H), getBoundaryPt(edgesV.edge1, 'y', H)
+        ];
+        const dPoints = [
+            getBoundaryPt(edgesD.edge2, 'x', 0), getBoundaryPt(edgesD.edge2, 'x', W),
+            getBoundaryPt(edgesD.edge1, 'x', W), getBoundaryPt(edgesD.edge1, 'x', 0)
+        ];
+
+        return { rawPoints, vPoints, dPoints };
+    };
+
+    const updateView = () => {
+        const { rawPoints, vPoints, dPoints } = calculateGeometry();
+        pieces.forEach(p => {
+            p.rawPoints = rawPoints[p.id];
+            const ptsStr = p.rawPoints.map(pt => `${pt.x.toFixed(2)},${pt.y.toFixed(2)}`).join(' ');
+            p.el.setAttribute('points', ptsStr);
+            p.ghostEl.setAttribute('points', ptsStr);
+        });
+        channelV.setAttribute('points', vPoints.map(p => `${p.x},${p.y}`).join(' '));
+        channelD.setAttribute('points', dPoints.map(p => `${p.x},${p.y}`).join(' '));
+    };
+
+    // --- SAT Physics ---
+    const getTransformedVertices = (piece, dx, dy) => piece.rawPoints.map(p => ({ x: p.x + piece.x + dx, y: p.y + piece.y + dy }));
+    const getAxes = (vertices) => {
+        const axes = [];
+        for (let i = 0; i < vertices.length; i++) {
+            const p1 = vertices[i];
+            const p2 = vertices[(i + 1) % vertices.length];
+            const axis = { x: p1.y - p2.y, y: p2.x - p1.x };
+            const len = Math.sqrt(axis.x * axis.x + axis.y * axis.y);
+            if (len > 0) axes.push({ x: axis.x / len, y: axis.y / len });
+        }
+        return axes;
+    };
+    const project = (vertices, axis) => {
+        let min = Infinity, max = -Infinity;
+        for (let p of vertices) {
+            const proj = p.x * axis.x + p.y * axis.y;
+            if (proj < min) min = proj;
+            if (proj > max) max = proj;
+        }
+        return { min, max };
+    };
+    const checkOverlap = (vertsA, vertsB) => {
+        const axes = [...getAxes(vertsA), ...getAxes(vertsB)];
+        for (let axis of axes) {
+            const projA = project(vertsA, axis);
+            const projB = project(vertsB, axis);
+            if (projA.max < projB.min || projB.max < projA.min) return false;
+        }
+        return true;
+    };
+    const hasCollision = (targetPiece, dx, dy) => {
+        const targetVerts = getTransformedVertices(targetPiece, dx, dy);
+        for (let p of targetVerts) if (p.x < 0 || p.x > W || p.y < 0 || p.y > H) return true;
+        for (let other of pieces) {
+            if (other === targetPiece) continue;
+            if (checkOverlap(targetVerts, getTransformedVertices(other, 0, 0))) return true; 
+        }
+        return false;
+    };
+
+    // --- 交互逻辑 ---
+    let dragTarget = null; 
+    let selectedPiece = null;
+    let dragStart = { x: 0, y: 0 };
+    let dragMode = null; 
+
+    const getPos = (e) => {
+        const CTM = svg.getScreenCTM();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+            x: (clientX - CTM.e) / CTM.a,
+            y: (clientY - CTM.f) / CTM.d
+        };
+    };
+
+    // 计算斜向通道在边界处的垂直边距（防止溢出）
+    const calculateVMargin = (y1, y2) => {
+        const slopeDy = Math.abs(y2 - y1);
+        const len = Math.sqrt(W * W + slopeDy * slopeDy);
+        // 通道垂直方向的半宽 = HALF_W * (len / W)
+        // 解释：cos(theta) = W / len, vWidth = width / cos(theta) = width * len / W
+        return HALF_W * (len / W);
+    };
+
+    const onStart = (e) => {
+        const id = e.target.id;
+        const cls = e.target.classList;
+        const pos = getPos(e);
+
+        if (id === 'channel-v') {
+            dragTarget = 'channel-v';
+            dragStart.x = pos.x; 
+            e.preventDefault();
+        } 
+        else if (id === 'channel-d') {
+            dragTarget = 'channel-d';
+            const clickX = pos.x;
+            const zoneWidth = W * 0.2; 
+            if (clickX < zoneWidth) dragMode = 'pivot-left';
+            else if (clickX > W - zoneWidth) dragMode = 'pivot-right';
+            else dragMode = 'translate';
+            dragStart.y = pos.y;
+            e.preventDefault();
+        }
+        else if (cls.contains('piece')) {
+            e.preventDefault();
+            dragTarget = 'piece';
+            selectedPiece = pieces.find(p => p.el === e.target);
+            if (selectedPiece) {
+                dragStart.x = pos.x - selectedPiece.x;
+                dragStart.y = pos.y - selectedPiece.y;
+                pieceLayer.appendChild(selectedPiece.el);
+                selectedPiece.el.classList.add('dragging');
+            }
+        }
+    };
+
+    const onMove = (e) => {
+        if (!dragTarget) return;
+        e.preventDefault();
+        const pos = getPos(e);
+
+        // 1. 拖动竖向通道
+        if (dragTarget === 'channel-v') {
+            const dx = pos.x - dragStart.x;
+            let nextX = stateV.topX + dx;
+            nextX = Math.max(HALF_W, Math.min(W - HALF_W, nextX));
+            stateV.topX = nextX;
+            stateV.btmX = nextX;
+            dragStart.x = pos.x;
+            updateView();
+        } 
+        // 2. 拖动斜向通道
+        else if (dragTarget === 'channel-d') {
+            const dy = pos.y - dragStart.y;
+            
+            if (dragMode === 'translate') {
+                let nextLeft = stateD.leftY + dy;
+                let nextRight = stateD.rightY + dy;
+                
+                // 计算当前斜率下的垂直边距
+                const margin = calculateVMargin(nextLeft, nextRight);
+                
+                // 限制：必须在 [margin, H-margin] 之间
+                // 平移时 margin 是常数
+                const minY = margin;
+                const maxY = H - margin;
+
+                // 检查是否越界，并修正 dy
+                if (nextLeft < minY) nextLeft = minY;
+                if (nextLeft > maxY) nextLeft = maxY;
+                if (nextRight < minY) nextRight = minY;
+                if (nextRight > maxY) nextRight = maxY;
+                
+                // 由于平移需要保持 left/right 相对距离，我们取修正后的最小移动量
+                // 其实平移时，我们只需保证最突出的那个点不越界
+                // 最上面的点坐标是 min(left, right) - margin，必须 >= 0
+                // 最下面的点坐标是 max(left, right) + margin，必须 <= H
+                
+                // 重新计算更严谨的平移约束：
+                const currentMin = Math.min(stateD.leftY, stateD.rightY);
+                const currentMax = Math.max(stateD.leftY, stateD.rightY);
+                // 允许的 dy 范围
+                const maxUp = currentMin - margin; // 向上的最大距离 (变成负数)
+                const maxDown = H - margin - currentMax; // 向下的最大距离
+                
+                // 限制 dy
+                const clampedDy = Math.max(-maxUp, Math.min(maxDown, dy));
+                
+                stateD.leftY += clampedDy;
+                stateD.rightY += clampedDy;
+            } 
+            else if (dragMode === 'pivot-left') {
+                // 左端移动，右端(rightY)不动
+                let nextLeft = stateD.leftY + dy;
+                
+                // 动态边距：随着 leftY 变化，斜率变化，margin 也会变化
+                // 这是一个非线性约束，但用本次位置计算的 margin 做近似 clamping 足够平滑
+                const margin = calculateVMargin(nextLeft, stateD.rightY);
+                
+                nextLeft = Math.max(margin, Math.min(H - margin, nextLeft));
+                stateD.leftY = nextLeft;
+            } 
+            else if (dragMode === 'pivot-right') {
+                // 右端移动，左端(leftY)不动
+                let nextRight = stateD.rightY + dy;
+                
+                const margin = calculateVMargin(stateD.leftY, nextRight);
+                
+                nextRight = Math.max(margin, Math.min(H - margin, nextRight));
+                stateD.rightY = nextRight;
+            }
+            
+            dragStart.y = pos.y;
+            updateView();
+        }
+        // 3. 拖动碎片
+        else if (dragTarget === 'piece' && selectedPiece) {
+            const targetX = pos.x - dragStart.x;
+            const targetY = pos.y - dragStart.y;
+            const dx = targetX - selectedPiece.x;
+            const dy = targetY - selectedPiece.y;
+
+            if (!hasCollision(selectedPiece, dx, dy)) {
+                selectedPiece.x += dx; selectedPiece.y += dy;
+            } else if (!hasCollision(selectedPiece, dx, 0)) {
+                selectedPiece.x += dx;
+            } else if (!hasCollision(selectedPiece, 0, dy)) {
+                selectedPiece.y += dy;
+            }
+            selectedPiece.el.setAttribute('transform', `translate(${selectedPiece.x}, ${selectedPiece.y})`);
+            const newPos = getPos(e);
+            dragStart.x = newPos.x - selectedPiece.x;
+            dragStart.y = newPos.y - selectedPiece.y;
+        }
+    };
+
+    const onEnd = () => {
+        if (selectedPiece) {
+            selectedPiece.el.classList.remove('dragging');
+            selectedPiece = null;
+        }
+        dragTarget = null;
+        dragMode = null;
+    };
+
+    const init = () => {
+        pieceIds.forEach(id => {
+            const g = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            g.setAttribute("class", "ghost");
+            ghostLayer.appendChild(g);
+
+            const p = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            p.setAttribute("class", "piece");
+            p.setAttribute("fill", "var(--fill-color)");
+            p.setAttribute("stroke", "var(--stroke-color)");
+            p.setAttribute("stroke-width", "1");
+            p.id = `piece-${id}`;
+            pieceLayer.appendChild(p);
+
+            pieces.push({ id: id, el: p, ghostEl: g, x: 0, y: 0, rawPoints: [] });
+        });
+
+        updateView();
+
+        svg.addEventListener('mousedown', onStart);
+        svg.addEventListener('touchstart', onStart, {passive: false});
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onEnd);
+        window.addEventListener('touchmove', onMove, {passive: false});
+        window.addEventListener('touchend', onEnd);
+    };
+
+    init();
+}
+</script>
+
+</body>
+</html>
