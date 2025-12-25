@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>息吹之蒲公英</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1e293b, #0f172a); /* 深邃夜空背景 */
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: white;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* UI 覆盖层 */
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 1.5rem;
+            z-index: 10;
+        }
+
+        /* 状态面板 */
+        .stats-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(8px);
+            padding: 1rem 1.2rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            width: auto;
+            align-self: flex-start;
+        }
+
+        .stats-row {
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+            font-family: monospace;
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.85);
+        }
+        
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .stat-value-happy { color: #f9a8d4; font-weight: bold; }
+        .stat-value-flight { color: #93c5fd; font-weight: bold; }
+
+        /* 视频预览 */
+        #video-preview {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 80px;
+            height: 60px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            transform: scaleX(-1);
+            background: #000;
+            object-fit: cover;
+            z-index: 5;
+            opacity: 0;
+            pointer-events: none; 
+            transition: opacity 0.5s ease;
+        }
+        
+        #video-preview.is-active {
+            opacity: 0.4;
+            pointer-events: auto;
+        }
+
+        /* 状态指示点 */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #fbbf24;
+            box-shadow: 0 0 5px rgba(251, 191, 36, 0.5);
+            transition: all 0.3s;
+        }
+        .status-active { 
+            background-color: #4ade80; 
+            box-shadow: 0 0 8px #4ade80; 
+        }
+
+        /* 引导层 */
+        #init-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.8s;
+        }
+        .tap-hint {
+            background: rgba(255,255,255,0.1);
+            padding: 12px 24px;
+            border-radius: 30px;
+            backdrop-filter: blur(5px);
+            font-size: 1rem;
+            letter-spacing: 1px;
+            pointer-events: none;
+            animation: pulse 2.5s infinite ease-in-out;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        @keyframes pulse {
+            0% { opacity: 0.5; transform: scale(0.98); }
+            50% { opacity: 1; transform: scale(1.02); }
+            100% { opacity: 0.5; transform: scale(0.98); }
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- 点击任意位置初始化 -->
+    <div id="init-layer">
+        <div class="tap-hint">轻触唤醒蒲公英</div>
+    </div>
+
+    <video id="video-preview" autoplay playsinline muted></video>
+    <canvas id="main-canvas"></canvas>
+
+    <div class="ui-overlay">
+        <div class="stats-panel">
+            <div class="stats-row">
+                <span class="status-dot" id="motion-dot"></span>
+                <div class="stat-item">
+                    <span>开心:</span>
+                    <span id="happy-count" class="stat-value-happy">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>飞翔:</span>
+                    <span id="flight-count" class="stat-value-flight">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * 息吹之蒲公英 V4.5 (轻柔飞散/背景增强版)
+         */
+        const canvas = document.getElementById('main-canvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('video-preview');
+        const initLayer = document.getElementById('init-layer');
+        
+        // UI Elements
+        const happyEl = document.getElementById('happy-count');
+        const flightEl = document.getElementById('flight-count');
+        const motionDot = document.getElementById('motion-dot');
+
+        let width, height;
+        
+        // 实体对象
+        let particles = []; // 主蒲公英粒子
+        let bgDandelions = []; // 背景小蒲公英
+        
+        let isBlown = false;
+        let regrowTimer = null;
+        let windTimer = null; // 风力延迟计时器
+        let happyCount = 0;
+        let flightCount = 0;
+        
+        // 动态布局变量
+        let stemBaseY, flowerHeadY, dynamicStemLength, dynamicRadius;
+        
+        // 风场变量
+        let activeWind = 0; // 当前持续风力
+
+        // --- 配置常量 ---
+        const CONFIG = {
+            PARTICLE_COUNT: 900,
+            BG_COUNT: 30, 
+            // 吹气参数
+            BLOW_SENSITIVITY_RISE: 25, 
+            BLOW_MIN_VOLUME: 60, 
+            // 运动参数
+            MOTION_THRESHOLD: 0.1, 
+            MAX_SWAY_ANGLE: 10 * (Math.PI / 180), 
+            // 物理参数
+            SPRING_TENSION: 0.006,  
+            SPRING_DAMPING: 0.96,   
+            WIND_FORCE: 35, 
+        };
+
+        // --- 物理状态变量 ---
+        let currentSwayAngle = 0;
+        let swayVelocity = 0; 
+
+        // --- 混合输入变量 ---
+        let audioContext, analyser, dataArray;
+        let ambientNoiseLevel = 0; 
+
+        let headInputX = 0;   
+        let mouseInputX = 0;  
+        let combinedInputX = 0;
+        
+        let lastFrameData = null;
+        let isAudioEnabled = false;
+        let isVideoEnabled = false;
+        let hasInteracted = false;
+        
+        // 视觉变量：主花淡入控制
+        let mainFlowerAlpha = 0; 
+
+        // --- 摆动检测状态机 ---
+        const swingDetector = {
+            state: 'CENTER', 
+            consecutiveSmallSwings: 0,
+            lastPeakTime: 0,
+            
+            update(x) {
+                const now = Date.now();
+                const threshold = CONFIG.MOTION_THRESHOLD;
+                
+                if (x > threshold) {
+                    if (this.state === 'LEFT') this.triggerHappy();
+                    if (this.state !== 'RIGHT') this.consecutiveSmallSwings++;
+                    this.state = 'RIGHT';
+                    motionDot.className = 'status-dot status-active';
+                } else if (x < -threshold) {
+                    if (this.state === 'RIGHT') this.triggerHappy();
+                    if (this.state !== 'LEFT') this.consecutiveSmallSwings++;
+                    this.state = 'LEFT';
+                    motionDot.className = 'status-dot status-active';
+                } else {
+                    if (Math.abs(x) < 0.05) motionDot.className = 'status-dot';
+                }
+                
+                if (this.consecutiveSmallSwings >= 4) {
+                    this.triggerHappy();
+                    this.consecutiveSmallSwings = 0;
+                }
+                
+                if (now - this.lastPeakTime > 1200) this.consecutiveSmallSwings = 0;
+                this.lastPeakTime = now;
+            },
+
+            triggerHappy() {
+                happyCount++;
+                happyEl.innerText = happyCount;
+                happyEl.style.transform = "scale(1.5)";
+                setTimeout(() => happyEl.style.transform = "scale(1)", 200);
+            }
+        };
+
+        // --- 背景小蒲公英类 (增强可见度) ---
+        class BgDandelion {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = width * 0.05 + Math.random() * width * 0.9;
+                this.yBase = height + 30 + Math.random() * 50; 
+                
+                // 增加尺寸范围
+                this.scale = 0.25 + Math.random() * 0.4; 
+                this.height = (height * 0.15 + Math.random() * height * 0.2) * this.scale;
+                
+                // 显著提升不透明度
+                this.opacity = 0.3 + Math.random() * 0.4; 
+                
+                this.swaySpeed = 0.0005 + Math.random() * 0.001; 
+                this.swayOffset = Math.random() * Math.PI * 2;
+                this.swayRange = 0.02 + Math.random() * 0.03;
+            }
+
+            draw(ctx, time) {
+                const sway = Math.sin(time * this.swaySpeed + this.swayOffset) * this.swayRange;
+                
+                const startX = this.x;
+                const startY = this.yBase;
+                const endX = this.x + Math.sin(sway) * this.height * 2; 
+                const endY = this.yBase - this.height;
+                const ctrlX = this.x + Math.sin(sway * 0.5) * (this.height * 0.5);
+                const ctrlY = this.yBase - (this.height * 0.5);
+
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                
+                // 绘制茎
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+                ctx.lineWidth = 1.5 * this.scale;
+                ctx.lineCap = "round";
+                ctx.stroke();
+
+                // 绘制头
+                const headRadius = 35 * this.scale;
+                const gradient = ctx.createRadialGradient(endX, endY, 0, endX, endY, headRadius);
+                gradient.addColorStop(0, "rgba(255, 255, 255, 0.7)");
+                gradient.addColorStop(0.4, "rgba(255, 255, 255, 0.2)");
+                gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(endX, endY, headRadius, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // --- 初始化 & 布局 ---
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+
+            stemBaseY = height; 
+            flowerHeadY = height / 2;
+            dynamicStemLength = stemBaseY - flowerHeadY;
+
+            const minDim = Math.min(width, height);
+            dynamicRadius = (width < height) ? width * 0.28 : height * 0.20;
+            
+            initParticles(); 
+            initBgDandelions();
+        }
+        window.addEventListener('resize', resize);
+        
+        // --- 粒子系统 ---
+        class Seed {
+            constructor(theta, phi) {
+                this.reset(theta, phi);
+            }
+
+            reset(theta, phi) {
+                this.theta = theta; 
+                this.phi = phi;     
+                this.radius = dynamicRadius + (Math.random() * 20 - 10);
+                
+                this.ox = this.radius * Math.sin(phi) * Math.cos(theta);
+                this.oy = this.radius * Math.sin(phi) * Math.sin(theta);
+                this.oz = this.radius * Math.cos(phi);
+
+                this.x = 0; this.y = 0; 
+                this.vx = 0; this.vy = 0;
+                this.active = true;
+                this.alpha = 1;
+                this.fluffSize = 1.5 + Math.random() * 1.5;
+                
+                this.angle = 0;
+                this.spin = 0;
+                this.decayRate = 0; 
+            }
+
+            update(anchorX, anchorY, swayAngle, breath) {
+                if (!this.active) return;
+
+                if (!isBlown) {
+                    const r = this.radius + breath;
+                    let x3d = r * Math.sin(this.phi) * Math.cos(this.theta);
+                    let y3d = r * Math.sin(this.phi) * Math.sin(this.theta);
+                    
+                    const cosA = Math.cos(swayAngle);
+                    const sinA = Math.sin(swayAngle);
+
+                    const rx = x3d * cosA - y3d * sinA;
+                    const ry = x3d * sinA + y3d * cosA;
+                    
+                    this.x = anchorX + rx;
+                    this.y = anchorY + ry;
+                } else {
+                    const turbulence = Math.sin(this.y * 0.01 + Date.now() * 0.003) * 0.05;
+                    this.vx += activeWind * 0.3 + turbulence;
+                    
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    
+                    const lift = Math.random() * 0.02;
+                    this.vy += 0.04 - lift; 
+                    
+                    this.vx *= 0.98; 
+                    
+                    this.angle += this.spin;
+                    this.alpha -= this.decayRate;
+                    
+                    if (this.alpha <= 0 || this.y > height + 200 || this.x < -200 || this.x > width + 200) {
+                        this.active = false;
+                    }
+                }
+            }
+
+            draw(ctx, anchorX, anchorY) {
+                if (!this.active || this.alpha <= 0 || (this.x === 0 && this.y === 0)) return;
+
+                // 主花淡入效果 (叠加全局透明度)
+                const finalAlpha = this.alpha * mainFlowerAlpha;
+
+                if (!isBlown) {
+                    ctx.save();
+                    ctx.globalAlpha = finalAlpha;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(anchorX, anchorY);
+                    ctx.lineTo(this.x, this.y);
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+                    ctx.lineWidth = 0.6; 
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.fluffSize, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(this.angle);
+                    ctx.globalAlpha = finalAlpha; // 飞行时也受控
+
+                    const scale = this.fluffSize * 0.4; 
+
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(0, -12 * scale); 
+                    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+                    ctx.lineWidth = 1 * scale;
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 3 * scale, 0, Math.PI * 2);
+                    ctx.fillStyle = "white";
+                    ctx.fill();
+                    
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 9 * scale, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(255,255,255,0.25)";
+                    ctx.fill();
+
+                    ctx.restore();
+                }
+            }
+
+            blow(power, angle) {
+                const force = (Math.random() * power * 0.5) + 3; // 降低基础力度
+                const spread = (Math.random() - 0.5) * 2.5; 
+                
+                this.vx = Math.cos(angle + spread) * force;
+                this.vy = Math.sin(angle + spread) * force - 2; // 降低初始向上速度 (-5 -> -2)
+                
+                this.spin = (Math.random() - 0.5) * 0.2;
+                this.angle = angle + spread + Math.PI / 2;
+                
+                this.decayRate = 0.003 + Math.random() * 0.012;
+            }
+        }
+
+        function initParticles() {
+            particles = [];
+            const count = CONFIG.PARTICLE_COUNT;
+            const goldenRatio = (1 + Math.sqrt(5)) / 2;
+            for (let i = 0; i < count; i++) {
+                const theta = 2 * Math.PI * i / goldenRatio;
+                const phi = Math.acos(1 - 2 * (i + 0.5) / count);
+                particles.push(new Seed(theta, phi));
+            }
+        }
+
+        function initBgDandelions() {
+            bgDandelions = [];
+            for(let i=0; i<CONFIG.BG_COUNT; i++) {
+                bgDandelions.push(new BgDandelion());
+            }
+        }
+
+        function drawStem(angle) {
+            const startX = width / 2;
+            const startY = height; 
+            
+            const endX = width / 2 + Math.sin(angle) * dynamicStemLength;
+            const endY = height - Math.cos(angle) * dynamicStemLength;
+
+            const ctrlX = width / 2 + Math.sin(angle) * (dynamicStemLength * 0.5);
+            const ctrlY = height - (dynamicStemLength * 0.3);
+
+            ctx.save();
+            ctx.globalAlpha = mainFlowerAlpha; // 茎秆也要淡入
+            
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
+            
+            const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
+            gradient.addColorStop(0, 'rgba(100, 200, 100, 0.8)');
+            gradient.addColorStop(1, 'rgba(200, 255, 200, 0.5)');
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            ctx.restore();
+
+            return { x: endX, y: endY };
+        }
+
+        // --- 核心交互逻辑 ---
+
+        function updateInputs() {
+            let combined = headInputX + mouseInputX;
+            combined = Math.max(-1.2, Math.min(1.2, combined));
+            combinedInputX += (combined - combinedInputX) * 0.15;
+            swingDetector.update(combinedInputX);
+        }
+
+        function setupMouseTouch() {
+            const handleMove = (clientX) => {
+                const normalized = (clientX - width / 2) / (width / 2);
+                mouseInputX = normalized;
+            };
+
+            const handleEnd = () => mouseInputX = 0;
+            
+            const handleTrigger = (e) => {
+                // 修复：首次点击只负责唤醒，不触发吹气
+                if (!hasInteracted) {
+                    tryInitPermissions();
+                    return; 
+                }
+                
+                // 只有唤醒后，点击才触发吹气
+                if (!isBlown && hasInteracted && mainFlowerAlpha > 0.8) {
+                    triggerBlow(255);
+                }
+            };
+
+            window.addEventListener('mousemove', e => handleMove(e.clientX));
+            window.addEventListener('touchmove', e => handleMove(e.touches[0].clientX), {passive: false});
+            window.addEventListener('mouseup', handleEnd);
+            window.addEventListener('touchend', handleEnd);
+            window.addEventListener('mousedown', handleTrigger);
+            window.addEventListener('touchstart', handleTrigger);
+        }
+
+        function enterFullScreen() {
+            const el = document.documentElement;
+            const rfs = el.requestFullscreen || el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+            if(rfs) {
+                try {
+                    rfs.call(el);
+                } catch(e) {
+                    console.log("Full screen request failed or rejected:", e);
+                }
+            }
+        }
+
+        async function tryInitPermissions() {
+            if (hasInteracted) return;
+            hasInteracted = true;
+            
+            enterFullScreen();
+            
+            initLayer.style.opacity = '0';
+            setTimeout(() => initLayer.style.display = 'none', 800);
+
+            setupAudio();
+            setupVideo();
+        }
+
+        async function setupAudio() {
+            if (isAudioEnabled) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isAudioEnabled = true;
+            } catch (e) {
+                console.log("麦克风未授权");
+            }
+        }
+
+        async function setupVideo() {
+            if (isVideoEnabled) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    video.classList.add('is-active');
+                    isVideoEnabled = true;
+                    processVideoLoop();
+                };
+            } catch (e) {
+                console.log("摄像头未授权");
+            }
+        }
+
+        function processVideoLoop() {
+            if (!isVideoEnabled) return;
+            const vW = 100, vH = 75;
+            const cvs = document.createElement('canvas');
+            cvs.width = vW; cvs.height = vH;
+            const c = cvs.getContext('2d', {willReadFrequently: true});
+
+            const loop = () => {
+                if (video.readyState >= 2) {
+                    c.drawImage(video, 0, 0, vW, vH);
+                    const frame = c.getImageData(0, 0, vW, vH);
+                    
+                    if (lastFrameData) {
+                        let diffX = 0, count = 0;
+                        for (let i=0; i<frame.data.length; i+=16) {
+                            if (Math.abs(frame.data[i] - lastFrameData.data[i]) > 30) {
+                                diffX += ((i/4) % vW);
+                                count++;
+                            }
+                        }
+                        if (count > 30) {
+                            let nx = ((diffX/count)/vW)*2 - 1;
+                            headInputX += (-nx - headInputX) * 0.2; 
+                        } else {
+                            headInputX *= 0.9;
+                        }
+                    }
+                    lastFrameData = frame;
+                }
+                requestAnimationFrame(loop);
+            };
+            loop();
+        }
+
+        function triggerBlow(power) {
+            isBlown = true;
+            flightCount++;
+            flightEl.innerText = flightCount;
+            
+            const strength = (power / 255) * CONFIG.WIND_FORCE;
+            const windDirection = (Math.random() > 0.5 ? 1 : -1);
+            
+            activeWind = 0;
+            
+            // 均匀爆发
+            particles.forEach(p => p.blow(strength, -Math.PI / 2));
+
+            if (windTimer) clearTimeout(windTimer);
+            windTimer = setTimeout(() => {
+                activeWind = windDirection * (0.2 + Math.random() * 0.2);
+            }, 800);
+
+            if (regrowTimer) clearTimeout(regrowTimer);
+            regrowTimer = setTimeout(() => {
+                isBlown = false;
+                activeWind = 0; 
+                initParticles();
+                mainFlowerAlpha = 0; // 重生时也淡入
+            }, 4000); 
+        }
+
+        // --- 主循环 ---
+        function animate() {
+            const time = Date.now();
+            ctx.clearRect(0, 0, width, height);
+            
+            // 1. 绘制背景小蒲公英 (始终显示)
+            bgDandelions.forEach(bg => bg.draw(ctx, time));
+
+            // 2. 音频检测
+            if (isAudioEnabled && analyser) {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0;
+                for(let i=0; i<dataArray.length; i++) sum+=dataArray[i];
+                const currentVolume = sum / dataArray.length;
+
+                if (ambientNoiseLevel === 0) {
+                    ambientNoiseLevel = currentVolume;
+                } else {
+                    if (currentVolume < ambientNoiseLevel) {
+                         ambientNoiseLevel += (currentVolume - ambientNoiseLevel) * 0.05;
+                    } else {
+                         ambientNoiseLevel += (currentVolume - ambientNoiseLevel) * 0.005;
+                    }
+                }
+
+                // 只有主花完全显示后，才允许吹气
+                if (!isBlown && 
+                    hasInteracted && 
+                    mainFlowerAlpha > 0.8 &&
+                    currentVolume > CONFIG.BLOW_MIN_VOLUME && 
+                    currentVolume > (ambientNoiseLevel + CONFIG.BLOW_SENSITIVITY_RISE)) {
+                    triggerBlow(currentVolume);
+                }
+            }
+
+            // 3. 更新输入
+            updateInputs();
+
+            if (hasInteracted) {
+                // 主花淡入逻辑 (每帧增加透明度)
+                if (mainFlowerAlpha < 1) {
+                    mainFlowerAlpha += 0.015; // 约1-2秒淡入
+                }
+
+                let targetAngle = 0;
+                if (Math.abs(combinedInputX) > CONFIG.MOTION_THRESHOLD) {
+                    targetAngle = combinedInputX * 0.25;
+                }
+                targetAngle = Math.max(-CONFIG.MAX_SWAY_ANGLE, Math.min(CONFIG.MAX_SWAY_ANGLE, targetAngle));
+
+                const force = (targetAngle - currentSwayAngle) * CONFIG.SPRING_TENSION;
+                swayVelocity += force;
+                swayVelocity *= CONFIG.SPRING_DAMPING;
+                currentSwayAngle += swayVelocity;
+
+                const stemTip = drawStem(currentSwayAngle);
+                const breath = Math.sin(time * 0.002) * (dynamicRadius * 0.015);
+
+                particles.forEach(p => {
+                    p.update(stemTip.x, stemTip.y, currentSwayAngle, breath);
+                    p.draw(ctx, stemTip.x, stemTip.y);
+                });
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- 启动 ---
+        resize();
+        setupMouseTouch();
+        animate(); 
+
+    </script>
+</body>
+</html>
