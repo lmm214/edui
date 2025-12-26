@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>虚拟工坊</title>
+    <style>
+        /* --- 科技工坊主题变量 --- */
+        :root {
+            --bg-page: #0b1120;
+            --bg-panel: #1e293b;     
+            --bg-grid: #1e293b;      
+            --bg-slot: #334155;      
+            
+            --text-main: #ffffff;    
+            --text-sub: #94a3b8;     
+            --text-accent: #38bdf8;  /* 科技蓝 */
+            --text-warn: #f472b6;    /* 亮粉色 */
+            
+            --border-main: #475569;
+            --border-glow: #38bdf8;
+            
+            --neon-panel: 0 0 15px rgba(56, 189, 248, 0.15), inset 0 0 20px rgba(56, 189, 248, 0.05);
+        }
+
+        /* --- 全局重置 --- */
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background-color: var(--bg-page);
+            background-image: 
+                linear-gradient(rgba(30, 41, 59, 0.5) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(30, 41, 59, 0.5) 1px, transparent 1px);
+            background-size: 40px 40px;
+            color: var(--text-main);
+            overflow: hidden;
+            user-select: none;
+            touch-action: none; 
+        }
+
+        /* --- 顶部状态栏 --- */
+        .top-bar {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            background-color: rgba(15, 23, 42, 0.95);
+            border-bottom: 2px solid var(--border-main);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            z-index: 50;
+            flex-shrink: 0;
+        }
+
+        .brand {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-accent);
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+            cursor: pointer;
+        }
+
+        .status-display {
+            background: #0f172a;
+            border: 2px solid var(--border-main);
+            padding: 8px 30px;
+            border-radius: 50px;
+            font-size: 1rem;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 300px;
+            justify-content: center;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+            transition: all 0.3s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .status-display.success { 
+            color: #4ade80; 
+            border-color: #22c55e; 
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.3);
+        }
+        .status-display.error { 
+            color: #f472b6; 
+            border-color: #ec4899; 
+            box-shadow: 0 0 15px rgba(236, 72, 153, 0.3);
+        }
+
+        .btn-reset {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            padding: 8px 20px;
+            background-color: var(--bg-slot);
+            color: var(--text-main);
+            border: 2px solid var(--text-accent);
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+            flex-shrink: 0;
+        }
+        .btn-reset:hover { 
+            background-color: var(--text-accent); 
+            color: #0b1120;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
+            transform: scale(1.05);
+        }
+
+        /* --- 主体布局 --- */
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .panel {
+            background-color: rgba(30, 41, 59, 0.6);
+            border: 2px solid var(--border-main);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+            box-shadow: var(--neon-panel); 
+        }
+
+        .panel-left, .panel-right { 
+            flex: 1; 
+            min-width: 0; 
+        }
+        .panel-center { 
+            flex: 1.2;
+            background-color: rgba(15, 23, 42, 0.8); 
+            min-width: 0;
+        }
+
+        .panel.drag-over {
+            border-color: var(--text-accent);
+            box-shadow: 0 0 30px rgba(56, 189, 248, 0.4), inset 0 0 20px rgba(56, 189, 248, 0.2);
+        }
+
+        /* --- 遮罩层与锁定状态 --- */
+        .panel-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.85);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 14px;
+            transition: opacity 0.5s ease, visibility 0.5s;
+            backdrop-filter: blur(5px);
+        }
+
+        .panel-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .lock-icon {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 20px;
+            color: var(--text-sub);
+        }
+
+        .btn-start {
+            padding: 12px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #0b1120;
+            background: var(--text-accent);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+            transition: transform 0.2s;
+        }
+        .btn-start:hover {
+            transform: scale(1.1);
+            background: #fff;
+        }
+
+        .locked-msg {
+            color: var(--text-sub);
+            font-size: 1.1rem;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        /* --- 面板头部 --- */
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 2px solid var(--border-main);
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 14px 14px 0 0;
+            white-space: normal; 
+            flex-shrink: 0;
+        }
+        .panel-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-accent);
+            margin: 0;
+            text-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+            white-space: nowrap; 
+        }
+        .panel-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-sub);
+            margin-top: 8px;
+            line-height: 1.6;
+            white-space: normal;
+            word-break: break-word;
+        }
+        .required-list b { 
+            color: #fff; 
+            background: rgba(56, 189, 248, 0.15);
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin: 0 4px 4px 0;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            display: inline-block; 
+            font-weight: normal;
+            font-size: 0.85rem;
+        }
+
+        /* --- 工作区 --- */
+        .workspace {
+            flex: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            overflow: hidden;
+        }
+        .workspace.pendant { align-items: flex-start; }
+
+        .assembly-svg {
+            width: 100%;
+            height: 100%;
+            max-width: 400px;
+            filter: drop-shadow(0 0 5px rgba(255,255,255,0.1));
+        }
+
+        /* SVG 零部件样式控制 */
+        .svg-part {
+            transition: opacity 0.4s ease, transform 0.4s ease, filter 0.4s;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .svg-part.visible {
+            opacity: 1;
+            pointer-events: auto;
+            filter: drop-shadow(0 0 2px rgba(255,255,255,0.3)); 
+        }
+        
+        .interactive-zone {
+            cursor: pointer;
+            fill: transparent;
+            transition: all 0.2s;
+        }
+        .interactive-zone:hover {
+            stroke: var(--text-accent);
+            stroke-width: 2px;
+            filter: drop-shadow(0 0 5px var(--text-accent));
+        }
+        
+        .switch-knob {
+            transition: transform 0.2s, fill 0.2s, stroke 0.2s;
+            stroke: #fff;
+            stroke-width: 1px;
+        }
+        .switch-active .switch-knob {
+            fill: #4ade80; 
+            filter: drop-shadow(0 0 10px #4ade80);
+            stroke: #22c55e;
+        }
+
+        .light-beam {
+            opacity: 0;
+            transition: opacity 0.5s;
+            mix-blend-mode: screen;
+            pointer-events: none;
+        }
+        .light-beam.on { opacity: 0.9; }
+        
+        .bulb-filament { transition: stroke 0.3s; stroke: #444; }
+        .bulb-glass { transition: fill 0.3s; fill: rgba(255,255,255,0.1); stroke: #888; stroke-width: 1px;}
+        
+        .lit .bulb-filament { stroke: #fff; stroke-width: 3; filter: drop-shadow(0 0 4px #fff); }
+        .lit .bulb-glass { fill: url(#glowGradient); stroke: #fff; filter: drop-shadow(0 0 15px rgba(252, 211, 77, 0.9)); }
+
+        /* --- 零部件仓库 --- */
+        .parts-container {
+            flex: 1;
+            padding: 16px;
+            overflow: hidden; 
+            display: flex;
+            flex-direction: column; 
+        }
+        
+        .parts-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: 24px 12px;
+            height: 100%; 
+            width: 100%;
+        }
+
+        .part-card {
+            background: var(--bg-slot);
+            border: 1px solid var(--border-main);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.3);
+            user-select: none;
+            -webkit-user-select: none;
+            height: 100%; 
+            min-height: 0; 
+        }
+        .part-card:hover {
+            border-color: var(--text-accent);
+            background: #334155;
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3), 0 0 10px rgba(56, 189, 248, 0.4); 
+            z-index: 10;
+        }
+        .part-card:active { cursor: grabbing; transform: scale(0.98); }
+        
+        .part-icon {
+            width: 100%;
+            height: 65%; 
+            object-fit: contain;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5));
+            transition: transform 0.2s;
+            pointer-events: none;
+        }
+        .part-card:hover .part-icon { transform: scale(1.1); }
+
+        .part-name {
+            margin-top: 4px;
+            font-size: 1.15rem;
+            color: #e2e8f0;
+            font-weight: 500;
+            text-align: center;
+            line-height: 1.1;
+            width: 100%;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 30%; 
+        }
+        
+        .part-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--text-accent);
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 0 8px var(--text-accent);
+        }
+        .part-card:hover::before { opacity: 1; }
+
+        .drag-ghost {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            width: 80px;
+            height: 80px;
+            opacity: 0.8;
+            transform: translate(-50%, -50%);
+            filter: drop-shadow(0 0 10px var(--text-accent));
+        }
+
+        /* --- 进度条 --- */
+        .progress-bar {
+            padding: 16px;
+            background: rgba(0,0,0,0.4);
+            border-top: 2px solid var(--border-main);
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .progress-step {
+            width: 30px;
+            height: 6px;
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+        .progress-step.active {
+            background: var(--text-accent);
+            border-color: #fff;
+            box-shadow: 0 0 10px var(--text-accent), 0 0 20px var(--text-accent);
+        }
+
+        .placeholder-hint {
+            position: absolute;
+            color: var(--text-accent);
+            font-family: 'Microsoft YaHei', sans-serif;
+            font-weight: bold;
+            font-size: 0.9rem;
+            opacity: 0.7;
+            border: 2px dashed var(--text-accent);
+            padding: 6px 12px;
+            border-radius: 8px;
+            pointer-events: none;
+            background: rgba(56, 189, 248, 0.1);
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+            z-index: 20;
+        }
+        .placeholder-hint.desk { bottom: 60px; }
+        .placeholder-hint.pendant { top: 60px; }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部导航 -->
+    <header class="top-bar">
+        <div class="brand" onclick="toggleFullscreen()">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.5" style="filter: drop-shadow(0 0 5px #38bdf8);">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+            虚拟工坊
+        </div>
+        
+        <div id="status-display" class="status-display">
+            请选择一个实验开始！
+        </div>
+
+        <button onclick="resetWorkshop()" class="btn-reset">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                <path d="M21 3v5h-5"></path>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                <path d="M8 21H3v-5"></path>
+            </svg>
+            重置
+        </button>
+    </header>
+
+    <!-- 主工作区 -->
+    <main class="main-layout">
+        
+        <!-- 左侧：台灯制造台 -->
+        <section id="zone-desk" class="panel panel-left" 
+                 ondragover="handleDragOver(event)" ondrop="handleDrop(event, 'desk')">
+            
+            <!-- 遮罩层：台灯 -->
+            <div id="overlay-desk" class="panel-overlay">
+                <button class="btn-start" onclick="selectExperiment('desk')">开始制作台灯</button>
+            </div>
+
+            <div class="panel-header">
+                <h2 class="panel-title">制作台灯</h2>
+                <div class="panel-subtitle required-list">
+                    <b>底座</b> <b>支架</b> <b>灯泡</b> <b>灯罩</b> <b>插头</b> <b>开关</b>
+                </div>
+            </div>
+
+            <div class="workspace desk">
+                <div id="desk-hint" class="placeholder-hint desk">拖动底座放在这里</div>
+                
+                <!-- 台灯 SVG 组装图 -->
+                <svg class="assembly-svg" viewBox="0 0 400 500" preserveAspectRatio="xMidYMax">
+                    <defs>
+                        <radialGradient id="glowGradient" cx="0.5" cy="0.5" r="0.5">
+                            <stop offset="0%" stop-color="#fff" stop-opacity="0.9"/>
+                            <stop offset="60%" stop-color="#fcd34d" stop-opacity="0.5"/>
+                            <stop offset="100%" stop-color="rgba(252, 211, 77, 0)" stop-opacity="0"/>
+                        </radialGradient>
+                        <linearGradient id="lightConeGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+                            <stop offset="0%" stop-color="rgba(255, 253, 208, 0.5)" />
+                            <stop offset="100%" stop-color="rgba(255, 253, 208, 0)" />
+                        </linearGradient>
+                        <filter id="softLight" x="-50%" y="-50%" width="200%" height="200%">
+                            <feGaussianBlur in="SourceGraphic" stdDeviation="12" />
+                        </filter>
+                        <linearGradient id="metalGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#334155" />
+                            <stop offset="50%" stop-color="#64748b" />
+                            <stop offset="100%" stop-color="#334155" />
+                        </linearGradient>
+                         <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#0284c7" />
+                            <stop offset="50%" stop-color="#38bdf8" />
+                            <stop offset="100%" stop-color="#0284c7" />
+                        </linearGradient>
+                    </defs>
+
+                    <!-- 光束 (底层) -->
+                    <g id="desk-beam" class="light-beam">
+                        <path d="M210 230 L270 230 L400 480 L80 480 Z" fill="url(#lightConeGrad)" filter="url(#softLight)" />
+                        <ellipse cx="240" cy="480" rx="160" ry="25" fill="#fcd34d" opacity="0.4" filter="url(#softLight)"/>
+                    </g>
+
+                    <!-- 1. 电源线 -->
+                    <g id="svg-desk-wire" class="svg-part">
+                        <path d="M260 480 Q320 480 340 450 T380 480" fill="none" stroke="#60a5fa" stroke-width="4" filter="drop-shadow(0 0 2px #000)"/>
+                        <path d="M380 470 h15 v20 h-15 z" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+                        <rect x="395" y="474" width="8" height="3" fill="#94a3b8"/>
+                        <rect x="395" y="483" width="8" height="3" fill="#94a3b8"/>
+                    </g>
+
+                    <!-- 2. 底座 -->
+                    <g id="svg-desk-base" class="svg-part">
+                        <path d="M140 470 v10 q0 10 60 10 q60 0 60 -10 v-10" fill="url(#metalGrad)" stroke="none"/>
+                        <ellipse cx="200" cy="470" rx="60" ry="15" fill="#475569" stroke="#64748b" stroke-width="1"/>
+                        <rect x="175" y="458" width="50" height="20" rx="2" fill="#0f172a" stroke="#64748b" stroke-width="1"/>
+                    </g>
+
+                    <!-- 3. 机械臂 -->
+                    <g id="svg-desk-stand" class="svg-part">
+                        <path d="M200 450 L180 300" stroke="url(#metalGrad)" stroke-width="12" stroke-linecap="round"/>
+                        <circle cx="180" cy="300" r="10" fill="#475569" stroke="#94a3b8" stroke-width="2"/>
+                        <path d="M180 300 L240 160" stroke="url(#metalGrad)" stroke-width="10" stroke-linecap="round"/>
+                        <circle cx="240" cy="160" r="8" fill="#475569" stroke="#94a3b8" stroke-width="2"/>
+                    </g>
+
+                    <!-- 5. 灯泡 -->
+                    <g id="svg-desk-bulb" class="svg-part">
+                        <g transform="translate(240, 180)">
+                            <rect x="-10" y="0" width="20" height="15" fill="#eab308" />
+                            <path class="bulb-glass" d="M-15 15 C-15 30 -10 50 0 60 C10 50 15 30 15 15 Z" fill="rgba(255,255,255,0.2)"/>
+                            <path class="bulb-filament" d="M-5 25 q5 10 10 0" fill="none" stroke="#444" stroke-width="2"/>
+                        </g>
+                    </g>
+
+                    <!-- 4. 灯罩 -->
+                    <g id="svg-desk-shade" class="svg-part">
+                        <g transform="translate(240, 160)">
+                            <rect x="-5" y="-5" width="10" height="20" fill="#475569" />
+                            <path d="M-25 15 L-75 75 Q0 85 75 75 L25 15 Z" fill="url(#blueGrad)" stroke="#bae6fd" stroke-width="1"/>
+                            <path d="M-25 15 Q0 5 25 15" fill="none" stroke="#0284c7" stroke-width="1"/>
+                            <ellipse cx="0" cy="75" rx="75" ry="10" fill="#1e293b" opacity="0.3"/>
+                        </g>
+                    </g>
+
+                    <!-- 6. 开关 -->
+                    <g id="svg-desk-switch" class="svg-part" onclick="handleSwitchClick('desk')">
+                         <rect x="180" y="460" width="40" height="16" rx="4" fill="#334155" stroke="#fff" stroke-width="1" class="interactive-zone" />
+                         <circle class="switch-knob" cx="200" cy="468" r="6" fill="#ef4444" stroke="#fff" stroke-width="2"/>
+                    </g>
+
+                </svg>
+            </div>
+
+            <!-- 进度指示 -->
+            <div id="progress-desk" class="progress-bar"></div>
+        </section>
+
+        <!-- 中间：中央仓库 -->
+        <section class="panel panel-center">
+            <div class="panel-header" style="text-align:center;">
+                <h2 class="panel-title" style="justify-content:center;">零件仓库</h2>
+                <div class="panel-subtitle">一次只能进行一个实验，完成后自动解锁另一个！</div>
+            </div>
+
+            <div id="inventory-grid" class="parts-container">
+                <div class="parts-grid" id="parts-grid-content">
+                    <!-- 零件由 JS 生成 -->
+                </div>
+            </div>
+        </section>
+
+        <!-- 右侧：吊灯制造台 -->
+        <section id="zone-pendant" class="panel panel-right" 
+                 ondragover="handleDragOver(event)" ondrop="handleDrop(event, 'pendant')">
+            
+            <!-- 遮罩层：吊灯 -->
+            <div id="overlay-pendant" class="panel-overlay">
+                <button class="btn-start" onclick="selectExperiment('pendant')">开始制作吊灯</button>
+            </div>
+
+            <div class="panel-header">
+                <h2 class="panel-title" style="justify-content:flex-end;">制作吊灯</h2>
+                <div class="panel-subtitle required-list">
+                    <b>顶部灯座</b> <b>电线</b> <b>灯泡</b> <b>灯罩</b> <b>墙上开关</b>
+                </div>
+            </div>
+
+            <div class="workspace pendant">
+                <div id="pendant-hint" class="placeholder-hint pendant">拖动顶部灯座放在这里</div>
+
+                <!-- 吊灯 SVG 组装图 -->
+                <svg class="assembly-svg" viewBox="0 0 400 500" preserveAspectRatio="xMidYMin">
+                     <defs>
+                        <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#ea580c" />
+                            <stop offset="50%" stop-color="#f97316" />
+                            <stop offset="100%" stop-color="#ea580c" />
+                        </linearGradient>
+                    </defs>
+
+                    <!-- 光束 -->
+                    <g id="pendant-beam" class="light-beam">
+                        <path d="M160 210 L240 210 L380 500 L20 500 Z" fill="url(#lightConeGrad)" filter="url(#softLight)" />
+                        <ellipse cx="200" cy="500" rx="180" ry="30" fill="#fcd34d" opacity="0.4" filter="url(#softLight)"/>
+                    </g>
+
+                    <!-- 1. 顶座电源 -->
+                    <g id="svg-pendant-power" class="svg-part">
+                        <rect x="160" y="0" width="80" height="30" fill="#334155" stroke="#94a3b8" stroke-width="1"/>
+                        <path d="M160 30 L170 35 H230 L240 30" fill="#1e293b" />
+                        <line x1="160" y1="0" x2="240" y2="30" stroke="#475569" stroke-width="1"/>
+                        <line x1="240" y1="0" x2="160" y2="30" stroke="#475569" stroke-width="1"/>
+                        <circle cx="200" cy="15" r="4" fill="#38bdf8" filter="drop-shadow(0 0 5px #38bdf8)"/>
+                    </g>
+
+                    <!-- 墙内暗线（连接电源和开关） -->
+                    <g id="svg-pendant-wire-conduit" class="svg-part">
+                         <path d="M240 15 H340 V300" stroke="#334155" stroke-width="2" stroke-dasharray="5,5" fill="none" opacity="0.5"/>
+                    </g>
+
+                    <!-- 2. 吊缆 -->
+                    <g id="svg-pendant-cord" class="svg-part">
+                        <line x1="200" y1="30" x2="200" y2="150" stroke="#1e293b" stroke-width="4"/>
+                        <path d="M198 30 l4 10 M198 50 l4 10 M198 70 l4 10 M198 90 l4 10 M198 110 l4 10 M198 130 l4 10" stroke="#475569" stroke-width="1"/>
+                    </g>
+
+                    <!-- 灯头组件组 -->
+                    <g transform="translate(200, 150)">
+                        <!-- 4. 灯泡 -->
+                        <g id="svg-pendant-bulb" class="svg-part">
+                             <g transform="translate(0, 30)">
+                                <path class="bulb-glass" d="M-15 0 C-15 15 -10 40 0 50 C10 40 15 15 15 0 Z" fill="rgba(255,255,255,0.2)"/>
+                                <path class="bulb-filament" d="M-5 10 L5 10 M0 10 L0 30" stroke="#555" stroke-width="2"/>
+                             </g>
+                        </g>
+
+                        <!-- 3. 灯罩 -->
+                        <g id="svg-pendant-shade" class="svg-part">
+                            <rect x="-15" y="0" width="30" height="30" fill="#334155" />
+                            <path d="M-15 15 L-80 60 Q0 70 80 60 L15 15 Z" fill="url(#orangeGrad)" stroke="#fdba74" stroke-width="1"/>
+                            <ellipse cx="0" cy="60" rx="80" ry="10" fill="#fdba74" opacity="0.2"/>
+                        </g>
+                    </g>
+
+                    <!-- 5. 墙上开关 (位置靠右) -->
+                    <g id="svg-pendant-switch" class="svg-part" onclick="handleSwitchClick('pendant')" transform="translate(320, 300)">
+                        <!-- 面板 -->
+                        <rect x="-20" y="-30" width="40" height="60" rx="2" fill="#cbd5e1" stroke="#94a3b8" class="interactive-zone"/>
+                        <!-- 按钮底座 -->
+                        <rect x="-10" y="-15" width="20" height="30" fill="#94a3b8"/>
+                        <!-- 按钮本体 (翘板开关) -->
+                        <rect class="switch-knob" x="-10" y="-15" width="20" height="15" fill="#f87171" stroke="#fff"/>
+                    </g>
+
+                </svg>
+            </div>
+
+            <!-- 进度指示 -->
+            <div id="progress-pendant" class="progress-bar"></div>
+        </section>
+
+    </main>
+
+    <!-- 逻辑脚本 -->
+    <script>
+        /* --- 零部件 SVG 数据定义 --- */
+        const SVG_ICONS = {
+            base: `<svg viewBox="0 0 100 100" class="part-icon"><defs><linearGradient id="grad-base-side" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#334155"/><stop offset="0.5" stop-color="#64748b"/><stop offset="1" stop-color="#334155"/></linearGradient></defs><path d="M20 60 v15 q0 10 30 10 q30 0 30 -10 v-15" fill="url(#grad-base-side)" /><ellipse cx="50" cy="60" rx="30" ry="10" fill="#475569" stroke="#94a3b8" stroke-width="1"/><rect x="40" y="55" width="20" height="10" rx="2" fill="#1e293b" /></svg>`,
+            
+            stand: `<svg viewBox="0 0 100 100" class="part-icon"><defs><linearGradient id="grad-stand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#94a3b8"/><stop offset="1" stop-color="#475569"/></linearGradient></defs><path d="M25 85 L40 50 L75 25" fill="none" stroke="url(#grad-stand)" stroke-width="12" stroke-linecap="round"/><circle cx="40" cy="50" r="6" fill="#334155" stroke="#fff" stroke-width="1"/></svg>`,
+            
+            bulb: `<svg viewBox="0 0 100 100" class="part-icon"><defs><radialGradient id="grad-bulb"><stop offset="0%" stop-color="#fffeee"/><stop offset="80%" stop-color="#eab308" stop-opacity="0.3"/><stop offset="100%" stop-color="#ca8a04" stop-opacity="0.8"/></radialGradient></defs><rect x="42" y="70" width="16" height="10" fill="#ca8a04"/><path d="M50 70 C50 70 75 55 75 35 A25 25 0 0 0 25 35 C25 55 50 70 50 70 Z" fill="url(#grad-bulb)" stroke="#fcd34d" stroke-width="1"/><path d="M35 30 A10 10 0 0 1 45 25" fill="none" stroke="#fff" stroke-width="2" opacity="0.6"/></svg>`,
+            
+            shade_desk: `<svg viewBox="0 0 100 100" class="part-icon"><defs><linearGradient id="grad-shade-blue" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0284c7"/><stop offset="0.5" stop-color="#38bdf8"/><stop offset="1" stop-color="#0284c7"/></linearGradient></defs><path d="M25 75 L75 75 L65 30 L35 30 Z" fill="url(#grad-shade-blue)" stroke="#bae6fd" stroke-width="1"/><ellipse cx="50" cy="75" rx="25" ry="5" fill="#1e293b" opacity="0.3"/></svg>`,
+            
+            wire: `<svg viewBox="0 0 100 100" class="part-icon"><path d="M15 80 Q35 20 50 50 T85 20" fill="none" stroke="#60a5fa" stroke-width="6" filter="drop-shadow(2px 2px 2px rgba(0,0,0,0.5))"/><path d="M80 10 h15 v20 h-15 z" fill="#1e293b"/><rect x="95" y="14" width="5" height="4" fill="#94a3b8"/><rect x="95" y="22" width="5" height="4" fill="#94a3b8"/></svg>`,
+            
+            switch_desk: `<svg viewBox="0 0 100 100" class="part-icon"><defs><linearGradient id="grad-switch-base"><stop offset="0" stop-color="#334155"/><stop offset="1" stop-color="#1e293b"/></linearGradient></defs><rect x="25" y="40" width="50" height="25" rx="5" fill="url(#grad-switch-base)" stroke="#64748b" stroke-width="1"/><circle cx="50" cy="52.5" r="8" fill="#ef4444" stroke="#991b1b" stroke-width="2"/><circle cx="50" cy="50" r="3" fill="#fca5a5" opacity="0.5"/></svg>`,
+            
+            power: `<svg viewBox="0 0 100 100" class="part-icon"><rect x="20" y="35" width="60" height="30" rx="2" fill="#334155" stroke="#94a3b8" stroke-width="2"/><circle cx="50" cy="50" r="6" fill="#38bdf8" filter="drop-shadow(0 0 5px #38bdf8)"/></svg>`,
+            
+            cord: `<svg viewBox="0 0 100 100" class="part-icon"><line x1="50" y1="10" x2="50" y2="90" stroke="#94a3b8" stroke-width="6"/><path d="M48 10 l4 10 M48 30 l4 10 M48 50 l4 10 M48 70 l4 10" stroke="#475569" stroke-width="1"/></svg>`,
+            
+            shade_pendant: `<svg viewBox="0 0 100 100" class="part-icon"><defs><linearGradient id="grad-shade-orange" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ea580c"/><stop offset="0.5" stop-color="#f97316"/><stop offset="1" stop-color="#ea580c"/></linearGradient></defs><path d="M10 65 L90 65 Q95 55 50 30 Q5 55 10 65 Z" fill="url(#grad-shade-orange)" stroke="#fdba74" stroke-width="1"/><rect x="40" y="20" width="20" height="20" fill="#334155"/></svg>`,
+            
+            switch_wall: `<svg viewBox="0 0 100 100" class="part-icon"><rect x="25" y="20" width="50" height="60" rx="3" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"/><rect x="35" y="35" width="30" height="30" fill="#cbd5e1" stroke="#64748b"/><rect x="35" y="45" width="30" height="20" fill="#ef4444"/></svg>`,
+
+            screwdriver: `<svg viewBox="0 0 100 100" class="part-icon"><defs><linearGradient id="grad-handle" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b91c1c"/><stop offset="0.5" stop-color="#ef4444"/><stop offset="1" stop-color="#b91c1c"/></linearGradient></defs><rect x="40" y="50" width="20" height="40" rx="5" fill="url(#grad-handle)" stroke="#991b1b" stroke-width="1"/><rect x="45" y="10" width="10" height="40" fill="#94a3b8" stroke="#64748b" stroke-width="1"/><path d="M45 10 L50 2 L55 10 Z" fill="#475569"/><rect x="40" y="55" width="20" height="5" fill="#7f1d1d" opacity="0.3"/><rect x="40" y="65" width="20" height="5" fill="#7f1d1d" opacity="0.3"/><rect x="40" y="75" width="20" height="5" fill="#7f1d1d" opacity="0.3"/></svg>`,
+            
+            manual: `<svg viewBox="0 0 100 100" class="part-icon"><rect x="25" y="20" width="50" height="60" rx="2" fill="#fff" stroke="#94a3b8" stroke-width="2"/><line x1="35" y1="30" x2="65" y2="30" stroke="#cbd5e1" stroke-width="4"/><line x1="35" y1="40" x2="65" y2="40" stroke="#cbd5e1" stroke-width="4"/><line x1="35" y1="50" x2="55" y2="50" stroke="#cbd5e1" stroke-width="4"/></svg>`
+        };
+
+        /* --- 逻辑配置 --- */
+        const PARTS_DB = [
+            { id: 'base', name: '底座', icon: SVG_ICONS.base, target: ['desk'] },
+            { id: 'power', name: '顶部灯座', icon: SVG_ICONS.power, target: ['pendant'] },
+            { id: 'stand', name: '支架', icon: SVG_ICONS.stand, target: ['desk'] },
+            { id: 'cord', name: '电线', icon: SVG_ICONS.cord, target: ['pendant'] },
+            { id: 'shade_desk', name: '灯罩', icon: SVG_ICONS.shade_desk, target: ['desk'] },
+            { id: 'shade_pendant', name: '灯罩', icon: SVG_ICONS.shade_pendant, target: ['pendant'] },
+            { id: 'bulb', name: '灯泡', icon: SVG_ICONS.bulb, target: ['desk', 'pendant'] },
+            { id: 'switch', name: '开关', icon: SVG_ICONS.switch_desk, target: ['desk'] },
+            { id: 'switch_wall', name: '墙上开关', icon: SVG_ICONS.switch_wall, target: ['pendant'] },
+            { id: 'wire', name: '插头', icon: SVG_ICONS.wire, target: ['desk'] },
+            { id: 'screwdriver', name: '螺丝刀', icon: SVG_ICONS.screwdriver, target: [] },
+            { id: 'manual', name: '说明书', icon: SVG_ICONS.manual, target: [] },
+        ];
+
+        // 映射 ID 到 SVG 元素 ID 的关系
+        const SVG_MAP = {
+            'desk': {
+                'base': 'svg-desk-base',
+                'stand': 'svg-desk-stand',
+                'bulb': 'svg-desk-bulb',
+                'shade_desk': 'svg-desk-shade',
+                'wire': 'svg-desk-wire',
+                'switch': 'svg-desk-switch'
+            },
+            'pendant': {
+                'power': 'svg-pendant-power',
+                'cord': 'svg-pendant-cord',
+                'bulb': 'svg-pendant-bulb',
+                'shade_pendant': 'svg-pendant-shade',
+                'switch_wall': 'svg-pendant-switch'
+            }
+        };
+
+        const REQUIRED_DESK = ['base', 'stand', 'bulb', 'shade_desk', 'wire', 'switch'];
+        const REQUIRED_PENDANT = ['power', 'cord', 'bulb', 'shade_pendant', 'switch_wall'];
+
+        // 状态
+        let state = {
+            desk: { parts: new Set(), on: false },
+            pendant: { parts: new Set(), on: false },
+            activeExperiment: null, // 'desk', 'pendant', 'BOTH', or null
+            completedExperiments: new Set(),
+            dragged: null,
+            touchData: { startX: 0, startY: 0, isDragging: false, item: null }
+        };
+
+        // --- 初始化 ---
+        window.onload = () => {
+            renderInventory(PARTS_DB); 
+            renderProgressBar('desk', REQUIRED_DESK);
+            renderProgressBar('pendant', REQUIRED_PENDANT);
+        };
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // --- 闯关逻辑 ---
+        function selectExperiment(zone) {
+            if (state.activeExperiment && state.activeExperiment !== 'BOTH') return; // 已有单任务且未解锁自由模式
+            
+            state.activeExperiment = zone;
+            const otherZone = zone === 'desk' ? 'pendant' : 'desk';
+
+            // 隐藏当前区域的遮罩，开始任务
+            document.getElementById(`overlay-${zone}`).classList.add('hidden');
+            
+            // 锁定另一个区域 (仅当另一个未完成时)
+            if (!state.completedExperiments.has(otherZone)) {
+                const otherOverlay = document.getElementById(`overlay-${otherZone}`);
+                otherOverlay.classList.remove('hidden');
+                otherOverlay.innerHTML = `
+                    <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <div class="locked-msg">请先完成另一个实验<br>点亮灯泡自动解锁</div>
+                `;
+            }
+            
+            setStatus(`已选择：制作${zone === 'desk' ? '台灯' : '吊灯'}，开始吧！`, 'normal');
+        }
+
+        function autoUnlockOther(finishedZone) {
+            state.completedExperiments.add(finishedZone);
+            state.activeExperiment = 'BOTH'; // 设为自由模式
+
+            const otherZone = finishedZone === 'desk' ? 'pendant' : 'desk';
+            
+            // 自动隐藏另一个区域的遮罩
+            const otherOverlay = document.getElementById(`overlay-${otherZone}`);
+            if (otherOverlay) {
+                otherOverlay.classList.add('hidden');
+            }
+        }
+
+        function renderInventory(items) {
+            const grid = document.getElementById('parts-grid-content');
+            grid.innerHTML = '';
+            items.forEach(part => {
+                const card = document.createElement('div');
+                card.className = 'part-card';
+                card.draggable = true;
+                card.innerHTML = `${part.icon}<div class="part-name">${part.name}</div>`;
+                
+                card.addEventListener('dragstart', (e) => {
+                    if (!state.activeExperiment) {
+                        e.preventDefault();
+                        setStatus('请先点击左右两侧的“开始”按钮选择一个实验！', 'error');
+                        return;
+                    }
+                    state.dragged = part;
+                    e.dataTransfer.effectAllowed = 'copy';
+                    card.style.opacity = '0.5';
+                });
+                card.addEventListener('dragend', () => {
+                    state.dragged = null;
+                    card.style.opacity = '1';
+                    document.querySelectorAll('.panel').forEach(p => p.classList.remove('drag-over'));
+                });
+
+                // Touch Events
+                card.addEventListener('touchstart', (e) => handleTouchStart(e, part));
+                card.addEventListener('touchmove', handleTouchMove);
+                card.addEventListener('touchend', handleTouchEnd);
+
+                grid.appendChild(card);
+            });
+        }
+
+        // --- Touch Event Logic ---
+        function handleTouchStart(e, part) {
+            if (!state.activeExperiment) {
+                setStatus('请先点击左右两侧的“开始”按钮选择一个实验！', 'error');
+                return;
+            }
+            const touch = e.touches[0];
+            state.touchData.startX = touch.clientX;
+            state.touchData.startY = touch.clientY;
+            state.touchData.isDragging = false;
+            state.touchData.item = part;
+        }
+
+        function handleTouchMove(e) {
+            if (!state.touchData.item) return;
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - state.touchData.startX;
+            const deltaY = touch.clientY - state.touchData.startY;
+
+            if (state.touchData.isDragging) {
+                e.preventDefault(); 
+                moveDragGhost(touch.clientX, touch.clientY);
+                return;
+            }
+
+            if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+                state.touchData.isDragging = true;
+                e.preventDefault(); 
+                createDragGhost(state.touchData.item, touch.clientX, touch.clientY);
+            }
+        }
+
+        function handleTouchEnd(e) {
+            if (state.touchData.isDragging) {
+                const touch = e.changedTouches[0];
+                const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+                
+                const deskZone = document.getElementById('zone-desk');
+                const pendantZone = document.getElementById('zone-pendant');
+
+                if (deskZone && deskZone.contains(targetEl)) {
+                    attemptDrop('desk', state.touchData.item);
+                } else if (pendantZone && pendantZone.contains(targetEl)) {
+                    attemptDrop('pendant', state.touchData.item);
+                }
+
+                removeDragGhost();
+            }
+            state.touchData.isDragging = false;
+            state.touchData.item = null;
+        }
+
+        function createDragGhost(part, x, y) {
+            const ghost = document.createElement('div');
+            ghost.className = 'drag-ghost';
+            ghost.id = 'active-ghost';
+            ghost.innerHTML = part.icon; 
+            document.body.appendChild(ghost);
+            moveDragGhost(x, y);
+        }
+
+        function moveDragGhost(x, y) {
+            const ghost = document.getElementById('active-ghost');
+            if (ghost) {
+                ghost.style.left = x + 'px';
+                ghost.style.top = y + 'px';
+            }
+        }
+
+        function removeDragGhost() {
+            const ghost = document.getElementById('active-ghost');
+            if (ghost) ghost.remove();
+        }
+
+
+        // --- Common Logic ---
+        function renderProgressBar(zone, requirements) {
+            const bar = document.getElementById(`progress-${zone}`);
+            bar.innerHTML = '';
+            requirements.forEach((req, idx) => {
+                const step = document.createElement('div');
+                step.className = 'progress-step';
+                step.id = `step-${zone}-${req}`; 
+                bar.appendChild(step);
+            });
+        }
+
+        // --- Mouse Drag Logic ---
+        function handleDragOver(e) {
+            // 如果不在自由模式且不是当前激活区域，禁止交互
+            const zone = e.currentTarget.id.replace('zone-', '');
+            if (state.activeExperiment !== 'BOTH' && state.activeExperiment !== zone) {
+                return;
+            }
+            e.preventDefault();
+            e.currentTarget.classList.add('drag-over');
+            e.dataTransfer.dropEffect = 'copy';
+        }
+
+        function handleDrop(e, zone) {
+             if (state.activeExperiment !== 'BOTH' && state.activeExperiment !== zone) {
+                 e.currentTarget.classList.remove('drag-over');
+                 return;
+            }
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
+            const part = state.dragged;
+            if (!part) return;
+            attemptDrop(zone, part);
+        }
+
+        // --- Core Drop Logic (Shared) ---
+        function attemptDrop(zone, part) {
+            // 双重校验：确保当前模式允许操作该区域
+            if (state.activeExperiment !== 'BOTH' && state.activeExperiment !== zone) {
+                setStatus('这个区域暂时锁定了，请专注于当前任务！', 'error');
+                return;
+            }
+
+            const targetParts = state[zone].parts;
+            const required = zone === 'desk' ? REQUIRED_DESK : REQUIRED_PENDANT;
+
+            if (!part.target.includes(zone)) {
+                setStatus('哎呀，这个零件不是这里的哦！', 'error');
+                return;
+            }
+
+            if (targetParts.has(part.id)) {
+                setStatus('这个零件已经装好了！', 'error');
+                return;
+            }
+
+            // --- 顺序限制逻辑 (已放宽) ---
+            const rules = {
+                'desk': {
+                    'stand': { req: 'base', hint: '请先安装底座' },
+                    'wire':  { req: 'base', hint: '请先安装底座' },
+                    'bulb':  { req: 'stand', hint: '请先安装支架' },
+                    'shade_desk': { req: 'stand', hint: '请先安装支架' } 
+                    // 台灯：灯泡和灯罩并列，互不影响
+                },
+                'pendant': {
+                    'cord': { req: 'power', hint: '请先安装顶部灯座（从上往下拼搭）' },
+                    'shade_pendant': { req: 'cord', hint: '请先安装电线（从上往下拼搭）' },
+                    'bulb': { req: 'cord', hint: '请先安装电线（从上往下拼搭）' }, 
+                    // 吊灯：灯泡和灯罩现在都只依赖电线，互不影响
+                    'switch_wall': { req: 'cord', hint: '请先安装好电线，再连接墙上开关' }
+                }
+            };
+
+            const rule = rules[zone] && rules[zone][part.id];
+            if (rule) {
+                if (!targetParts.has(rule.req)) {
+                    setStatus(rule.hint, 'error');
+                    return;
+                }
+            }
+
+            targetParts.add(part.id);
+            updateVisuals(zone);
+            
+            const isComplete = required.every(r => targetParts.has(r));
+            if (isComplete) {
+                setStatus(`太棒了！${zone === 'desk' ? '台灯' : '吊灯'}拼好了，快点击开关试试！`, 'success');
+            } else {
+                setStatus(`装好了：${part.name}`, 'normal');
+            }
+        }
+
+        // --- 视觉更新 ---
+        function updateVisuals(zone) {
+            const parts = state[zone].parts;
+            const map = SVG_MAP[zone];
+            
+            for (const [partId, svgId] of Object.entries(map)) {
+                const el = document.getElementById(svgId);
+                if (el) {
+                    if (parts.has(partId)) el.classList.add('visible');
+                    else el.classList.remove('visible');
+                }
+            }
+
+            // 特殊处理吊灯的暗线
+            if (zone === 'pendant') {
+                const conduit = document.getElementById('svg-pendant-wire-conduit');
+                if (parts.has('power') || parts.has('switch_wall')) {
+                    conduit.classList.add('visible');
+                }
+            }
+
+            const hint = document.getElementById(`${zone}-hint`);
+            if (zone === 'desk' && parts.has('base')) hint.style.display = 'none';
+            if (zone === 'pendant' && parts.has('power')) hint.style.display = 'none';
+
+            parts.forEach(partId => {
+                const step = document.getElementById(`step-${zone}-${partId}`);
+                if (step) step.classList.add('active');
+            });
+        }
+
+        // --- 开关交互 ---
+        function handleSwitchClick(zone) {
+            // 在自由模式下，或者当前任务区域，允许开关
+            if (state.activeExperiment !== 'BOTH' && state.activeExperiment !== zone) return;
+
+            const parts = state[zone].parts;
+            const required = zone === 'desk' ? REQUIRED_DESK : REQUIRED_PENDANT;
+            
+            const isComplete = required.every(r => parts.has(r));
+            
+            if (!isComplete) {
+                setStatus('零件还没找齐呢，再检查一下！', 'error');
+                return;
+            }
+
+            state[zone].on = !state[zone].on;
+            const isOn = state[zone].on;
+
+            const beam = document.getElementById(`${zone}-beam`);
+            const bulb = document.getElementById(SVG_MAP[zone].bulb); 
+            const switchGroup = document.getElementById(SVG_MAP[zone][zone === 'desk' ? 'switch' : 'switch_wall']);
+
+            if (isOn) {
+                beam.classList.add('on');
+                bulb.classList.add('lit');
+                switchGroup.classList.add('switch-active');
+                
+                // --- 自动解锁逻辑 ---
+                if (!state.completedExperiments.has(zone)) {
+                     setStatus(`哇！亮起来了！挑战成功！另一个实验已自动解锁！`, 'success');
+                     autoUnlockOther(zone);
+                } else {
+                    setStatus(`哇！${zone === 'desk' ? '台灯' : '吊灯'}亮起来了！`, 'success');
+                }
+
+            } else {
+                beam.classList.remove('on');
+                bulb.classList.remove('lit');
+                switchGroup.classList.remove('switch-active');
+                setStatus(`${zone === 'desk' ? '台灯' : '吊灯'}关掉了。`, 'normal');
+            }
+        }
+
+        function setStatus(msg, type) {
+            const el = document.getElementById('status-display');
+            el.textContent = msg;
+            el.className = `status-display ${type}`;
+            
+            if (type !== 'normal') {
+                setTimeout(() => {
+                    if (!state.activeExperiment) {
+                         el.textContent = '请选择一个实验开始！';
+                    } else {
+                         el.textContent = '请拖动零件到工作台...';
+                    }
+                    el.className = 'status-display';
+                }, 4000);
+            }
+        }
+
+        function toggleFullscreen() {
+            const doc = document;
+            const docEl = doc.documentElement;
+            const isFs = doc.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement;
+            if (!isFs) {
+                if (docEl.requestFullscreen) docEl.requestFullscreen();
+                else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+                else if (docEl.msRequestFullscreen) docEl.msRequestFullscreen();
+            } else {
+                if (doc.exitFullscreen) doc.exitFullscreen();
+                else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+                else if (doc.msExitFullscreen) doc.msExitFullscreen();
+            }
+        }
+
+        function resetWorkshop() {
+            state.desk.parts.clear();
+            state.desk.on = false;
+            state.pendant.parts.clear();
+            state.pendant.on = false;
+            
+            // 重置闯关状态
+            state.activeExperiment = null;
+            state.completedExperiments.clear();
+
+            document.querySelectorAll('.svg-part').forEach(el => el.classList.remove('visible'));
+            document.querySelectorAll('.light-beam').forEach(el => el.classList.remove('on'));
+            document.querySelectorAll('.lit').forEach(el => el.classList.remove('lit'));
+            document.querySelectorAll('.progress-step').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.switch-active').forEach(el => el.classList.remove('switch-active'));
+            
+            document.getElementById('desk-hint').style.display = 'block';
+            document.getElementById('pendant-hint').style.display = 'block';
+
+            // 重置遮罩层
+            const overlayDesk = document.getElementById('overlay-desk');
+            const overlayPendant = document.getElementById('overlay-pendant');
+            
+            overlayDesk.classList.remove('hidden');
+            overlayDesk.innerHTML = `<button class="btn-start" onclick="selectExperiment('desk')">开始制作台灯</button>`;
+            
+            overlayPendant.classList.remove('hidden');
+            overlayPendant.innerHTML = `<button class="btn-start" onclick="selectExperiment('pendant')">开始制作吊灯</button>`;
+
+            // Shuffle parts
+            const shuffledParts = shuffleArray([...PARTS_DB]);
+            renderInventory(shuffledParts);
+
+            setStatus('全部重置啦，请重新选择实验！', 'normal');
+        }
+    </script>
+</body>
+</html>
