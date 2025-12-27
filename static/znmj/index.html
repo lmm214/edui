@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能面积分析</title>
+    <style>
+        :root {
+            --bg-dark: #050510;
+            --bg-panel: rgba(10, 15, 30, 0.7);
+            --border-color: rgba(64, 224, 208, 0.3);
+            /* Turquoise dim */
+            --accent-cyan: #00f3ff;
+            --accent-orange: #ff9e00;
+            --text-primary: #e0e0ff;
+            --text-dim: #6070a0;
+            --font-tech: 'Courier New', Courier, monospace;
+            --font-ui: system-ui, -apple-system, blinkmacsystemfont, 'Segoe UI', roboto, oxygen, ubuntu, cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            --glow-cyan: 0 0 10px rgba(0, 243, 255, 0.5);
+            --glow-orange: 0 0 10px rgba(255, 158, 0, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: var(--font-ui);
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Sci-Fi Grid Background */
+        .bg-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image:
+                linear-gradient(rgba(0, 243, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: -1;
+            perspective: 1000px;
+            transform-style: preserve-3d;
+            /* Optional: Add a slight tilt or movement */
+        }
+
+        .bg-grid::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, transparent 0%, var(--bg-dark) 90%);
+        }
+
+        .app-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 0;
+        }
+
+        /* 1. Header Bar (Cyber Panel) */
+        .cyber-header {
+            position: relative;
+            height: 80px;
+            flex-shrink: 0;
+            background: var(--bg-panel);
+            border-bottom: 3px solid var(--accent-cyan);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.1);
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 32px;
+            z-index: 100;
+        }
+
+        /* Header Left: Stats */
+        .header-stats {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+        }
+
+        .stat-group {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+        }
+
+        .stat-group .label {
+            font-family: var(--font-tech);
+            font-size: 1.4rem;
+            color: #fff;
+            letter-spacing: 1px;
+        }
+
+        .stat-group .value {
+            font-family: var(--font-tech);
+            font-size: 3rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .divider {
+            width: 1px;
+            height: 24px;
+            background: var(--border-color);
+        }
+
+        .highlight-cyan {
+            color: var(--accent-cyan);
+            text-shadow: var(--glow-cyan);
+        }
+
+        .highlight-orange {
+            color: var(--accent-orange);
+            text-shadow: var(--glow-orange);
+        }
+
+
+        /* Header Right: Actions */
+        .header-actions {
+            display: flex;
+            gap: 16px;
+        }
+
+        .cyber-btn-sm {
+            position: relative;
+            padding: 8px 24px;
+            height: 40px;
+            background: rgba(0, 243, 255, 0.05);
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            font-family: var(--font-tech);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: all 0.3s;
+            /* Slanted shape */
+            clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cyber-btn-sm:hover {
+            background: var(--accent-cyan);
+            color: #000;
+            box-shadow: 0 0 15px var(--accent-cyan);
+        }
+
+        .cyber-btn-sm:active {
+            transform: scale(0.95);
+        }
+
+        /* 2. Workspace */
+        .workspace {
+            flex: 1;
+            width: 100%;
+            position: relative;
+            padding: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            padding: 4px;
+            /* Frame thickness */
+            background: rgba(0, 0, 0, 0.3);
+            width: auto;
+            height: auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 4. Scan Effect */
+        .scan-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            overflow: hidden;
+            background: rgba(0, 243, 255, 0.05);
+            /* Green tint during scan */
+        }
+
+        .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 15px 4px var(--accent-cyan);
+            top: 0;
+            animation: scanAnimation 1.5s ease-in-out infinite;
+            opacity: 1;
+        }
+
+        @keyframes scanAnimation {
+            0% {
+                top: -5%;
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            90% {
+                opacity: 1;
+            }
+
+            100% {
+                top: 105%;
+                opacity: 0;
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            color: var(--text-dim);
+            font-family: var(--font-tech);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            width: 100%;
+        }
+
+        .empty-state h2 {
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+            animation: blinkText 2s infinite;
+        }
+
+        @keyframes blinkText {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Load Overlay */
+        #loadingOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: var(--accent-cyan);
+            font-family: var(--font-tech);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid transparent;
+            border-top: 3px solid var(--accent-cyan);
+            border-left: 3px solid var(--accent-cyan);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+            box-shadow: 0 0 15px var(--accent-cyan);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Top Header Bar -->
+        <header class="cyber-header">
+            <!-- Left: Stats -->
+            <div class="header-stats" id="statsBar">
+                <div class="stat-group">
+                    <span class="label">整格</span>
+                    <span class="value highlight-cyan" id="fullCount">0</span>
+                </div>
+                <div class="divider"></div>
+                <div class="stat-group">
+                    <span class="label">半格</span>
+                    <span class="value highlight-orange" id="partialCount">0</span>
+                </div>
+            </div>
+
+            <!-- Right: Actions -->
+            <div class="header-actions">
+                <button class="cyber-btn-sm" id="btnUpload">
+                    <span>更换图片</span>
+                </button>
+                <button class="cyber-btn-sm" id="btnScan">
+                    <span>智能识别</span>
+                </button>
+                <!-- Removed standalone "Stats" button since stats are now always visible on left -->
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <div class="canvas-wrapper cyber-border">
+                <canvas id="analysisCanvas"></canvas>
+
+                <!-- Scanning Effect Overlay -->
+                <div id="scanOverlay" class="scan-overlay hidden">
+                    <div class="scan-line"></div>
+                </div>
+
+                <div id="loadingOverlay" class="hidden">
+                    <div class="spinner"></div>
+                    <p>系统分析中...</p>
+                </div>
+
+                <div id="emptyState" class="empty-state">
+                    <div class="tech-icon-large"></div>
+                    <h2>等待上传图片</h2>
+                </div>
+            </div>
+        </main>
+
+        <!-- Hidden File Input -->
+        <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+    </div>
+
+    <!-- Background Decoration -->
+    <div class="bg-grid"></div>
+
+    <script>
+        const canvas = document.getElementById('analysisCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const fileInput = document.getElementById('imageUpload');
+        const btnUpload = document.getElementById('btnUpload');
+        const btnScan = document.getElementById('btnScan');
+        const btnStats = document.getElementById('btnStats');
+        const statsBar = document.getElementById('statsBar');
+        const fullCountEl = document.getElementById('fullCount');
+        const partialCountEl = document.getElementById('partialCount');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const emptyState = document.getElementById('emptyState');
+        const scanOverlay = document.getElementById('scanOverlay');
+
+        // Application State
+        let originalImage = null;
+        let imageWidth = 0;
+        let imageHeight = 0;
+        let isProcessing = false;
+
+        // Grid & Results
+        let gridSize = 0;
+        let offsetX = 0;
+        let offsetY = 0;
+        let fullSquares = [];
+        let partialSquares = [];
+
+        // Animation State
+        let visibleSquares = []; // List of squares to draw
+        let animationId = null;
+        let isAnimating = false;
+
+        // Config
+        const CONFIG = {
+            fullSquareThreshold: 0.95,
+            partialSquareThreshold: 0.15,
+        };
+
+        // Initialization
+        function init() {
+            // 1. Button Handlers
+            btnUpload.addEventListener('click', () => {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', handleImageUpload);
+
+            btnScan.addEventListener('click', () => {
+                if (!originalImage) return;
+                runSmartScan();
+            });
+
+
+
+            // 2. Drag & Drop
+            const dropZone = document.querySelector('.canvas-wrapper');
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#3b82f6'; });
+            dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.style.borderColor = 'transparent'; });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = 'transparent';
+                if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+            });
+
+            // 3. Auto-load default
+            const defaultImage = new Image();
+            defaultImage.onload = () => {
+                originalImage = defaultImage;
+                imageWidth = defaultImage.width;
+                imageHeight = defaultImage.height;
+                fitImageToCanvas();
+                emptyState.classList.add('hidden');
+
+                // Silent analyze first
+                analyzeImage(true);
+                // Don't animate immediately via "Scan" button logic, just draw static result?
+                // User asked for "Scan" button to trigger effect.
+                // On load, let's just show the image clean.
+                draw();
+            };
+            defaultImage.src = "tu1.png";
+        }
+
+        // ---------------------------------------------------------
+        // File Handling
+        // ---------------------------------------------------------
+
+        function handleImageUpload(e) {
+            if (e.target.files && e.target.files[0]) {
+                handleFile(e.target.files[0]);
+            }
+        }
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    originalImage = img;
+                    imageWidth = img.width;
+                    imageHeight = img.height;
+
+                    fitImageToCanvas();
+                    emptyState.classList.add('hidden');
+
+                    // On new image, silent compute but don't show result yet?
+                    // Or show result immediately? 
+                    // Better UX: Show image, let user click "Scan".
+                    gridSize = 0; // Reset
+                    visibleSquares = [];
+                    draw();
+
+                    // Pre-calculate to be ready
+                    setTimeout(() => analyzeImage(true), 100);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function fitImageToCanvas() {
+            canvas.width = imageWidth;
+            canvas.height = imageHeight;
+
+            // Auto-zoom logic: Measure available space in WORKSPACE (minus padding)
+            const workspace = document.querySelector('.workspace');
+
+            // Safety check if workspace is not rendered yet
+            if (!workspace) return;
+
+            // Get computed style to handle padding accurately
+            const style = window.getComputedStyle(workspace);
+            const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+            const paddingY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+
+            const cw = workspace.clientWidth - paddingX;
+            const ch = workspace.clientHeight - paddingY;
+
+            // Calculate Fit Scale
+            // We want to fit strictly inside
+            const scale = Math.min(cw / imageWidth, ch / imageHeight);
+
+            // Ensure we don't scale UP pixelatedly? Usually user wants to see it BIG.
+            // So just sticking to Fit logic is fine.
+
+            const displayW = Math.floor(imageWidth * scale);
+            const displayH = Math.floor(imageHeight * scale);
+
+            canvas.style.width = `${displayW}px`;
+            canvas.style.height = `${displayH}px`;
+
+            // Resize overlay to match
+            scanOverlay.style.width = `${displayW}px`;
+            scanOverlay.style.height = `${displayH}px`;
+        }
+
+
+        // ---------------------------------------------------------
+        // Smart Scan Logic (Visuals)
+        // ---------------------------------------------------------
+
+        function runSmartScan() {
+            // 1. Ensure we have data
+            if (gridSize === 0) {
+                // Run analysis if not done
+                analyzeImage(false);
+                // Note: analyzeImage is synchronous-ish but we put it in setTimeout usually.
+                // Let's force it now.
+                if (gridSize === 0) {
+                    // If still 0, maybe auto detect failed or hasn't run.
+                    // Force run.
+                    autoDetectGrid();
+                    analyzeGridContent();
+                }
+            }
+
+            // 2. Start Visual Effect
+            // Show Scan Overlay
+            scanOverlay.classList.remove('hidden');
+
+            // Reset view
+            visibleSquares = [];
+            draw(); // Draws only image
+
+            // Hide Stats Bar during scan? Or Reset it?
+            statsBar.classList.add('hidden-slide'); // Hide
+
+            // 3. Prepare Animation Queue
+            // Merge lists
+            const all = [
+                ...fullSquares.map(s => ({ ...s, type: 'full' })),
+                ...partialSquares.map(s => ({ ...s, type: 'partial' }))
+            ];
+
+            // Shuffle
+            shuffleArray(all);
+
+            // 4. Animation Sequence
+            // Scan runs for e.g. 1.5s
+            // Then squares pop in.
+
+            setTimeout(() => {
+                // Stop scan effect
+                scanOverlay.classList.add('hidden');
+
+                // Start popping squares
+                startPopAnimation(all);
+
+            }, 1500);
+        }
+
+        function startPopAnimation(queue) {
+            if (isAnimating) cancelAnimationFrame(animationId);
+            isAnimating = true;
+
+            let index = 0;
+            const total = queue.length;
+            // We want animation to take about 1-2 seconds total.
+            // Speed = total / (~100 frames).
+            const batchSize = Math.max(1, Math.ceil(total / 60));
+
+            function loop() {
+                if (index >= total) {
+                    isAnimating = false;
+                    // Show stats at the end
+                    updateStatsUI();
+                    statsBar.classList.remove('hidden-slide');
+                    return;
+                }
+
+                // Add a batch
+                for (let i = 0; i < batchSize && index < total; i++) {
+                    visibleSquares.push(queue[index]);
+                    index++;
+                }
+
+                draw();
+
+                // Update live stats?
+                // Maybe cool to see numbers go up.
+                updateLiveStatsFromVisible();
+
+                animationId = requestAnimationFrame(loop);
+            }
+
+            loop();
+        }
+
+        function updateLiveStatsFromVisible() {
+            let f = 0, p = 0;
+            for (let s of visibleSquares) {
+                if (s.type === 'full') f++;
+                else p++;
+            }
+            fullCountEl.textContent = f;
+            partialCountEl.textContent = p;
+        }
+
+        function updateStatsUI() {
+            fullCountEl.textContent = fullSquares.length;
+            partialCountEl.textContent = partialSquares.length;
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+
+        // ---------------------------------------------------------
+        // Core Analysis (Backend)
+        // ---------------------------------------------------------
+
+        function analyzeImage(silent = false) {
+            if (!originalImage) return;
+            autoDetectGrid();
+            if (gridSize > 0) {
+                analyzeGridContent();
+            }
+            if (!silent) {
+                draw();
+            }
+        }
+
+        // ... (Keep existing detectGridAutomatically, estimatePeriod, etc.) ...
+        // I will paste them below but simplified/cleaned if needed.
+        // Actually, I need to include them intact.
+
+        // detectGridAutomatically renamed to autoDetectGrid to match call
+        function autoDetectGrid() {
+            const w = imageWidth;
+            const h = imageHeight;
+            ctx.drawImage(originalImage, 0, 0);
+            const frame = ctx.getImageData(0, 0, w, h);
+            const data = frame.data;
+
+            const rowSums = new Float32Array(h).fill(0);
+            const colSums = new Float32Array(w).fill(0);
+
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const idx = (y * w + x) * 4;
+                    const b = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+                    const val = 255 - b;
+                    rowSums[y] += val;
+                    colSums[x] += val;
+                }
+            }
+
+            const estSizeX = estimatePeriod(colSums, w);
+            const estSizeY = estimatePeriod(rowSums, h);
+
+            let size = 0;
+            if (estSizeX > 10 && estSizeY > 10) {
+                if (Math.abs(estSizeX - estSizeY) < 5) size = Math.round((estSizeX + estSizeY) / 2);
+                else size = Math.round(estSizeX);
+            } else if (estSizeX > 10) size = Math.round(estSizeX);
+            else if (estSizeY > 10) size = Math.round(estSizeY);
+
+            if (size < 10) return;
+            gridSize = size;
+
+            offsetX = findPhase(colSums, gridSize);
+            offsetY = findPhase(rowSums, gridSize);
+        }
+
+        function estimatePeriod(arr, len) {
+            let bestLag = 0;
+            let maxCorr = -1;
+            const minP = 15;
+            const maxP = Math.floor(len / 4);
+
+            for (let lag = minP; lag < maxP; lag++) {
+                let sum = 0;
+                let count = 0;
+                const step = 2;
+                for (let i = 0; i < len - lag; i += step) {
+                    sum += arr[i] * arr[i + lag];
+                    count++;
+                }
+                const avg = sum / count;
+                if (avg > maxCorr) {
+                    maxCorr = avg;
+                    bestLag = lag;
+                }
+            }
+
+            // Peak finding refinement
+            const smoothed = [];
+            for (let i = 0; i < len; i++) smoothed[i] = arr[i];
+            const peaks = [];
+            const threshold = arr.reduce((a, b) => a + b, 0) / len * 1.5;
+            for (let i = 1; i < len - 1; i++) {
+                if (smoothed[i] > smoothed[i - 1] && smoothed[i] > smoothed[i + 1] && smoothed[i] > threshold) {
+                    peaks.push(i);
+                }
+            }
+            if (peaks.length < 2) return bestLag;
+            const diffs = [];
+            for (let i = 1; i < peaks.length; i++) diffs.push(peaks[i] - peaks[i - 1]);
+            const modeMap = {};
+            let maxFreq = 0;
+            let mode = 0;
+            diffs.forEach(d => {
+                const k = Math.round(d / 2) * 2;
+                modeMap[k] = (modeMap[k] || 0) + 1;
+                if (modeMap[k] > maxFreq) { maxFreq = modeMap[k]; mode = k; }
+            });
+            return mode > 0 ? mode : bestLag;
+        }
+
+        function findPhase(arr, period) {
+            let bestOff = 0;
+            let maxSum = -1;
+            for (let off = 0; off < period; off++) {
+                let sum = 0;
+                for (let k = 0; off + k * period < arr.length; k++) {
+                    sum += arr[off + k * period];
+                }
+                if (sum > maxSum) { maxSum = sum; bestOff = off; }
+            }
+            return bestOff;
+        }
+
+        function analyzeGridContent() {
+            fullSquares = [];
+            partialSquares = [];
+            const w = imageWidth;
+            const h = imageHeight;
+            const data = ctx.getImageData(0, 0, w, h).data;
+            const padding = Math.max(2, Math.floor(gridSize * 0.08));
+
+            for (let y = offsetY - gridSize; y < h; y += gridSize) {
+                for (let x = offsetX - gridSize; x < w; x += gridSize) {
+                    const cellX = Math.round(x);
+                    const cellY = Math.round(y);
+                    const innerX = cellX + padding;
+                    const innerY = cellY + padding;
+                    const innerW = gridSize - (padding * 2);
+                    const innerH = gridSize - (padding * 2);
+
+                    if (innerW <= 1 || innerH <= 1) continue;
+
+                    let nonWhitePx = 0;
+                    let checkedPx = 0;
+
+                    for (let iy = 0; iy < innerH; iy++) {
+                        const py = innerY + iy;
+                        if (py < 0 || py >= h) continue;
+                        for (let ix = 0; ix < innerW; ix++) {
+                            const px = innerX + ix;
+                            if (px < 0 || px >= w) continue;
+                            const idx = (py * w + px) * 4;
+                            const r = data[idx];
+                            const g = data[idx + 1];
+                            const b = data[idx + 2];
+                            const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+                            const isWhite = (luma > 200 && Math.abs(r - g) < 30 && Math.abs(g - b) < 30);
+                            if (!isWhite) nonWhitePx++;
+                            checkedPx++;
+                        }
+                    }
+                    if (checkedPx === 0) continue;
+                    const ratio = nonWhitePx / checkedPx;
+
+                    if (ratio > CONFIG.fullSquareThreshold) {
+                        fullSquares.push({ x: cellX, y: cellY, w: gridSize, h: gridSize });
+                    } else if (ratio > CONFIG.partialSquareThreshold) {
+                        partialSquares.push({ x: cellX, y: cellY, w: gridSize, h: gridSize });
+                    }
+                }
+            }
+            // Note: We don't update UI numbers here immediately if we want animation, 
+            // unless initial load.
+        }
+
+        function draw() {
+            if (!originalImage) return;
+
+            ctx.clearRect(0, 0, imageWidth, imageHeight);
+            ctx.drawImage(originalImage, 0, 0);
+
+            // Draw only Visible Squares (controlled by animation or state)
+            // If not animating and visibleSquares is empty, show all?
+            // No, logic is: visibleSquares is source of truth for display.
+            // Init sets visibleSquares?
+
+            // Wait, on initial load if we want to show result static:
+            // We should populate visibleSquares = [...full, ...partial].
+
+            if (visibleSquares.length === 0 && (fullSquares.length > 0 || partialSquares.length > 0) && !isAnimating) {
+                // Fallback: if we have results but nothing visible, maybe we should show all?
+                // Or assume we are in pre-scan state.
+                // Let's decide: Default state is "Clean Image".
+                // Results only show after Scan.
+                // EXCEPT: If we loaded image and auto-ran, maybe user wants to see it?
+                // User request: "Smart ID clicks... then show process".
+                // So default state: Clean image.
+            }
+
+            // Grid Lines?
+            if (gridSize > 0) {
+                // Draw Grid faintly
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'; // Faint gray
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let x = offsetX % gridSize; x <= imageWidth; x += gridSize) {
+                    ctx.moveTo(x, 0); ctx.lineTo(x, imageHeight);
+                }
+                for (let y = offsetY % gridSize; y <= imageHeight; y += gridSize) {
+                    ctx.moveTo(0, y); ctx.lineTo(imageWidth, y);
+                }
+                ctx.stroke();
+            }
+
+            // Draw Squares
+            visibleSquares.forEach(sq => {
+                if (sq.type === 'full') {
+                    ctx.fillStyle = 'rgba(74, 222, 128, 0.4)'; // Green
+                    ctx.fillRect(sq.x, sq.y, sq.w, sq.h);
+                } else {
+                    ctx.fillStyle = 'rgba(250, 204, 21, 0.4)'; // Yellow
+                    ctx.fillRect(sq.x, sq.y, sq.w, sq.h);
+                }
+            });
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+
+</html>
