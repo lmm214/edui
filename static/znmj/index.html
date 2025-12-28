@@ -460,33 +460,34 @@
         const emptyState = document.getElementById('emptyState');
         const scanOverlay = document.getElementById('scanOverlay');
 
-        // Application State
+        // 应用状态
         let originalImage = null;
         let imageWidth = 0;
         let imageHeight = 0;
         let isProcessing = false;
 
-        // Grid & Results
-        let gridSize = 0;
+        // 网格与结果数据
+        let gridW = 0;
+        let gridH = 0;
         let offsetX = 0;
         let offsetY = 0;
         let fullSquares = [];
         let partialSquares = [];
 
-        // Animation State
-        let visibleSquares = []; // List of squares to draw
+        // 动画状态
+        let visibleSquares = []; // 当前显示的方格列表 (用于动画)
         let animationId = null;
         let isAnimating = false;
 
-        // Config
+        // 配置参数
         const CONFIG = {
-            fullSquareThreshold: 0.99,
-            partialSquareThreshold: 0.01,
+            fullSquareThreshold: 0.99, // 判定为"整格"的阈值：只要非白像素比例超过 99%
+            partialSquareThreshold: 0.01, // 判定为"半格"的阈值：只要非白像素比例超过 1%
         };
 
-        // Initialization
+        // 初始化
         function init() {
-            // 1. Button Handlers
+            // 1. 按钮事件监听
             btnUpload.addEventListener('click', () => {
                 fileInput.click();
             });
@@ -500,7 +501,7 @@
 
 
 
-            // 2. Drag & Drop
+            // 2. 拖拽上传
             const dropZone = document.querySelector('.canvas-wrapper');
             dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#3b82f6'; });
             dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.style.borderColor = 'transparent'; });
@@ -510,7 +511,7 @@
                 if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
             });
 
-            // 3. Auto-load default
+            // 3. 自动加载默认图片
             const defaultImage = new Image();
             defaultImage.onload = () => {
                 originalImage = defaultImage;
@@ -519,18 +520,16 @@
                 fitImageToCanvas();
                 emptyState.classList.add('hidden');
 
-                // Silent analyze first
+                // 预先静默分析，准备数据
                 analyzeImage(true);
-                // Don't animate immediately via "Scan" button logic, just draw static result?
-                // User asked for "Scan" button to trigger effect.
-                // On load, let's just show the image clean.
+                // 初始加载时不播放动画，只显示整洁的图片，等待用户点击"智能识别"
                 draw();
             };
             defaultImage.src = "tu1.png";
         }
 
         // ---------------------------------------------------------
-        // File Handling
+        // 文件处理逻辑
         // ---------------------------------------------------------
 
         function handleImageUpload(e) {
@@ -551,14 +550,17 @@
                     fitImageToCanvas();
                     emptyState.classList.add('hidden');
 
-                    // On new image, silent compute but don't show result yet?
-                    // Or show result immediately? 
-                    // Better UX: Show image, let user click "Scan".
-                    gridSize = 0; // Reset
+                    fitImageToCanvas();
+                    emptyState.classList.add('hidden');
+
+                    // 新图片加载后，重置状态
+                    // 只有在用户点击"智能识别"后才展示分析结果
+                    gridW = 0;
+                    gridH = 0; // 重置网格数据
                     visibleSquares = [];
                     draw();
 
-                    // Pre-calculate to be ready
+                    // 预先执行分析算法
                     setTimeout(() => analyzeImage(true), 100);
                 };
                 img.src = event.target.result;
@@ -570,13 +572,13 @@
             canvas.width = imageWidth;
             canvas.height = imageHeight;
 
-            // Auto-zoom logic: Measure available space in WORKSPACE (minus padding)
+            // 自动缩放逻辑：计算工作区可用空间
             const workspace = document.querySelector('.workspace');
 
-            // Safety check if workspace is not rendered yet
+            // 安全检查
             if (!workspace) return;
 
-            // Get computed style to handle padding accurately
+            // 获取精确的内边距
             const style = window.getComputedStyle(workspace);
             const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
             const paddingY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
@@ -584,74 +586,69 @@
             const cw = workspace.clientWidth - paddingX;
             const ch = workspace.clientHeight - paddingY;
 
-            // Calculate Fit Scale
-            // We want to fit strictly inside
+            // 计算缩放比例
+            // 确保图片完全适应容器内
             const scale = Math.min(cw / imageWidth, ch / imageHeight);
 
-            // Ensure we don't scale UP pixelatedly? Usually user wants to see it BIG.
-            // So just sticking to Fit logic is fine.
-
+            // 计算显示尺寸
             const displayW = Math.floor(imageWidth * scale);
             const displayH = Math.floor(imageHeight * scale);
 
             canvas.style.width = `${displayW}px`;
             canvas.style.height = `${displayH}px`;
 
-            // Resize overlay to match
+            // 调整覆盖层尺寸以匹配图片
             scanOverlay.style.width = `${displayW}px`;
             scanOverlay.style.height = `${displayH}px`;
         }
 
 
         // ---------------------------------------------------------
-        // Smart Scan Logic (Visuals)
+        // 智能扫描逻辑 (视觉效果)
         // ---------------------------------------------------------
 
         function runSmartScan() {
-            // 1. Ensure we have data
-            if (gridSize === 0) {
-                // Run analysis if not done
+            // 1. 确保已有分析数据
+            if (gridW === 0 || gridH === 0) {
+                // 如果尚未分析，立即执行
                 analyzeImage(false);
-                // Note: analyzeImage is synchronous-ish but we put it in setTimeout usually.
-                // Let's force it now.
-                if (gridSize === 0) {
-                    // If still 0, maybe auto detect failed or hasn't run.
-                    // Force run.
+                // 强制同步执行分析
+                if (gridW === 0 || gridH === 0) {
+                    // 如果仍未检测到网格，尝试强制重新检测
                     autoDetectGrid();
                     analyzeGridContent();
                 }
             }
 
-            // 2. Start Visual Effect
-            // Show Scan Overlay
+            // 2. 启动视觉特效
+            // 显示扫描光效
             scanOverlay.classList.remove('hidden');
 
-            // Reset view
+            // 重置视图
             visibleSquares = [];
-            draw(); // Draws only image
+            draw(); // 仅绘制底图
 
-            // Hide Stats Bar during scan? Or Reset it?
-            statsBar.classList.add('hidden-slide'); // Hide
+            // 扫描期间隐藏统计栏
+            statsBar.classList.add('hidden-slide');
 
-            // 3. Prepare Animation Queue
-            // Merge lists
+            // 3. 准备动画队列
+            // 合并所有方格
             const all = [
                 ...fullSquares.map(s => ({ ...s, type: 'full' })),
                 ...partialSquares.map(s => ({ ...s, type: 'partial' }))
             ];
 
-            // Shuffle
+            // 打乱顺序，营造随机弹出的效果
             shuffleArray(all);
 
-            // 4. Animation Sequence
-            // Scan runs for e.g. 1.5s
-            // Then squares pop in.
-
+            // 4. 执行动画序列
+            // 扫描特效持续约 1.5 秒
+            // 随后方格逐个弹出
             setTimeout(() => {
-                // Stop scan effect
+                // 停止扫描光效
                 scanOverlay.classList.add('hidden');
 
-                // Start popping squares
+                // 开始方格弹出动画
                 startPopAnimation(all);
 
             }, 1500);
@@ -663,20 +660,20 @@
 
             let index = 0;
             const total = queue.length;
-            // We want animation to take about 1-2 seconds total.
-            // Speed = total / (~100 frames).
+            // 控制动画总时长约 1-2 秒
+            // 计算每帧弹出的方格数量
             const batchSize = Math.max(1, Math.ceil(total / 60));
 
             function loop() {
                 if (index >= total) {
                     isAnimating = false;
-                    // Show stats at the end
+                    // 动画结束后显示统计栏
                     updateStatsUI();
                     statsBar.classList.remove('hidden-slide');
                     return;
                 }
 
-                // Add a batch
+                // 批量添加方格
                 for (let i = 0; i < batchSize && index < total; i++) {
                     visibleSquares.push(queue[index]);
                     index++;
@@ -684,8 +681,8 @@
 
                 draw();
 
-                // Update live stats?
-                // Maybe cool to see numbers go up.
+                // 实时更新统计数字
+                // (数字跳动效果)
                 updateLiveStatsFromVisible();
 
                 animationId = requestAnimationFrame(loop);
@@ -718,13 +715,13 @@
 
 
         // ---------------------------------------------------------
-        // Core Analysis (Backend)
+        // 核心分析逻辑 (后端算法)
         // ---------------------------------------------------------
 
         function analyzeImage(silent = false) {
             if (!originalImage) return;
             autoDetectGrid();
-            if (gridSize > 0) {
+            if (gridW > 0 && gridH > 0) {
                 analyzeGridContent();
             }
             if (!silent) {
@@ -736,7 +733,7 @@
         // I will paste them below but simplified/cleaned if needed.
         // Actually, I need to include them intact.
 
-        // detectGridAutomatically renamed to autoDetectGrid to match call
+        // 自动检测网格 (核心算法)
         function autoDetectGrid() {
             const w = imageWidth;
             const h = imageHeight;
@@ -744,46 +741,55 @@
             const frame = ctx.getImageData(0, 0, w, h);
             const data = frame.data;
 
+            // 1. 投影计算：分别计算水平和垂直方向的像素灰度反转值之和
+            // 黑色网格线在白色背景上会产生明显的波峰
             const rowSums = new Float32Array(h).fill(0);
             const colSums = new Float32Array(w).fill(0);
 
             for (let y = 0; y < h; y++) {
                 for (let x = 0; x < w; x++) {
                     const idx = (y * w + x) * 4;
+                    // 计算亮度 (R+G+B)/3 近似值
                     const b = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-                    const val = 255 - b;
+                    const val = 255 - b; // 反转：深色为高数值，白色背景为低数值
                     rowSums[y] += val;
                     colSums[x] += val;
                 }
             }
 
+            // 2. 周期估算：利用自相关分析找到网格的重复周期 (即网格大小)
             const estSizeX = estimatePeriod(colSums, w);
             const estSizeY = estimatePeriod(rowSums, h);
 
-            let size = 0;
-            if (estSizeX > 10 && estSizeY > 10) {
-                if (Math.abs(estSizeX - estSizeY) < 5) size = Math.round((estSizeX + estSizeY) / 2);
-                else size = Math.round(estSizeX);
-            } else if (estSizeX > 10) size = Math.round(estSizeX);
-            else if (estSizeY > 10) size = Math.round(estSizeY);
+            // 独立检测：分别确定宽 (GridW) 和高 (GridH)，支持矩形网格
+            gridW = (estSizeX > 10) ? Math.round(estSizeX) : 0;
+            gridH = (estSizeY > 10) ? Math.round(estSizeY) : 0;
 
-            if (size < 10) return;
-            gridSize = size;
+            // 容错处理：如果只检测到一个维度，尝试应用到另一维度 (假设正方形)
+            if (gridW > 0 && gridH === 0) gridH = gridW;
+            if (gridH > 0 && gridW === 0) gridW = gridH;
 
-            offsetX = findPhase(colSums, gridSize);
-            offsetY = findPhase(rowSums, gridSize);
+            // 如果网格太小 (小于10像素)，视为检测失败
+            if (gridW < 10 || gridH < 10) return;
+
+            // 3. 相位对齐：确定网格的起始偏移量
+            offsetX = findPhase(colSums, gridW);
+            offsetY = findPhase(rowSums, gridH);
         }
 
+        // 估算周期 (自相关算法)
+        // arr: 投影数据数组, len: 数据长度
         function estimatePeriod(arr, len) {
             let bestLag = 0;
             let maxCorr = -1;
-            const minP = 15;
-            const maxP = Math.floor(len / 4);
+            const minP = 15; // 最小搜索周期 (像素)
+            // 最大搜索范围设为图片尺寸的 1/3，以支持较大的矩形网格
+            const maxP = Math.floor(len / 3);
 
             for (let lag = minP; lag < maxP; lag++) {
                 let sum = 0;
                 let count = 0;
-                const step = 2;
+                const step = 2; // 步进优化性能
                 for (let i = 0; i < len - lag; i += step) {
                     sum += arr[i] * arr[i + lag];
                     count++;
@@ -812,16 +818,18 @@
             let maxFreq = 0;
             let mode = 0;
             diffs.forEach(d => {
-                const k = Math.round(d / 2) * 2;
+                const k = d; // Use exact diff to allow odd numbers
                 modeMap[k] = (modeMap[k] || 0) + 1;
                 if (modeMap[k] > maxFreq) { maxFreq = modeMap[k]; mode = k; }
             });
             return mode > 0 ? mode : bestLag;
         }
 
+        // 确定相位偏移 (即网格线的起始位置)
         function findPhase(arr, period) {
             let bestOff = 0;
             let maxSum = -1;
+            // 在一个周期内滑动，找到投影和最大的位置 (即网格线最明显的位置)
             for (let off = 0; off < period; off++) {
                 let sum = 0;
                 for (let k = 0; off + k * period < arr.length; k++) {
@@ -838,16 +846,18 @@
             const w = imageWidth;
             const h = imageHeight;
             const data = ctx.getImageData(0, 0, w, h).data;
-            const padding = Math.max(2, Math.floor(gridSize * 0.08));
+            // 内缩边距：分析每个格子时，向内收缩一定比例 (10%)，从而避开边框上的网格线干扰
+            const paddingX = Math.max(2, Math.floor(gridW * 0.1));
+            const paddingY = Math.max(2, Math.floor(gridH * 0.1));
 
-            for (let y = offsetY - gridSize; y < h; y += gridSize) {
-                for (let x = offsetX - gridSize; x < w; x += gridSize) {
+            for (let y = offsetY - gridH; y < h; y += gridH) {
+                for (let x = offsetX - gridW; x < w; x += gridW) {
                     const cellX = Math.round(x);
                     const cellY = Math.round(y);
-                    const innerX = cellX + padding;
-                    const innerY = cellY + padding;
-                    const innerW = gridSize - (padding * 2);
-                    const innerH = gridSize - (padding * 2);
+                    const innerX = cellX + paddingX;
+                    const innerY = cellY + paddingY;
+                    const innerW = gridW - (paddingX * 2);
+                    const innerH = gridH - (paddingY * 2);
 
                     if (innerW <= 1 || innerH <= 1) continue;
 
@@ -864,9 +874,23 @@
                             const r = data[idx];
                             const g = data[idx + 1];
                             const b = data[idx + 2];
-                            const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                            const isWhite = (luma > 200 && Math.abs(r - g) < 30 && Math.abs(g - b) < 30);
-                            if (!isWhite) nonWhitePx++;
+                            // 综合颜色分析算法：区分 "淡色内容" 和 "白色背景"
+                            const maxCh = Math.max(r, g, b);
+                            const minCh = Math.min(r, g, b);
+                            const saturation = maxCh - minCh; // 饱和度
+
+                            // 颜色偏差计算：RGB通道之间的差异
+                            // 淡橙色/淡色内容通常有 R>B 或 G>B 的倾向，会产生偏差
+                            // 纯中性色 (白/灰/黑) 的 RGB 值非常接近，偏差极小
+                            const colorBias = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(b - r));
+
+                            // 判定为 "内容" (非背景) 的条件：
+                            // 1. 饱和度 > 18 (识别鲜艳颜色)
+                            // 2. 颜色偏差 > 15 (识别淡色但有色相的区域，如浅橙色)
+                            // 同时排除极低饱和度的灰色网格线干扰
+                            const isContent = (saturation > 18) || (colorBias > 15);
+
+                            if (isContent) nonWhitePx++;
                             checkedPx++;
                         }
                     }
@@ -874,9 +898,9 @@
                     const ratio = nonWhitePx / checkedPx;
 
                     if (ratio > CONFIG.fullSquareThreshold) {
-                        fullSquares.push({ x: cellX, y: cellY, w: gridSize, h: gridSize });
+                        fullSquares.push({ x: cellX, y: cellY, w: gridW, h: gridH });
                     } else if (ratio > CONFIG.partialSquareThreshold) {
-                        partialSquares.push({ x: cellX, y: cellY, w: gridSize, h: gridSize });
+                        partialSquares.push({ x: cellX, y: cellY, w: gridW, h: gridH });
                     }
                 }
             }
@@ -899,25 +923,29 @@
             // We should populate visibleSquares = [...full, ...partial].
 
             if (visibleSquares.length === 0 && (fullSquares.length > 0 || partialSquares.length > 0) && !isAnimating) {
-                // Fallback: if we have results but nothing visible, maybe we should show all?
-                // Or assume we are in pre-scan state.
-                // Let's decide: Default state is "Clean Image".
-                // Results only show after Scan.
-                // EXCEPT: If we loaded image and auto-ran, maybe user wants to see it?
-                // User request: "Smart ID clicks... then show process".
-                // So default state: Clean image.
+                // 默认状态：扫描前保持图片整洁，不显示结果
             }
 
-            // Grid Lines?
-            if (gridSize > 0) {
-                // Draw Grid faintly
-                ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'; // Faint gray
-                ctx.lineWidth = 2;
+            // 绘制网格线
+            if (gridW > 0 && gridH > 0) {
+                // 设置网格样式 (Cyberpunk 风格)
+                ctx.strokeStyle = 'rgba(0,0, 0, 0.3)'; // 半透明黑色
+
+                // 绘制垂直线
+                // 动态线宽：设置为网格宽度的 5% (最少2px)，保证在不同网格大小下显示协调
+                const lwX = Math.max(1, Math.floor(gridW * 0.05));
+                ctx.lineWidth = lwX;
                 ctx.beginPath();
-                for (let x = offsetX % gridSize; x <= imageWidth; x += gridSize) {
+                for (let x = (offsetX % gridW) - gridW; x <= imageWidth; x += gridW) {
                     ctx.moveTo(x, 0); ctx.lineTo(x, imageHeight);
                 }
-                for (let y = offsetY % gridSize; y <= imageHeight; y += gridSize) {
+                ctx.stroke();
+
+                // 绘制水平线
+                const lwY = Math.max(1, Math.floor(gridH * 0.05));
+                ctx.lineWidth = lwY;
+                ctx.beginPath();
+                for (let y = (offsetY % gridH) - gridH; y <= imageHeight; y += gridH) {
                     ctx.moveTo(0, y); ctx.lineTo(imageWidth, y);
                 }
                 ctx.stroke();
