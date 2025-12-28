@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML Preview</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --secondary-bg: #f5f5f7;
+            --text: #1d1d1f;
+            --secondary-text: #86868b;
+            --accent: #0071e3;
+            --border: rgba(0, 0, 0, 0.1);
+            --p-glass: rgba(255, 255, 255, 0.8);
+            --gutter-bg: #f9f9fb;
+            --gutter-text: #c1c1c6;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #1e1e1e;
+                --secondary-bg: #151515;
+                --text: #f5f5f7;
+                --secondary-text: #a1a1a6;
+                --accent: #0a84ff;
+                --border: rgba(255, 255, 255, 0.15);
+                --p-glass: rgba(0, 0, 0, 0.8);
+                --gutter-bg: #1e1e1e;
+                --gutter-text: #666;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            background-color: var(--secondary-bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 24px;
+            height: 52px;
+            background: var(--p-glass);
+            backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 0.5px solid var(--border);
+            z-index: 100;
+            flex-shrink: 0;
+        }
+
+        .title-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .title {
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: -0.01em;
+            color: var(--secondary-text);
+        }
+
+        .actions {
+            display: flex;
+            gap: 20px;
+        }
+
+        .actions-left {
+            display: flex;
+            gap: 12px;
+        }
+
+        button,
+        .btn-label {
+            background: none;
+            border: none;
+            color: var(--accent);
+            font-size: 14px;
+            font-weight: 400;
+            cursor: pointer;
+            padding: 10px 4px;
+            /* Increased for better touch target */
+            transition: opacity 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            touch-action: manipulation;
+        }
+
+        button:hover,
+        .btn-label:hover {
+            opacity: 0.7;
+        }
+
+        button:active,
+        .btn-label:active {
+            opacity: 0.6;
+            transform: scale(0.97);
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            background: var(--bg);
+            touch-action: none;
+            /* Prevent scrolling while resizing */
+        }
+
+        /* Split View */
+        .pane-editor {
+            width: 33.33%;
+            min-width: 10vw;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background: var(--bg);
+        }
+
+        .pane-preview {
+            flex: 1;
+            min-width: 10vw;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background: #fff;
+        }
+
+        /* Essential for smooth resizing */
+        .resizing .pane-preview {
+            pointer-events: none;
+        }
+
+        .resizer {
+            width: 16px;
+            /* Larger hit area for touch */
+            margin: 0 -8px;
+            cursor: col-resize;
+            background: transparent;
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+        }
+
+        .resizer::after {
+            content: "";
+            width: 2px;
+            height: 32px;
+            background: var(--border);
+            border-radius: 1px;
+            transition: background 0.3s, height 0.3s;
+        }
+
+        .resizer:hover::after,
+        .resizing .resizer::after {
+            background: var(--accent);
+            height: 48px;
+        }
+
+        /* Editor with line numbers */
+        .editor-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+            touch-action: pan-y;
+        }
+
+        .gutter {
+            width: 48px;
+            background: var(--gutter-bg);
+            color: var(--gutter-text);
+            padding: 24px 0;
+            text-align: right;
+            font-family: "SF Mono", "Menlo", monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            user-select: none;
+            overflow: hidden;
+            border-right: 0.5px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .gutter-item {
+            padding-right: 12px;
+        }
+
+        textarea {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            padding: 24px;
+            padding-left: 16px;
+            color: var(--text);
+            font-family: "SF Mono", "Menlo", monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            resize: none;
+            white-space: pre;
+            overflow: auto;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #fff;
+        }
+
+        .label {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--secondary-text);
+            pointer-events: none;
+            opacity: 0.25;
+            z-index: 5;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            background: #34c759;
+            border-radius: 50%;
+            transform: scale(0);
+            transition: transform 0.3s;
+        }
+
+        .dot.visible {
+            transform: scale(1);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        @media (max-aspect-ratio: 1/1),
+        (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .pane-editor {
+                width: 100% !important;
+                height: 40vh;
+                /* Default height for mobile */
+                min-height: 100px;
+                min-width: 100%;
+            }
+
+            .pane-preview {
+                width: 100% !important;
+                min-width: 100%;
+            }
+
+            .resizer {
+                width: 100%;
+                height: 16px;
+                margin: -8px 0;
+                cursor: row-resize;
+            }
+
+            .resizer::after {
+                width: 32px;
+                height: 2px;
+            }
+
+            .resizer:hover::after,
+            .resizing .resizer::after {
+                width: 48px;
+                height: 2px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div class="title-group">
+            <div class="title" id="file-name">index.html</div>
+            <div id="save-status">
+                <div class="dot" id="dot"></div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <div class="actions-left">
+                <label class="btn-label">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    加载文件
+                    <input type="file" id="folder-input" accept=".html,.htm,.txt" multiple>
+                </label>
+            </div>
+
+            <div style="display: flex; gap: 20px;">
+                <button onclick="downloadFile()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    下载保存
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="container" id="main-container">
+        <div class="pane-editor" id="pane-editor">
+            <div class="label">Source</div>
+            <div class="editor-container">
+                <div class="gutter" id="gutter"></div>
+                <textarea id="editor" placeholder="在此粘贴源码..." spellcheck="false" wrap="off"></textarea>
+            </div>
+        </div>
+
+        <div class="resizer" id="resizer"></div>
+
+        <div class="pane-preview" id="pane-preview">
+            <div class="label">Preview</div>
+            <iframe id="preview"></iframe>
+        </div>
+    </div>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const gutter = document.getElementById('gutter');
+        const preview = document.getElementById('preview');
+        const dot = document.getElementById('dot');
+        const resizer = document.getElementById('resizer');
+        const paneEditor = document.getElementById('pane-editor');
+        const mainContainer = document.getElementById('main-container');
+        const folderInput = document.getElementById('folder-input');
+        const fileNameEl = document.getElementById('file-name');
+
+        let debounceTimer;
+
+        // 1. Line Numbers Logic
+        function updateGutter() {
+            const lines = editor.value.split('\n');
+            const lineCount = lines.length;
+            let gutterContent = '';
+            for (let i = 1; i <= lineCount; i++) {
+                gutterContent += `<div class="gutter-item">${i}</div>`;
+            }
+            gutter.innerHTML = gutterContent;
+        }
+
+        editor.addEventListener('input', () => {
+            updateGutter();
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(updatePreview, 400); // Increased debounce for stability
+        });
+
+        editor.addEventListener('scroll', () => {
+            gutter.scrollTop = editor.scrollTop;
+        });
+
+        function updatePreview() {
+            // Only update if not resizing to avoid massive lag
+            if (document.body.classList.contains('resizing')) return;
+
+            const code = editor.value;
+            preview.srcdoc = code;
+
+            // Sync Header Title with <title> tag
+            const titleMatch = code.match(/<title>(.*?)<\/title>/i);
+            if (titleMatch && titleMatch[1].trim()) {
+                fileNameEl.innerText = titleMatch[1].trim() + '.html';
+            } else if (!editor.value.trim()) {
+                fileNameEl.innerText = 'index.html';
+            }
+
+            dot.classList.add('visible');
+            setTimeout(() => dot.classList.remove('visible'), 600);
+        }
+
+        // 2. Resizable Split View (Optimized for Touch/Pointer & Orientation)
+        let isResizing = false;
+
+        resizer.addEventListener('pointerdown', (e) => {
+            isResizing = true;
+            document.body.classList.add('resizing');
+            const isVertical = getComputedStyle(mainContainer).flexDirection === 'column';
+            document.body.style.cursor = isVertical ? 'row-resize' : 'col-resize';
+            resizer.setPointerCapture(e.pointerId);
+        });
+
+        resizer.addEventListener('pointermove', (e) => {
+            if (!isResizing) return;
+
+            requestAnimationFrame(() => {
+                if (!isResizing) return;
+                const isVertical = getComputedStyle(mainContainer).flexDirection === 'column';
+
+                if (isVertical) {
+                    const containerHeight = mainContainer.offsetHeight;
+                    const headerHeight = document.querySelector('header').offsetHeight;
+                    let percentage = ((e.clientY - headerHeight) / containerHeight) * 100;
+                    if (percentage < 5) percentage = 5;
+                    if (percentage > 95) percentage = 95;
+                    paneEditor.style.height = `${percentage}%`;
+                    paneEditor.style.width = '100%';
+                } else {
+                    const containerWidth = mainContainer.offsetWidth;
+                    let percentage = (e.clientX / containerWidth) * 100;
+                    if (percentage < 5) percentage = 5;
+                    if (percentage > 95) percentage = 95;
+                    paneEditor.style.width = `${percentage}%`;
+                    paneEditor.style.height = '100%';
+                }
+            });
+        });
+
+        resizer.addEventListener('pointerup', (e) => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.classList.remove('resizing');
+                document.body.style.cursor = 'default';
+                resizer.releasePointerCapture(e.pointerId);
+                updatePreview();
+            }
+        });
+
+        resizer.addEventListener('pointercancel', (e) => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.classList.remove('resizing');
+                document.body.style.cursor = 'default';
+                resizer.releasePointerCapture(e.pointerId);
+            }
+        });
+
+        // 3. File Upload (Supports HTML and TXT)
+        folderInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+
+            // Priority: index.html > any .html > any .txt
+            let mainFile = files.find(f => f.name.toLowerCase() === 'index.html');
+            if (!mainFile) mainFile = files.find(f => f.name.toLowerCase().endsWith('.html') || f.name.toLowerCase().endsWith('.htm'));
+            if (!mainFile) mainFile = files.find(f => f.name.toLowerCase().endsWith('.txt'));
+
+            if (mainFile) {
+                const text = await mainFile.text();
+                editor.value = text;
+                fileNameEl.innerText = mainFile.name;
+                updateGutter();
+                updatePreview();
+            }
+        });
+
+        // 4. Smart Filename & Download
+        function getDownloadName() {
+            const code = editor.value;
+            const titleMatch = code.match(/<title>(.*?)<\/title>/i);
+            if (titleMatch && titleMatch[1].trim()) {
+                return titleMatch[1].trim() + '.html';
+            }
+            // If it's a txt file content loaded, we still export as .html for previewable offline use
+            return 'index.html';
+        }
+
+        function downloadFile() {
+            const code = editor.value;
+            if (!code) return;
+            const filename = getDownloadName();
+            const blob = new Blob([code], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Initial setup
+        updateGutter();
+        editor.focus();
+
+        // Drag and Drop
+        document.addEventListener('dragover', (e) => e.preventDefault());
+        document.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            const name = file.name.toLowerCase();
+            if (file && (name.endsWith('.html') || name.endsWith('.htm') || name.endsWith('.txt'))) {
+                const text = await file.text();
+                editor.value = text;
+                fileNameEl.innerText = file.name;
+                updateGutter();
+                updatePreview();
+            }
+        });
+    </script>
+</body>
+
+</html>
