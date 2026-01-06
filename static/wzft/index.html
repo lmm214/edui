@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>围正方体</title>
+    <style>
+        :root {
+            /* 动态计算 */
+            --cell-size: 60px;
+            --grid-gap: 2px;
+
+            /* 亮色极简配色 */
+            --bg-color: #f0f2f5;
+            --grid-bg: rgba(0, 0, 0, 0.05);
+            --cell-normal: #fefefe;
+            --cell-hover: #e3f2fd;
+            --cell-selected: #2196f3;
+            /* 选中蓝 */
+            --cell-fixed: #ff5252;
+            /* 固定面红 */
+            --cube-face-color: rgba(33, 150, 243, 0.9);
+            --cube-fixed-color: rgba(255, 82, 82, 0.9);
+            --cube-border-color: rgba(255, 255, 255, 0.95);
+            --text-color: #333;
+
+            /* UI */
+            --sidebar-width: 100px;
+            --btn-bg: #fff;
+            --btn-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            /* 上下布局 */
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            /* 阻止默认触摸行为 */
+        }
+
+        /* 顶部栏 */
+        header {
+            width: 100%;
+            height: 140px;
+            background: #fff;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            padding: 10px 20px;
+            box-sizing: border-box;
+            z-index: 30;
+            gap: 20px;
+            flex-shrink: 0;
+        }
+
+        .btn-group-top {
+            pointer-events: auto;
+        }
+
+        .main-wrapper {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            flex-direction: row;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 侧边栏通用样式 */
+        aside {
+            width: auto;
+            height: 100%;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            padding: 0 20px;
+            gap: 15px;
+            z-index: 20;
+        }
+
+        aside .btn-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        /* 右侧栏 - 2列布局 */
+        #sidebar-right {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: auto;
+        }
+
+        /* 主舞台 */
+        #stage {
+            flex: 1;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 3D 场景 */
+        .scene {
+            position: relative;
+            width: calc(5 * var(--cell-size) + 4 * var(--grid-gap));
+            height: calc(5 * var(--cell-size) + 4 * var(--grid-gap));
+            perspective: 2000px;
+            transform-style: preserve-3d;
+        }
+
+        /* 网格层 */
+        .grid-layer {
+            display: grid;
+            grid-template-columns: repeat(5, var(--cell-size));
+            grid-template-rows: repeat(5, var(--cell-size));
+            gap: var(--grid-gap);
+            padding: var(--grid-gap);
+            background: var(--grid-bg);
+            border-radius: 12px;
+            transition: opacity 0.5s ease;
+        }
+
+        .cell {
+            width: 100%;
+            height: 100%;
+            background-color: var(--cell-normal);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            position: relative;
+        }
+
+        /* 选中状态 - 提升清晰度 */
+        .cell.selected {
+            background-color: var(--cell-selected);
+            z-index: 1;
+        }
+
+        /* 固定面状态（锚点） */
+        .cell.fixed-root {
+            background-color: var(--cell-fixed) !important;
+            z-index: 2;
+        }
+
+        /* 正在选择固定面模式 */
+        .picking-root .cell.selected:not(.fixed-root) {
+            animation: pulse 1s infinite;
+            cursor: crosshair;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.6;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        /* 3D 正方体层 */
+        .cube-layer {
+            position: absolute;
+            top: var(--grid-gap);
+            left: var(--grid-gap);
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: none;
+            transform-style: preserve-3d;
+            transform: translateZ(0);
+        }
+
+        .cube-layer.manual-rotate {
+            cursor: grab;
+            pointer-events: auto;
+        }
+
+        .cube-layer.manual-rotate:active {
+            cursor: grabbing;
+        }
+
+        @keyframes floatAndSpin {
+            0% {
+                transform: translateZ(100px) rotateX(-20deg) rotateY(0deg);
+            }
+
+            50% {
+                transform: translateZ(100px) rotateX(-20deg) rotateY(180deg);
+            }
+
+            100% {
+                transform: translateZ(100px) rotateX(-20deg) rotateY(360deg);
+            }
+        }
+
+        .cube-face {
+            position: absolute;
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background-color: var(--cube-face-color);
+            box-shadow: inset 0 0 0 1px var(--cube-border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+            backface-visibility: visible;
+            transform-style: preserve-3d;
+        }
+
+        .cube-face.is-fixed {
+            background-color: var(--cube-fixed-color);
+        }
+
+        /* 按钮样式 - 多彩伪3D风格 */
+        .btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 16px;
+            border: none;
+            background: linear-gradient(145deg, #ffffff, #f0f0f0);
+            color: #555;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            outline: none;
+            position: relative;
+            box-shadow:
+                0 0 0 3px rgba(100, 150, 255, 0.3),
+                0 0 0 5px rgba(255, 100, 150, 0.2),
+                0 0 0 7px rgba(100, 255, 150, 0.15),
+                6px 6px 12px rgba(0, 0, 0, 0.15),
+                -3px -3px 8px rgba(255, 255, 255, 0.8),
+                inset 0 1px 2px rgba(255, 255, 255, 0.5);
+        }
+
+        .btn:hover {
+            background: linear-gradient(145deg, #f8f9fa, #e9ecef);
+            transform: translateY(-2px);
+            box-shadow:
+                0 0 0 3px rgba(100, 150, 255, 0.5),
+                0 0 0 5px rgba(255, 100, 150, 0.35),
+                0 0 0 7px rgba(100, 255, 150, 0.25),
+                8px 8px 16px rgba(0, 0, 0, 0.2),
+                -4px -4px 10px rgba(255, 255, 255, 0.9);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+            box-shadow:
+                0 0 0 2px rgba(100, 150, 255, 0.4),
+                0 0 0 4px rgba(255, 100, 150, 0.25),
+                0 0 0 6px rgba(100, 255, 150, 0.15),
+                3px 3px 6px rgba(0, 0, 0, 0.15),
+                -2px -2px 5px rgba(255, 255, 255, 0.7),
+                inset 3px 3px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            filter: grayscale(0.7);
+            transform: none !important;
+        }
+
+        .btn.active {
+            background: linear-gradient(145deg, #ff6b6b, #ff5252);
+            color: white;
+            box-shadow:
+                0 0 0 3px rgba(255, 100, 100, 0.6),
+                0 0 0 5px rgba(255, 150, 50, 0.4),
+                0 0 0 7px rgba(255, 200, 100, 0.3),
+                6px 6px 12px rgba(255, 82, 82, 0.4),
+                -3px -3px 8px rgba(255, 150, 150, 0.5);
+        }
+
+        .btn svg {
+            width: 28px;
+            height: 28px;
+            margin-bottom: 6px;
+            fill: currentColor;
+        }
+
+        /* 提示 Toast */
+        #toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background: rgba(50, 50, 50, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 100;
+        }
+
+        #toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* 折叠控制滑条 (垂直) */
+        .fold-control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 0;
+        }
+
+        .fold-quick-btn {
+            width: 70px;
+            height: 45px;
+            border: none;
+            background: linear-gradient(145deg, #ffffff, #f0f0f0);
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow:
+                0 0 0 2px rgba(100, 200, 255, 0.3),
+                0 0 0 4px rgba(150, 100, 255, 0.2),
+                4px 4px 8px rgba(0, 0, 0, 0.15),
+                -2px -2px 5px rgba(255, 255, 255, 0.8);
+        }
+
+        .fold-quick-btn:hover {
+            background: linear-gradient(145deg, #f8f9fa, #e9ecef);
+            color: #2196f3;
+            transform: translateY(-1px);
+            box-shadow:
+                0 0 0 2px rgba(100, 200, 255, 0.5),
+                0 0 0 4px rgba(150, 100, 255, 0.35),
+                5px 5px 10px rgba(0, 0, 0, 0.2),
+                -3px -3px 6px rgba(255, 255, 255, 0.9);
+        }
+
+        .fold-quick-btn:active {
+            transform: translateY(1px);
+            box-shadow:
+                0 0 0 2px rgba(100, 200, 255, 0.4),
+                0 0 0 3px rgba(150, 100, 255, 0.25),
+                2px 2px 4px rgba(0, 0, 0, 0.15),
+                -1px -1px 3px rgba(255, 255, 255, 0.7),
+                inset 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .fold-quick-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        /* 垂直滑条样式 - 增大宽度和圆点 */
+        input[type=range][orient=vertical] {
+            writing-mode: vertical-lr;
+            direction: ltr;
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 200px;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        input[type=range][orient=vertical]::-webkit-slider-runnable-track {
+            width: 6px;
+            height: 100%;
+            background: linear-gradient(to bottom, #e0e0e0, #c0c0c0);
+            border-radius: 3px;
+        }
+
+        input[type=range][orient=vertical]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #2196f3, #1976d2);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(33, 150, 243, 0.4);
+            margin-left: -6px;
+        }
+
+        input[type=range][orient=vertical]::-moz-range-track {
+            width: 6px;
+            height: 100%;
+            background: linear-gradient(to bottom, #e0e0e0, #c0c0c0);
+            border-radius: 3px;
+        }
+
+        input[type=range][orient=vertical]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #2196f3, #1976d2);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(33, 150, 243, 0.4);
+            border: none;
+        }
+
+        input[type=range][orient=vertical]:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        /* 符号标记 */
+        .symbol-popup {
+            position: absolute;
+            background: white;
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            z-index: 200;
+            display: none;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            width: 150px;
+        }
+
+        .symbol-popup.show {
+            display: grid;
+        }
+
+        .symbol-btn {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #eee;
+            background: #f9f9f9;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .symbol-btn:hover:not(.disabled) {
+            background: #e3f2fd;
+            color: #2196f3;
+        }
+
+        .symbol-btn.disabled {
+            background: #f5f5f5;
+            color: #ccc;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .cell-symbol {
+            pointer-events: none;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 清空按钮移到右下角 - 更小更简洁 */
+        #resetBtn {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 30;
+            width: 50px;
+            height: 50px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        #resetBtn svg {
+            display: none;
+        }
+
+        /* 拓印层 */
+        .rubbing-layer {
+            position: absolute;
+            z-index: 50;
+            cursor: grab;
+            filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.2));
+        }
+
+        .rubbing-cell {
+            position: absolute;
+            background: #ff9800;
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.8);
+            border-radius: 4px;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 600px) {
+            header {
+                height: 100px;
+                padding: 8px 12px;
+            }
+
+            .btn-group-top .btn {
+                width: 60px;
+                height: 60px;
+                font-size: 11px;
+            }
+
+            .btn-group-top .btn svg {
+                width: 24px;
+                height: 24px;
+            }
+
+            aside {
+                width: 80px;
+                padding: 10px 0;
+            }
+
+            #sidebar-right {
+                position: fixed;
+                right: 0;
+                top: 100px;
+                bottom: 0;
+                width: 80px;
+                background: rgba(255, 255, 255, 0.95);
+                box-shadow: -2px 0 10px rgba(0, 0, 0, 0.05);
+            }
+
+            .btn {
+                width: 60px;
+                height: 60px;
+                font-size: 11px;
+                border-radius: 16px;
+            }
+
+            .btn svg {
+                width: 24px;
+                height: 24px;
+                margin-bottom: 4px;
+            }
+
+            .fold-control-group {
+                padding: 8px 0;
+            }
+
+            input[type=range][orient=vertical] {
+                height: 120px;
+            }
+
+            .reset-wrapper {
+                padding-bottom: 5px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="toast">提示信息</div>
+
+    <main class="main-wrapper">
+        <div id="stage">
+            <div class="scene">
+                <div class="grid-layer" id="grid"></div>
+                <div class="cube-layer" id="cubeWrapper"></div>
+            </div>
+        </div>
+
+        <div id="markPopup" class="symbol-popup">
+            <!-- JS 填充内容 -->
+        </div>
+
+        <aside id="sidebar-right">
+            <!-- 第一列：滑块控制 -->
+            <div class="btn-group">
+                <div class="fold-control-group">
+                    <button class="fold-quick-btn" id="unfoldBtn" onclick="quickUnfold()" disabled>展开</button>
+                    <input type="range" id="foldSlider" min="0" max="100" value="0" orient="vertical" disabled>
+                    <button class="fold-quick-btn" id="foldBtn" onclick="quickFold()" disabled>折叠</button>
+                </div>
+            </div>
+
+            <!-- 第二列：功能按钮 -->
+            <div class="btn-group">
+                <button id="fixFaceBtn" class="btn disabled" onclick="toggleFixMode()">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" />
+                    </svg>
+                    <span>固定面</span>
+                </button>
+
+                <button id="markBtn" class="btn disabled" onclick="toggleMarkMode()">
+                    <svg viewBox="0 0 24 24">
+                        <path
+                            d="M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87L20.71,7.04Z" />
+                    </svg>
+                    <span>标符号</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 清空按钮 - 右下角 -->
+        <button id="resetBtn" class="btn" onclick="resetGrid()">
+            <svg viewBox="0 0 24 24">
+                <path
+                    d="M12,4C14.1,4 16.1,4.8 17.6,6.3C20.7,9.4 20.7,14.5 17.6,17.6C15.8,19.5 13.3,20.4 10.9,20.3V22.3C13.9,22.4 16.9,21.3 19.1,19.1C22.9,15.3 22.9,8.7 19.1,4.9C17.3,3.1 14.7,2 12,2C9.3,2 6.7,3.1 4.9,4.9L3,3V9H9L6.7,6.7C8,5.4 9.9,4.5 12,4.5M6.4,17.6C3.3,14.5 3.3,9.4 6.4,6.3L7.8,7.8C5.4,10.1 5.4,13.9 7.8,16.2C10.1,18.5 13.9,18.5 16.2,16.2L17.6,17.6C14.5,20.7 9.4,20.7 6.4,17.6Z" />
+            </svg>
+            <span>清空</span>
+        </button>
+    </main>
+
+    <script>
+        // --- 核心状态 ---
+        const GRID_SIZE = 5;
+        const MAX_SELECT = 6;
+        let selectedCells = []; // Stores {r, c, index, el, symbol}
+        let fixedRootIndex = -1; // -1 表示无固定面（默认）
+        let isPickingRoot = false; // 是否正在选择固定面
+        let isMarking = false; // 是否正在标记模式
+        let isFolded = false; // 3D 模式是否激活（现在用于解锁滑条）
+        let isAnimating = false;
+
+        // --- DOM 元素 ---
+        const gridEl = document.getElementById('grid');
+        const cubeWrapper = document.getElementById('cubeWrapper');
+        const toastEl = document.getElementById('toast');
+        const fixBtn = document.getElementById('fixFaceBtn');
+        const markBtn = document.getElementById('markBtn');
+        const foldSlider = document.getElementById('foldSlider');
+        const unfoldBtn = document.getElementById('unfoldBtn');
+        const foldBtn = document.getElementById('foldBtn');
+        const markPopup = document.getElementById('markPopup');
+
+        // --- 初始化符号弹窗 ---
+        function initPopup() {
+            const symbols = ['1', '2', '3', '4', '5', '6', 'A', 'B', 'C', 'D', 'E', 'F'];
+            markPopup.innerHTML = '';
+            symbols.forEach(s => {
+                const btn = document.createElement('div');
+                btn.className = 'symbol-btn';
+                btn.textContent = s;
+                btn.dataset.symbol = s;
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (!btn.classList.contains('disabled')) {
+                        applySymbol(s);
+                    }
+                };
+                markPopup.appendChild(btn);
+            });
+            // 点击外部关闭
+            window.addEventListener('click', (e) => {
+                if (!e.target.closest('#markPopup') && !e.target.closest('.cell')) {
+                    markPopup.classList.remove('show');
+                }
+            });
+        }
+        initPopup();
+
+        // 更新符号弹窗状态
+        function updateSymbolPopup() {
+            const usedSymbols = new Set(selectedCells.map(c => c.symbol).filter(s => s));
+            const buttons = markPopup.querySelectorAll('.symbol-btn');
+            buttons.forEach(btn => {
+                const symbol = btn.dataset.symbol;
+                if (usedSymbols.has(symbol)) {
+                    btn.classList.add('disabled');
+                } else {
+                    btn.classList.remove('disabled');
+                }
+            });
+        }
+
+        // --- 自适应布局 ---
+        function resizeLayout() {
+            const sideBarRightW = window.innerWidth > 600 ? 100 : 0;
+            const hPadding = window.innerWidth <= 600 ? 20 : 0;
+
+            const availableW = window.innerWidth - sideBarRightW;
+            const availableH = window.innerHeight - hPadding;
+
+            const minDim = Math.min(availableW, availableH);
+            const padding = 0;
+
+            // 限制正方形最大 500px
+            let contentSize = minDim - padding;
+            if (contentSize > 500) contentSize = 500;
+
+            const cellUnit = contentSize / (5 + 4 * 0.01);
+            const gapUnit = cellUnit * 0.01;
+
+            document.documentElement.style.setProperty('--cell-size', `${cellUnit}px`);
+            document.documentElement.style.setProperty('--grid-gap', `${gapUnit}px`);
+        }
+        window.addEventListener('resize', resizeLayout);
+        resizeLayout();
+
+        // --- 滑条监听 ---
+        foldSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+
+            // 滑到顶部(0)时恢复网格显示
+            if (value === 0 && isFolded) {
+                gridEl.style.opacity = '1';
+                cubeWrapper.style.opacity = '0';
+            } else if (isFolded) {
+                gridEl.style.opacity = '0';
+                cubeWrapper.style.opacity = '1';
+            }
+
+            if (!isFolded) {
+                if (selectedCells.length !== 6) {
+                    showToast("请先选择6个方格");
+                    foldSlider.value = 0;
+                    return;
+                }
+                if (!tryEnter3DMode()) {
+                    foldSlider.value = 0;
+                    return;
+                }
+            }
+            updateFoldAngle(value);
+        });
+
+        // 快捷展开按钮 - 平滑动画
+        function quickUnfold() {
+            if (!isFolded) return;
+            const currentValue = parseInt(foldSlider.value);
+            animateSlider(currentValue, 0, 500);
+        }
+
+        // 快捷折叠按钮 - 平滑动画
+        function quickFold() {
+            if (!isFolded) {
+                if (selectedCells.length !== 6) {
+                    showToast("请先选择6个方格");
+                    return;
+                }
+                if (!tryEnter3DMode()) return;
+            }
+            animateSlider(foldSlider.value, 100, 500);
+        }
+
+        // 平滑滑块动画
+        function animateSlider(from, to, duration) {
+            const startTime = performance.now();
+            const diff = to - from;
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // 使用缓动函数
+                const eased = progress < 0.5
+                    ? 2 * progress * progress
+                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+                const value = Math.round(from + diff * eased);
+                foldSlider.value = value;
+
+                // 手动触发input事件
+                const event = new Event('input', { bubbles: true });
+                foldSlider.dispatchEvent(event);
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- 初始化网格 ---
+        function initGrid() {
+            gridEl.innerHTML = '';
+            selectedCells = [];
+            fixedRootIndex = -1;
+            isPickingRoot = false;
+            isMarking = false;
+            isFolded = false;
+            isAnimating = false;
+
+            foldSlider.value = 0;
+            foldSlider.disabled = true;
+            foldSlider.style.opacity = 0.5;
+
+            markPopup.classList.remove('show');
+            updateUI();
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    cell.dataset.index = r * GRID_SIZE + c;
+                    gridEl.appendChild(cell);
+                }
+            }
+
+            setupInteractions();
+            cubeWrapper.innerHTML = '';
+            cubeWrapper.style.display = 'none';
+            gridEl.style.opacity = '1';
+        }
+
+        // --- 交互系统（鼠标点击 + 触摸滑动） ---
+        function setupInteractions() {
+            // 鼠标点击
+            gridEl.addEventListener('click', (e) => {
+                const cell = e.target.closest('.cell');
+                if (cell) processCellInteraction(cell);
+            });
+            // (省略触摸逻辑，因为没有改动核心触摸需求，保留原有即可，但需要注意 isMarking)
+            // 这里我们简单复用原触摸逻辑，并在内部判断
+            let lastTouchedCell = null;
+            const handleTouchStart = (e) => {
+                if (isFolded && foldSlider.value > 0) return; // 如果已经折叠起来了，禁止网格交互? 其实 isFolded 模式下 grid 只是隐藏或作为底层
+                // 注意：本设计中，折叠开始后网格隐藏，cube显示。
+                // 如果 foldSlider.value > 0，说明正在看3D。
+                // 如果 foldSlider.value == 0, 且 isFolded=true，说明是展开的平面图3D模式，此时点网格可能没反应，除非退出3D模式。
+                // 现在的逻辑：滑动条拉动 -> 进入3D模式 -> 网格Opacity=0。
+                // 所以不需要太复杂的防御，因为网格都不见了。
+
+                const touch = e.touches[0];
+                const cell = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.cell');
+                if (cell) {
+                    processCellInteraction(cell);
+                    lastTouchedCell = cell;
+                }
+            };
+            const handleTouchMove = (e) => {
+                if (isMarking || isPickingRoot) return; // 特殊模式不支持连选
+                // ... standard logic
+                e.preventDefault();
+                const touch = e.touches[0];
+                const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                const cell = target?.closest('.cell');
+                if (cell && cell !== lastTouchedCell) {
+                    processCellInteraction(cell);
+                    lastTouchedCell = cell;
+                }
+            };
+            gridEl.addEventListener('touchstart', handleTouchStart, { passive: false });
+            gridEl.addEventListener('touchmove', handleTouchMove, { passive: false });
+            gridEl.addEventListener('touchend', () => { lastTouchedCell = null; });
+        }
+
+        let currentMarkingCellIndex = -1;
+
+        // 处理单个格子的交互逻辑
+        function processCellInteraction(cell) {
+            // 如果处于3D模式且已经折叠一部分，禁止编辑
+            if (isFolded && foldSlider.value > 0) return;
+            // 如果处于3D模式但完全展开(value=0)，此时点击应该意味着“退出3D模式并编辑” 
+            // 或者 我们允许在平面图状态下直接编辑，然后自动重建？
+            // 简单起见：如果 isFolded，先 reset 3D view back to normal grid
+            if (isFolded) {
+                exit3DMode();
+            }
+
+            const r = parseInt(cell.dataset.r);
+            const c = parseInt(cell.dataset.c);
+            const index = parseInt(cell.dataset.index);
+
+            // 模式 C: 标记符号
+            if (isMarking) {
+                const item = selectedCells.find(i => i.index === index);
+                if (item) {
+                    currentMarkingCellIndex = index;
+                    // 更新符号弹窗状态
+                    updateSymbolPopup();
+                    // 显示 Popup - 定位到右侧
+                    const rect = cell.getBoundingClientRect();
+                    markPopup.style.left = (rect.right + 10) + 'px';
+                    markPopup.style.top = rect.top + 'px';
+                    markPopup.classList.add('show');
+                }
+                return;
+            }
+
+            // 模式 A: 选择固定面
+            if (isPickingRoot) {
+                const item = selectedCells.find(i => i.index === index);
+                if (item) {
+                    setFixedRoot(index);
+                    isPickingRoot = false;
+                    fixBtn.classList.remove('active');
+                    gridEl.classList.remove('picking-root');
+                    showToast("固定面已设置");
+                }
+                return;
+            }
+
+            // 模式 B: 普通选择/取消选择
+            const existingIndex = selectedCells.findIndex(item => item.index === index);
+
+            if (existingIndex !== -1) {
+                // 取消选择
+                selectedCells.splice(existingIndex, 1);
+                cell.classList.remove('selected');
+                cell.classList.remove('fixed-root');
+                cell.innerHTML = ''; // Clear symbol
+                // 如果取消的是固定面，重置固定面
+                if (index === fixedRootIndex) fixedRootIndex = -1;
+            } else {
+                // 新增选择
+                if (selectedCells.length >= MAX_SELECT) {
+                    showToast("最多只能选择6个方格");
+                    return;
+                }
+                selectedCells.push({ r, c, index, el: cell, symbol: '' });
+                cell.classList.add('selected');
+            }
+            updateUI();
+        }
+
+        function applySymbol(s) {
+            if (currentMarkingCellIndex === -1) return;
+            const item = selectedCells.find(i => i.index === currentMarkingCellIndex);
+            if (item) {
+                item.symbol = s;
+                // 更新网格显示
+                item.el.innerHTML = `<div class="cell-symbol">${s}</div>`;
+                markPopup.classList.remove('show');
+                // 更新符号弹窗状态
+                updateSymbolPopup();
+            }
+        }
+
+        // 设置固定面
+        function setFixedRoot(index) {
+            fixedRootIndex = index;
+            // 更新 UI
+            document.querySelectorAll('.cell.fixed-root').forEach(el => el.classList.remove('fixed-root'));
+            const cell = selectedCells.find(i => i.index === index).el;
+            cell.classList.add('fixed-root');
+        }
+
+        function toggleFixMode() {
+            if (selectedCells.length !== 6) return;
+            isPickingRoot = !isPickingRoot;
+            // 互斥
+            if (isPickingRoot) {
+                isMarking = false;
+                markBtn.classList.remove('active');
+
+                fixBtn.classList.add('active');
+                gridEl.classList.add('picking-root');
+                showToast("请点击一个已选中的方格作为底面");
+            } else {
+                fixBtn.classList.remove('active');
+                gridEl.classList.remove('picking-root');
+            }
+        }
+
+        function toggleMarkMode() {
+            if (selectedCells.length === 0) {
+                showToast("请先选择方格");
+                return;
+            }
+            isMarking = !isMarking;
+            if (isMarking) {
+                isPickingRoot = false;
+                fixBtn.classList.remove('active');
+                gridEl.classList.remove('picking-root');
+
+                markBtn.classList.add('active');
+                showToast("点击已选中的方格添加符号");
+            } else {
+                markBtn.classList.remove('active');
+                markPopup.classList.remove('show');
+            }
+        }
+
+        function updateUI() {
+            if (selectedCells.length === 6) {
+                // 检查是否能折叠成正方体
+                const canFoldToCube = checkIsCubeNet(selectedCells);
+
+                if (canFoldToCube) {
+                    // 可以折叠成正方体，启用所有功能
+                    fixBtn.classList.remove('disabled');
+                    markBtn.classList.remove('disabled');
+                    foldSlider.disabled = false;
+                    foldSlider.style.opacity = 1;
+                    unfoldBtn.disabled = false;
+                    foldBtn.disabled = false;
+                } else {
+                    // 不能折叠成正方体，禁用固定面和标符号
+                    fixBtn.classList.add('disabled');
+                    fixBtn.classList.remove('active');
+                    markBtn.classList.add('disabled');
+                    markBtn.classList.remove('active');
+
+                    if (!isFolded) {
+                        foldSlider.disabled = true;
+                        foldSlider.style.opacity = 0.5;
+                        unfoldBtn.disabled = true;
+                        foldBtn.disabled = true;
+                    }
+
+                    isPickingRoot = false;
+                    isMarking = false;
+                    gridEl.classList.remove('picking-root');
+                    markPopup.classList.remove('show');
+                }
+            } else {
+                fixBtn.classList.add('disabled');
+                fixBtn.classList.remove('active');
+
+                if (!isFolded) {
+                    foldSlider.disabled = true;
+                    foldSlider.style.opacity = 0.5;
+                    unfoldBtn.disabled = true;
+                    foldBtn.disabled = true;
+                }
+
+                isPickingRoot = false;
+                gridEl.classList.remove('picking-root');
+
+                // 少于6个时，根据数量决定是否启用标符号
+                if (selectedCells.length > 0) {
+                    markBtn.classList.remove('disabled');
+                } else {
+                    markBtn.classList.add('disabled');
+                    markBtn.classList.remove('active');
+                    isMarking = false;
+                }
+            }
+        }
+
+        function resetGrid() {
+            initGrid();
+        }
+
+        function showToast(text) {
+            toastEl.textContent = text;
+            toastEl.classList.add('show');
+            setTimeout(() => {
+                toastEl.classList.remove('show');
+            }, 2000);
+        }
+
+        // --- 核心算法：正方体检测 ---
+        function checkIsCubeNet(cells) {
+            if (cells.length !== 6) return false;
+            // 简单连通性 + 折叠闭合性检测
+            // ... (复用之前的逻辑)
+            const map = new Map();
+            cells.forEach(c => map.set(`${c.r},${c.c}`, c));
+
+            // 1. 连通
+            const queue = [cells[0]];
+            const visited = new Set([`${cells[0].r},${cells[0].c}`]);
+            let count = 0;
+            while (queue.length > 0) {
+                const curr = queue.shift();
+                count++;
+                const neighbors = [
+                    { r: curr.r - 1, c: curr.c }, { r: curr.r + 1, c: curr.c },
+                    { r: curr.r, c: curr.c - 1 }, { r: curr.r, c: curr.c + 1 }
+                ];
+                neighbors.forEach(n => {
+                    const key = `${n.r},${n.c}`;
+                    if (map.has(key) && !visited.has(key)) {
+                        visited.add(key);
+                        queue.push(map.get(key));
+                    }
+                });
+            }
+            if (count !== 6) return false;
+
+            // 2. 折叠
+            const facesData = [];
+            const processed = new Set();
+            function fold(cellKey, normal, up) {
+                processed.add(cellKey);
+                const curr = map.get(cellKey);
+                const right = { x: up.y * normal.z - up.z * normal.y, y: up.z * normal.x - up.x * normal.z, z: up.x * normal.y - up.y * normal.x };
+                const left = { x: -right.x, y: -right.y, z: -right.z };
+                const down = { x: -up.x, y: -up.y, z: -up.z };
+
+                const dirs = [
+                    { dr: -1, dc: 0, v: up, n: 'u' }, { dr: 1, dc: 0, v: down, n: 'd' },
+                    { dr: 0, dc: -1, v: left, n: 'l' }, { dr: 0, dc: 1, v: right, n: 'r' }
+                ];
+
+                for (let d of dirs) {
+                    const nKey = `${curr.r + d.dr},${curr.c + d.dc}`;
+                    if (map.has(nKey) && !processed.has(nKey)) {
+                        let nNorm, nUp;
+                        if (d.n === 'u') { nNorm = up; nUp = { x: -normal.x, y: -normal.y, z: -normal.z }; }
+                        else if (d.n === 'd') { nNorm = { x: -up.x, y: -up.y, z: -up.z }; nUp = normal; }
+                        else if (d.n === 'l') { nNorm = left; nUp = up; }
+                        else { nNorm = right; nUp = up; }
+                        facesData.push(nNorm);
+                        fold(nKey, nNorm, nUp);
+                    }
+                }
+            }
+            facesData.push({ x: 0, y: 0, z: 1 });
+            fold(`${cells[0].r},${cells[0].c}`, { x: 0, y: 0, z: 1 }, { x: 0, y: 1, z: 0 });
+
+            const unique = new Set(facesData.map(v => `${Math.round(v.x)},${Math.round(v.y)},${Math.round(v.z)}`));
+            return unique.size === 6;
+        }
+
+        // --- 折叠逻辑 ---
+
+        // 生成折叠树，支持指定 root
+        function generateFoldTree(cells, rootCell) {
+            const map = new Map();
+            cells.forEach(c => map.set(`${c.r},${c.c}`, c));
+            const treeMap = new Map();
+            const processed = new Set();
+
+            // 从 root 开始 BFS
+            const rootKey = `${rootCell.r},${rootCell.c}`;
+            const queue = [rootKey];
+            processed.add(rootKey);
+
+            while (queue.length > 0) {
+                const currKey = queue.shift();
+                const curr = map.get(currKey);
+
+                const neighbors = [
+                    { dr: -1, dc: 0, side: 'top' },
+                    { dr: 1, dc: 0, side: 'bottom' },
+                    { dr: 0, dc: -1, side: 'left' },
+                    { dr: 0, dc: 1, side: 'right' }
+                ];
+
+                for (let n of neighbors) {
+                    const nKey = `${curr.r + n.dr},${curr.c + n.dc}`;
+                    if (map.has(nKey) && !processed.has(nKey)) {
+                        treeMap.set(nKey, { parent: currKey, side: n.side });
+                        processed.add(nKey);
+                        queue.push(nKey);
+                    }
+                }
+            }
+            return treeMap;
+        }
+
+        function tryEnter3DMode() {
+            if (checkIsCubeNet(selectedCells)) {
+                buildCubeDOM();
+                isFolded = true;
+                gridEl.style.opacity = '0'; // 隐藏2D网格
+                return true;
+            } else {
+                showToast("无法折叠成正方体");
+                return false;
+            }
+        }
+
+        function exit3DMode() {
+            cubeWrapper.innerHTML = '';
+            cubeWrapper.style.display = 'none';
+            cubeWrapper.classList.remove('manual-rotate');
+            gridEl.style.opacity = '1';
+            isFolded = false;
+            foldSlider.value = 0;
+        }
+
+        // 手动旋转相关变量
+        let isDragging = false;
+        let previousMouseX = 0;
+        let previousMouseY = 0;
+        let rotationX = -20;  // 初始X轴旋转角度
+        let rotationY = 20;   // 初始Y轴旋转角度
+        let foldedRotationX = -20;  // 折叠完成时的X轴角度
+        let foldedRotationY = 20;   // 折叠完成时的Y轴角度
+
+        // 添加手动旋转事件监听
+        function enableManualRotation() {
+            cubeWrapper.classList.add('manual-rotate');
+
+            const handleMouseDown = (e) => {
+                isDragging = true;
+                previousMouseX = e.clientX || e.touches[0].clientX;
+                previousMouseY = e.clientY || e.touches[0].clientY;
+            };
+
+            const handleMouseMove = (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+
+                const clientX = e.clientX || e.touches[0].clientX;
+                const clientY = e.clientY || e.touches[0].clientY;
+
+                const deltaX = clientX - previousMouseX;
+                const deltaY = clientY - previousMouseY;
+
+                rotationY += deltaX * 0.5;
+                rotationX -= deltaY * 0.5;
+
+                // 限制X轴旋转角度
+                rotationX = Math.max(-90, Math.min(90, rotationX));
+
+                updateCubeRotation();
+
+                previousMouseX = clientX;
+                previousMouseY = clientY;
+            };
+
+            const handleMouseUp = () => {
+                isDragging = false;
+            };
+
+            cubeWrapper.addEventListener('mousedown', handleMouseDown);
+            cubeWrapper.addEventListener('touchstart', handleMouseDown, { passive: false });
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('touchmove', handleMouseMove, { passive: false });
+            window.addEventListener('mouseup', handleMouseUp);
+            window.addEventListener('touchend', handleMouseUp);
+        }
+
+        function updateCubeRotation() {
+            const sizeVal = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-size'));
+            const gapVal = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-gap'));
+
+            // 计算正方体中心：考虑到gap，正方体实际大小是 sizeVal，中心在 0.5 * sizeVal
+            // 但需要找到根元素（固定面）的位置作为参考
+            let rootCell = selectedCells[0];
+            if (fixedRootIndex !== -1) {
+                const fixed = selectedCells.find(c => c.index === fixedRootIndex);
+                if (fixed) rootCell = fixed;
+            }
+
+            // 正方体中心相对于根元素的偏移：0.5个格子
+            const cubeCenter = sizeVal * 0.5;
+
+            // 根元素在场景中的位置
+            const rootX = rootCell.c * (sizeVal + gapVal);
+            const rootY = rootCell.r * (sizeVal + gapVal);
+
+            // 正方体中心在场景中的绝对位置
+            const centerX = rootX + cubeCenter;
+            const centerY = rootY + cubeCenter;
+
+            cubeWrapper.style.transformOrigin = `${centerX}px ${centerY}px 0px`;
+            cubeWrapper.style.transform = `translateZ(150px) rotateX(${rotationX}deg) rotateY(${rotationY}deg)`;
+        }
+
+        function buildCubeDOM() {
+            // 确定根节点：如果有固定面则用固定面，否则用第一个选中的
+            let rootCell = selectedCells[0];
+            if (fixedRootIndex !== -1) {
+                const fixed = selectedCells.find(c => c.index === fixedRootIndex);
+                if (fixed) rootCell = fixed;
+            }
+
+            const rootKey = `${rootCell.r},${rootCell.c}`;
+            const treeStructure = generateFoldTree(selectedCells, rootCell);
+
+            cubeWrapper.innerHTML = '';
+            cubeWrapper.style.display = 'block';
+            cubeWrapper.className = 'cube-layer';
+            cubeWrapper.style.transform = 'translateZ(0)'; // Start flat
+
+            const domMap = new Map();
+            const sizeVal = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-size'));
+            const gapVal = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-gap'));
+
+            const rootEl = createFaceEl(fixedRootIndex !== -1 && rootCell.index === fixedRootIndex, rootCell.symbol);
+            // 绝对定位 root
+            rootEl.style.left = (rootCell.c * (sizeVal + gapVal)) + 'px';
+            rootEl.style.top = (rootCell.r * (sizeVal + gapVal)) + 'px';
+
+            cubeWrapper.appendChild(rootEl);
+            domMap.set(rootKey, rootEl);
+
+            const queue = [rootKey];
+            const built = new Set([rootKey]);
+
+            // 构建 DOM 树
+            while (queue.length > 0) {
+                const pKey = queue.shift();
+                const pEl = domMap.get(pKey);
+
+                for (let [childKey, info] of treeStructure.entries()) {
+                    if (info.parent === pKey && !built.has(childKey)) {
+                        // 检查子节点
+                        const childItem = selectedCells.find(c => `${c.r},${c.c}` === childKey);
+                        const isFixed = (childItem.index === fixedRootIndex);
+
+                        const childEl = createFaceEl(isFixed, childItem.symbol);
+                        pEl.appendChild(childEl);
+
+
+                        // 获取父元素和子元素的网格坐标
+                        const pCellData = selectedCells.find(c => `${c.r},${c.c}` === pKey);
+                        const childCellData = selectedCells.find(c => `${c.r},${c.c}` === childKey);
+
+                        // 计算子元素在2D网格中相对于父元素的位置
+                        const relativeCol = childCellData.c - pCellData.c;
+                        const relativeRow = childCellData.r - pCellData.r;
+                        const relative2DX = relativeCol * (sizeVal + gapVal);
+                        const relative2DY = relativeRow * (sizeVal + gapVal);
+
+                        // 定义折叠轴、方向和3D折叠后的相对位置
+                        let origin = '', rotateAxis = '', rotateDeg = 0;
+                        let foldedX = 0, foldedY = 0;
+
+                        if (info.side === 'top') {
+                            // 向上折叠：子面在父面上方
+                            origin = 'bottom center';
+                            rotateAxis = 'X';
+                            rotateDeg = -90;
+                            foldedX = 0;
+                            foldedY = -sizeVal; // 紧贴父面上边缘
+                        } else if (info.side === 'bottom') {
+                            // 向下折叠：子面在父面下方
+                            origin = 'top center';
+                            rotateAxis = 'X';
+                            rotateDeg = 90;
+                            foldedX = 0;
+                            foldedY = sizeVal; // 紧贴父面下边缘
+                        } else if (info.side === 'left') {
+                            // 向左折叠：子面在父面左侧
+                            origin = 'right center';
+                            rotateAxis = 'Y';
+                            rotateDeg = 90;
+                            foldedX = -sizeVal; // 紧贴父面左边缘
+                            foldedY = 0;
+                        } else if (info.side === 'right') {
+                            // 向右折叠：子面在父面右侧
+                            origin = 'left center';
+                            rotateAxis = 'Y';
+                            rotateDeg = -90;
+                            foldedX = sizeVal; // 紧贴父面右边缘
+                            foldedY = 0;
+                        }
+
+                        // 设置子元素为相对定位（相对于父面）
+                        childEl.style.position = 'absolute';
+                        childEl.style.transformOrigin = origin;
+
+                        // 存储2D和3D状态的位置信息
+                        childEl.dataset.relative2DX = relative2DX;
+                        childEl.dataset.relative2DY = relative2DY;
+                        childEl.dataset.foldedX = foldedX;
+                        childEl.dataset.foldedY = foldedY;
+                        childEl.dataset.rotateAxis = rotateAxis;
+                        childEl.dataset.rotateDeg = rotateDeg;
+
+                        // 初始状态：在2D网格位置
+                        childEl.style.left = relative2DX + 'px';
+                        childEl.style.top = relative2DY + 'px';
+                        childEl.style.transform = `rotate${rotateAxis}(0deg)`;
+
+                        domMap.set(childKey, childEl);
+                        built.add(childKey);
+                        queue.push(childKey);
+                    }
+                }
+            }
+        }
+
+        // 核心：根据进度更新所有面的角度
+        function updateFoldAngle(progress) {
+            if (!isFolded) return;
+
+            // 完全折叠时启用手动旋转
+            if (progress === 100) {
+                // 保存当前视角作为折叠完成时的视角
+                foldedRotationX = rotationX;
+                foldedRotationY = rotationY;
+                enableManualRotation();
+                updateCubeRotation();
+                // 调整字符朝向使其朝外（只在完全折叠时）
+                setTimeout(() => adjustSymbolOrientation(true), 50);
+            } else {
+                cubeWrapper.classList.remove('manual-rotate');
+                // 在折叠过程中，恢复字符正常朝向
+                adjustSymbolOrientation(false);
+                // 在折叠过程中，保持与折叠完成时相同的视角
+                cubeWrapper.style.transformOrigin = '';
+                const sizeVal = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell-size'));
+                const gapVal = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-gap'));
+
+                let rootCell = selectedCells[0];
+                if (fixedRootIndex !== -1) {
+                    const fixed = selectedCells.find(c => c.index === fixedRootIndex);
+                    if (fixed) rootCell = fixed;
+                }
+
+                const cubeCenter = sizeVal * 0.5;
+                const rootX = rootCell.c * (sizeVal + gapVal);
+                const rootY = rootCell.r * (sizeVal + gapVal);
+                const centerX = rootX + cubeCenter;
+                const centerY = rootY + cubeCenter;
+
+                cubeWrapper.style.transformOrigin = `${centerX}px ${centerY}px 0px`;
+                cubeWrapper.style.transform = `translateZ(150px) rotateX(${foldedRotationX}deg) rotateY(${foldedRotationY}deg)`;
+            }
+
+            const faces = document.querySelectorAll('.cube-face');
+            faces.forEach(el => {
+                if (el.dataset.rotateDeg) {
+                    const maxDeg = parseFloat(el.dataset.rotateDeg);
+                    const currentDeg = maxDeg * (progress / 100);
+                    const axis = el.dataset.rotateAxis;
+
+                    // 获取2D和3D状态的位置
+                    const relative2DX = parseFloat(el.dataset.relative2DX) || 0;
+                    const relative2DY = parseFloat(el.dataset.relative2DY) || 0;
+                    const foldedX = parseFloat(el.dataset.foldedX) || 0;
+                    const foldedY = parseFloat(el.dataset.foldedY) || 0;
+
+                    // 根据进度插值计算当前位置
+                    // progress = 0: 在2D网格位置 (relative2DX, relative2DY)
+                    // progress = 100: 在折叠位置 (foldedX, foldedY)
+                    const t = progress / 100;
+                    const currentX = relative2DX + (foldedX - relative2DX) * t;
+                    const currentY = relative2DY + (foldedY - relative2DY) * t;
+
+                    // 更新位置和旋转
+                    el.style.left = currentX + 'px';
+                    el.style.top = currentY + 'px';
+                    el.style.transform = `rotate${axis}(${currentDeg}deg)`;
+                }
+            });
+        }
+
+
+        function createFaceEl(isFixed, symbol) {
+            const div = document.createElement('div');
+            div.className = 'cube-face';
+            if (isFixed) div.classList.add('is-fixed');
+            if (symbol) {
+                // 创建字符元素
+                const symbolDiv = document.createElement('div');
+                symbolDiv.className = 'cell-symbol';
+                symbolDiv.textContent = symbol;
+                div.appendChild(symbolDiv);
+
+                // 存储symbol以便后续调整朝向
+                div.dataset.symbol = symbol;
+            }
+            return div;
+        }
+
+        // 调整所有字符朝向，使其显示在面的反面（外侧）
+        // 字符需要沿着面本身水平对称变换
+        // flipSymbols: true = 翻转字符（完全折叠时），false = 恢复正常（折叠过程中）
+        function adjustSymbolOrientation(flipSymbols = true) {
+            const faces = document.querySelectorAll('.cube-face[data-symbol]');
+            faces.forEach(face => {
+                const symbol = face.querySelector('.cell-symbol');
+                if (!symbol) return;
+
+                if (flipSymbols) {
+                    // 水平镜像翻转，使字符显示在面的反面
+                    symbol.style.transform = 'scaleX(-1)';
+                } else {
+                    // 恢复正常朝向
+                    symbol.style.transform = '';
+                }
+            });
+        }
+
+        initGrid();
+    </script>
+</body>
+
+</html>
