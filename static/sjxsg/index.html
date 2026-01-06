@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>三角形整体旋转涂色</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #ffffff;
+            font-family: "Times New Roman", serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+            touch-action: none;
+        }
+        
+        .hint {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+            color: #aaa;
+            font-size: 16px;
+            transition: opacity 0.5s;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="hint" id="hint">拖动左侧三角形绕点 C 旋转</div>
+<canvas id="canvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+
+    // --- 几何参数 ---
+    let cx, cy; // 圆心 C
+    let sideLength; // 边长
+    let rotationAngle = 0; // 当前旋转角度 (0 ~ 120度)
+    const MAX_ROTATION = (2 * Math.PI) / 3; // 120度
+    
+    // --- 交互状态 ---
+    let isDragging = false;
+    let startDragAngle = 0;
+    let startRotation = 0;
+
+    // --- 初始化 ---
+    function init() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        cx = canvas.width / 2;
+        cy = canvas.height * 0.75; 
+        
+        sideLength = Math.min(canvas.width, canvas.height) * 0.35;
+        if (sideLength > 320) sideLength = 320;
+
+        draw();
+    }
+
+    window.addEventListener('resize', init);
+    init();
+
+    // --- 事件监听 ---
+    canvas.addEventListener('mousedown', startDrag);
+    window.addEventListener('mousemove', onDrag);
+    window.addEventListener('mouseup', stopDrag);
+
+    canvas.addEventListener('touchstart', (e) => startDrag(e.touches[0]));
+    window.addEventListener('touchmove', (e) => onDrag(e.touches[0]));
+    canvas.addEventListener('touchend', stopDrag);
+
+    function startDrag(e) {
+        hint.style.opacity = 0;
+        const dx = e.clientX - cx;
+        const dy = e.clientY - cy;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+
+        if (dist < sideLength + 60 && e.clientY < cy + 60) {
+            isDragging = true;
+            startDragAngle = Math.atan2(dy, dx);
+            startRotation = rotationAngle;
+        }
+    }
+
+    function onDrag(e) {
+        if (!isDragging) return;
+
+        const dx = e.clientX - cx;
+        const dy = e.clientY - cy;
+        const currentAngle = Math.atan2(dy, dx);
+
+        let angleDiff = currentAngle - startDragAngle;
+        
+        if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+        if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+
+        let newRot = startRotation + angleDiff;
+
+        if (newRot < 0) newRot = 0;
+        if (newRot > MAX_ROTATION) newRot = MAX_ROTATION;
+
+        rotationAngle = newRot;
+        draw();
+    }
+
+    function stopDrag() {
+        isDragging = false;
+    }
+
+    // --- 绘图核心 ---
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 1. 地面直线
+        ctx.beginPath();
+        ctx.moveTo(0, cy);
+        ctx.lineTo(canvas.width, cy);
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // 2. 绘制【整体扫过的区域】 - 淡橙色
+        if (rotationAngle > 0.001) {
+            ctx.save();
+            ctx.beginPath();
+
+            const angleA_start = Math.PI; 
+            const angleB_start = 4 * Math.PI / 3; 
+            
+            const angleA_end = Math.PI + rotationAngle;
+            const angleB_end = 4 * Math.PI / 3 + rotationAngle;
+
+            const getX = (angle) => cx + sideLength * Math.cos(angle);
+            const getY = (angle) => cy + sideLength * Math.sin(angle);
+
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(getX(angleA_start), getY(angleA_start));
+            ctx.lineTo(getX(angleB_start), getY(angleB_start));
+            ctx.closePath();
+
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(getX(angleA_end), getY(angleA_end));
+            ctx.lineTo(getX(angleB_end), getY(angleB_end));
+            ctx.closePath();
+
+            ctx.moveTo(cx, cy);
+            ctx.arc(cx, cy, sideLength, angleA_start, angleA_end);
+            ctx.closePath();
+
+            ctx.moveTo(cx, cy);
+            ctx.arc(cx, cy, sideLength, angleB_start, angleB_end);
+            ctx.closePath();
+
+            ctx.fillStyle = 'rgba(255, 228, 196, 0.7)'; // 淡橙色
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // 3. 绘制静态虚线三角形
+        drawTriangle(0, true, '#a0a0a0', null); 
+        drawTriangle(MAX_ROTATION, true, '#a0a0a0', null); 
+
+        // 4. 绘制当前拖动的三角形 - 亮橙色
+        drawTriangle(rotationAngle, false, '#000000', 'rgba(255, 140, 0, 0.9)'); 
+
+        // 5. 文字标记
+        drawLabels();
+    }
+
+    function drawTriangle(rot, isDashed, strokeColor, fillColor) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(rot);
+
+        ctx.beginPath();
+        ctx.moveTo(0, 0); // C
+        ctx.lineTo(-sideLength, 0); // A
+        
+        const bx = sideLength * Math.cos(4 * Math.PI / 3);
+        const by = sideLength * Math.sin(4 * Math.PI / 3);
+        ctx.lineTo(bx, by);
+        
+        ctx.closePath();
+
+        if (fillColor) {
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+        }
+
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2;
+        if (isDashed) {
+            ctx.setLineDash([5, 5]);
+            ctx.lineWidth = 1.5;
+        } else {
+            ctx.setLineDash([]);
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawLabels() {
+        ctx.fillStyle = "#000";
+        ctx.font = "italic 24px Times New Roman";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        
+        const offset = 35; // 基础偏移距离
+
+        // 1. C 点 (固定)
+        ctx.fillText("C", cx, cy + offset);
+
+        // 2. 终点标记 B' 和 A' (静态)
+        const endAngleA = Math.PI + MAX_ROTATION;
+        const endAngleB = 4 * Math.PI / 3 + MAX_ROTATION;
+        
+        const Ax_prime = cx + sideLength * Math.cos(endAngleA);
+        const Ay_prime = cy + sideLength * Math.sin(endAngleA);
+        const Bx_prime = cx + sideLength * Math.cos(endAngleB);
+        const By_prime = cy + sideLength * Math.sin(endAngleB);
+        
+        // 终点三角形重心 G'
+        const Gx_prime = (cx + Ax_prime + Bx_prime) / 3;
+        const Gy_prime = (cy + Ay_prime + By_prime) / 3;
+
+        // A' 标签
+        const distGA_prime = Math.hypot(Ax_prime - Gx_prime, Ay_prime - Gy_prime);
+        const labelAx_prime = Ax_prime + (Ax_prime - Gx_prime) / distGA_prime * offset;
+        const labelAy_prime = Ay_prime + (Ay_prime - Gy_prime) / distGA_prime * offset;
+        ctx.fillText("A'", labelAx_prime, labelAy_prime);
+
+        // B' 标签
+        ctx.fillText("B'", cx + sideLength, cy + offset); 
+        
+        
+        // 3. 动态绘制 A 和 B
+        if (rotationAngle < MAX_ROTATION - 0.05) {
+            
+            // --- 计算当前 A 和 B 的真实坐标 ---
+            const currentAngleA = Math.PI + rotationAngle;
+            const Ax = cx + sideLength * Math.cos(currentAngleA);
+            const Ay = cy + sideLength * Math.sin(currentAngleA);
+
+            const currentAngleB = 4 * Math.PI / 3 + rotationAngle;
+            const Bx = cx + sideLength * Math.cos(currentAngleB);
+            const By = cy + sideLength * Math.sin(currentAngleB);
+
+            // --- 计算当前三角形重心 G ---
+            const Gx = (Ax + Bx + cx) / 3;
+            const Gy = (Ay + By + cy) / 3;
+
+            // --- 计算 A 的标签位置 ---
+            const dxA = Ax - Gx;
+            const dyA = Ay - Gy;
+            const lenA = Math.sqrt(dxA*dxA + dyA*dyA);
+            
+            const labelAx = Ax + (dxA / lenA) * offset;
+            
+            // 【修改点】：在计算出的重心方向 Y 坐标基础上，额外增加 15px
+            // 这样在初始状态下，A 会比纯重心方向更靠下，与 C (cy + 35) 视觉对齐
+            const labelAy = Ay + (dyA / lenA) * offset + 15; 
+            
+            ctx.fillText("A", labelAx, labelAy);
+
+            // --- 计算 B 的标签位置 ---
+            const dxB = Bx - Gx;
+            const dyB = By - Gy;
+            const lenB = Math.sqrt(dxB*dxB + dyB*dyB);
+            
+            const labelBx = Bx + (dxB / lenB) * offset;
+            const labelBy = By + (dyB / lenB) * offset;
+            ctx.fillText("B", labelBx, labelBy);
+        }
+    }
+</script>
+</body>
+</html>
