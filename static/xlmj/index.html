@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小路面积相等吗？</title>
+    <style>
+        :root {
+            --primary-green: #72bd52;
+            --primary-blue: #3b82f6;
+            --bg-color: #f1f5f9;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            padding: 0;
+            margin: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .canvas-wrapper {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 0 20px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            background: #cbd5e1;
+            box-sizing: border-box;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .canvas-wrapper::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .canvas-wrapper::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+
+        .shape-card {
+            flex: 0 0 auto;
+            width: 42vw;
+            aspect-ratio: 16 / 9;
+            position: relative;
+            background: transparent;
+            overflow: visible;
+            overflow: hidden;
+        }
+
+        svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            /* touch-action: none; Removed to allow scrolling on white backgrounds of regular cards */
+            overflow: visible;
+        }
+
+        .green-part {
+            fill: var(--primary-green);
+            stroke: none;
+            cursor: grab;
+            transition: none;
+            touch-action: none;
+            /* Block browser actions on draggable parts */
+        }
+
+        .green-part:active {
+            cursor: grabbing;
+        }
+
+        .label {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            background: rgba(0, 0, 0, 0.1);
+            padding: 0.2rem 0.5rem;
+            color: rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            font-size: 0.9rem;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .card-hint {
+            position: absolute;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 0, 0, 0.4);
+            font-size: 0.8rem;
+            pointer-events: none;
+            user-select: none;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="canvas-wrapper" class="canvas-wrapper">
+        <!-- 1. Rectangle -->
+        <div class="shape-card" id="card-1">
+            <span class="label">1</span>
+            <svg id="svg-1">
+                <rect width="100%" height="100%" fill="white" />
+                <path class="green-part left-part" />
+                <path class="green-part right-part" />
+            </svg>
+        </div>
+
+        <!-- 2. Parallelogram -->
+        <div class="shape-card" id="card-2">
+            <span class="label">2</span>
+            <svg id="svg-2">
+                <rect width="100%" height="100%" fill="white" />
+                <path class="green-part left-part" />
+                <path class="green-part right-part" />
+            </svg>
+        </div>
+
+        <!-- 3. Zigzag -->
+        <div class="shape-card" id="card-3">
+            <span class="label">3</span>
+            <svg id="svg-3">
+                <rect width="100%" height="100%" fill="white" />
+                <path class="green-part left-part" />
+                <path class="green-part right-part" />
+            </svg>
+        </div>
+
+        <!-- 4. S-Curve -->
+        <div class="shape-card" id="card-4">
+            <span class="label">4</span>
+            <svg id="svg-4">
+                <rect width="100%" height="100%" fill="white" />
+                <path class="green-part left-part" />
+                <path class="green-part right-part" />
+            </svg>
+        </div>
+
+        <!-- 5. Custom -->
+        <div class="shape-card" id="card-5" style="touch-action: none;">
+            <!-- Block all browser actions on Card 5 for drawing support -->
+            <span class="label">5</span>
+            <svg id="svg-5">
+                <rect width="100%" height="100%" fill="white" />
+                <path class="green-part left-part" />
+                <path class="green-part right-part" />
+            </svg>
+            <div class="card-hint">拉动铺路</div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let customPathPoints = [];
+        let isDrawing = false;
+        const wrappers = document.querySelectorAll('.shape-card');
+
+        function initApp() {
+            renderAll();
+            window.addEventListener('resize', renderAll);
+            wrapperScroll();
+            initDragLogic();
+        }
+
+        function wrapperScroll() {
+            const el = document.getElementById('canvas-wrapper');
+            el.addEventListener("wheel", (evt) => {
+                if (Math.abs(evt.deltaY) > Math.abs(evt.deltaX)) {
+                    evt.preventDefault();
+                    el.scrollLeft += evt.deltaY;
+                }
+            });
+        }
+
+        function getDims(container) {
+            const rect = container.getBoundingClientRect();
+            const roadW = rect.width * 0.2;
+            const halfW = roadW / 2;
+            return {
+                w: rect.width,
+                h: rect.height,
+                cx: rect.width / 2,
+                halfW: halfW,
+                roadW: roadW
+            };
+        }
+
+        function renderAll() {
+            wrappers.forEach((el, idx) => {
+                renderShape(idx + 1, el);
+            });
+        }
+
+        function renderShape(id, container) {
+            const { w, h, cx, halfW } = getDims(container);
+            const svg = container.querySelector('svg');
+            const leftPath = svg.querySelector('.left-part');
+            const rightPath = svg.querySelector('.right-part');
+
+            let leftEdge = [];
+            let rightEdge = [];
+
+            if (id === 1) { // Rectangle
+                leftEdge = [{ x: cx - halfW, y: 0 }, { x: cx - halfW, y: h }];
+                rightEdge = [{ x: cx + halfW, y: 0 }, { x: cx + halfW, y: h }];
+            } else if (id === 2) { // Parallelogram
+                const slant = h * 0.25;
+                leftEdge = [{ x: cx - halfW + slant, y: 0 }, { x: cx - halfW - slant, y: h }];
+                rightEdge = [{ x: cx + halfW + slant, y: 0 }, { x: cx + halfW - slant, y: h }];
+            } else if (id === 3) { // Zigzag
+                const midY = h / 2;
+                const bulge = w * 0.15;
+                leftEdge = [{ x: cx - halfW, y: 0 }, { x: cx - halfW + bulge, y: midY }, { x: cx - halfW, y: h }];
+                rightEdge = [{ x: cx + halfW, y: 0 }, { x: cx + halfW + bulge, y: midY }, { x: cx + halfW, y: h }];
+            } else if (id === 5) {
+                if (customPathPoints.length < 2) customPathPoints = [{ x: cx, y: 0 }, { x: cx, y: 2 }];
+                renderCustom(container);
+                return;
+            }
+
+            let dLeft, dRight;
+            if (id === 4) { // S-Curve
+                const sOffset = w * 0.25;
+                const pTopL = cx - halfW, pBtmL = cx - halfW;
+                // Corrected Control Points: Left Edge
+                // Bottom Control moves Left (-). Top Control moves Right (+).
+                dLeft = `M 0,0 L 0,${h} L ${pBtmL},${h} 
+                         C ${pBtmL - sOffset},${h * 0.66} ${pTopL + sOffset},${h * 0.33} ${pTopL},0 Z`;
+
+                const pTopR = cx + halfW, pBtmR = cx + halfW;
+                // Corrected Control Points: Right Edge (Parallel)
+                // Top (start) moves Right (+). Bottom (end) moves Left (-).
+                dRight = `M ${w},0 L ${pTopR},0 
+                          C ${pTopR + sOffset},${h * 0.33} ${pBtmR - sOffset},${h * 0.66} ${pBtmR},${h} 
+                          L ${w},${h} Z`;
+            } else {
+                dLeft = `M 0,0 L 0,${h}`;
+                for (let i = leftEdge.length - 1; i >= 0; i--) dLeft += ` L ${leftEdge[i].x},${leftEdge[i].y}`;
+                dLeft += " Z";
+                dRight = `M ${w},0`;
+                for (let i = 0; i < rightEdge.length; i++) dRight += ` L ${rightEdge[i].x},${rightEdge[i].y}`;
+                dRight += ` L ${w},${h} Z`;
+            }
+
+            leftPath.setAttribute('d', dLeft);
+            rightPath.setAttribute('d', dRight);
+        }
+
+        function renderCustom(container) {
+            const { w, h, cx, halfW } = getDims(container);
+            const leftPath = container.querySelector('.left-part');
+            const rightPath = container.querySelector('.right-part');
+            const pts = customPathPoints;
+            const getL = (pt) => ({ x: pt.x - halfW, y: pt.y });
+            let dLeft = `M 0,0 L 0,${h} L ${cx},${h}`;
+            if (pts.length > 0) {
+                dLeft += ` L ${cx},${pts[pts.length - 1].y}`;
+                for (let i = pts.length - 1; i >= 0; i--) {
+                    const p = getL(pts[i]);
+                    dLeft += ` L ${p.x},${p.y}`;
+                }
+            }
+            dLeft += ` Z`;
+            let dRight = `M ${w},0 L ${w},${h} L ${cx},${h}`;
+            if (pts.length > 0) {
+                dRight += ` L ${cx},${pts[pts.length - 1].y}`;
+                const getR = (pt) => ({ x: pt.x + halfW, y: pt.y });
+                for (let i = pts.length - 1; i >= 0; i--) {
+                    const p = getR(pts[i]);
+                    dRight += ` L ${p.x},${p.y}`;
+                }
+            }
+            dRight += ` Z`;
+            leftPath.setAttribute('d', dLeft);
+            rightPath.setAttribute('d', dRight);
+        }
+
+        // --- Logic ---
+        let activeDragEl = null;
+        let activePartnerEl = null;
+        let startX = 0, startY = 0;
+        let startTrans = 0;
+        let partnerTrans = 0;
+        let activeAction = null;
+
+        // Variables for Collision
+        let dragIsLeft = false;
+        let roadWidth = 0;
+
+        function initDragLogic() {
+            const allCards = document.querySelectorAll('.shape-card');
+            allCards.forEach(card => {
+                card.addEventListener('mousedown', handleStart);
+                card.addEventListener('touchstart', handleStart, { passive: false });
+            });
+            window.addEventListener('mousemove', handleMove);
+            window.addEventListener('touchmove', handleMove, { passive: false });
+            window.addEventListener('mouseup', handleEnd);
+            window.addEventListener('touchend', handleEnd);
+        }
+
+        function getTransX(el) {
+            const style = window.getComputedStyle(el);
+            return new WebKitCSSMatrix(style.transform).m41;
+        }
+
+        function handleStart(e) {
+            const target = e.target;
+            const touches = e.touches ? e.touches[0] : e;
+
+            startX = touches.clientX;
+            startY = touches.clientY;
+            activeAction = null;
+
+            if (target.classList.contains('green-part')) {
+                if (e.cancelable && e.type === 'touchstart') e.preventDefault(); // Lock drag immediately for green parts
+
+                activeDragEl = target;
+                dragIsLeft = target.classList.contains('left-part');
+
+                // Find Partner
+                const parent = target.parentElement; // SVG
+                activePartnerEl = dragIsLeft ? parent.querySelector('.right-part') : parent.querySelector('.left-part');
+
+                startTrans = getTransX(activeDragEl);
+                partnerTrans = getTransX(activePartnerEl);
+
+                // Calculate Road Width for Collision Constraint
+                const card = target.closest('.shape-card');
+                const dims = getDims(card);
+                roadWidth = dims.roadW;
+
+            } else if (e.currentTarget.id === 'card-5') {
+                if (e.target.closest('#card-5') && !target.classList.contains('green-part')) {
+                    if (e.cancelable && e.type === 'touchstart') e.preventDefault(); // Lock drawing immediately
+                    activeAction = 'draw';
+                    initDraw(e, e.currentTarget);
+                }
+            }
+        }
+
+        function handleMove(e) {
+            if (activeAction === 'draw') {
+                doDraw(e);
+                return;
+            }
+
+            if (!activeDragEl && !activeAction) return;
+
+            const touches = e.touches ? e.touches[0] : e;
+            const dx = touches.clientX - startX;
+            const dy = touches.clientY - startY;
+
+            if (!activeAction && activeDragEl) {
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    activeAction = 'drag-part';
+                } else {
+                    const card = activeDragEl.closest('.shape-card');
+                    if (card && card.id === 'card-5') {
+                        activeAction = 'draw';
+                        activeDragEl = null;
+                        initDraw(e, card);
+                        return;
+                    } else {
+                        activeAction = 'drag-part'; // Lock to drag
+                    }
+                }
+            }
+
+            if (activeAction === 'drag-part' && activeDragEl) {
+                if (e.cancelable) e.preventDefault();
+
+                let newTrans = startTrans + dx;
+
+                if (dragIsLeft) {
+                    // Collision with Partner (Cannot go beyond partner + width)
+                    if (newTrans > partnerTrans + roadWidth) {
+                        newTrans = partnerTrans + roadWidth;
+                    }
+                    // Boundary Constraint (Cannot go out left)
+                    if (newTrans < 0) {
+                        newTrans = 0;
+                    }
+                } else {
+                    // Collision with Partner (Cannot go beyond partner - width)
+                    if (newTrans < partnerTrans - roadWidth) {
+                        newTrans = partnerTrans - roadWidth;
+                    }
+                    // Boundary Constraint (Cannot go out right)
+                    if (newTrans > 0) {
+                        newTrans = 0;
+                    }
+                }
+
+                activeDragEl.style.transform = `translateX(${newTrans}px)`;
+            }
+        }
+
+        function handleEnd() {
+            activeDragEl = null;
+            activeAction = null;
+            isDrawing = false;
+        }
+
+        function initDraw(e, card) {
+            isDrawing = true;
+            doDraw(e, card);
+        }
+
+        function doDraw(e, card) {
+            if (!isDrawing) return;
+            if (!card) card = document.getElementById('card-5');
+            const rect = card.getBoundingClientRect();
+            const touches = e.touches ? e.touches[0] : e;
+            const relX = touches.clientX - rect.left;
+            const relY = touches.clientY - rect.top;
+
+            const lastY = customPathPoints.length > 0 ? customPathPoints[customPathPoints.length - 1].y : 0;
+            if (relY <= lastY + 2) return;
+
+            customPathPoints.push({ x: relX, y: relY });
+            renderCustom(card);
+            if (e.cancelable) e.preventDefault();
+        }
+
+        setTimeout(initApp, 50);
+
+    </script>
+</body>
+
+</html>
