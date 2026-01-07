@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML 离线化打包工具</title>
+    <!-- 引入 JSZip 用于打包 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .drop-zone--over { border-color: #3b82f6; background-color: #eff6ff; }
+        .loading-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #1f2937; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col items-center py-12 px-4">
+
+    <div class="max-w-2xl w-full bg-white rounded-xl shadow-lg p-8">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">HTML 离线打包工具</h1>
+
+        <!-- 上传区域 -->
+        <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer transition-all hover:border-blue-400 group relative">
+            <div class="flex flex-col items-center z-10 relative">
+                <svg class="w-10 h-10 text-gray-400 mb-3 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <p class="text-gray-500 text-sm">拖拽 HTML 文件 或 点击上传</p>
+                <input type="file" id="file-input" accept=".html,.htm,.txt" class="hidden">
+            </div>
+        </div>
+
+        <!-- 分割线 -->
+        <div class="relative flex py-5 items-center">
+            <div class="flex-grow border-t border-gray-200"></div>
+            <span class="flex-shrink-0 mx-4 text-gray-400 text-xs">或者粘贴在线链接</span>
+            <div class="flex-grow border-t border-gray-200"></div>
+        </div>
+
+        <!-- 在线链接输入 -->
+        <div class="flex gap-2">
+            <input type="text" id="url-input" placeholder="https://..." class="flex-1 border border-gray-300 rounded-md px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+            <button id="url-btn" class="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap">
+                智能解析
+            </button>
+        </div>
+
+        <!-- 动作面板 -->
+        <div id="actions-panel" class="hidden mt-6 space-y-4">
+            <div class="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <div class="flex items-center overflow-hidden mr-4">
+                    <svg class="w-5 h-5 text-blue-600 flex-shrink-0 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span id="file-info" class="text-blue-700 font-medium truncate text-sm"></span>
+                </div>
+                <button id="process-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-md text-sm font-semibold transition-colors shadow-sm whitespace-nowrap">
+                    开始处理
+                </button>
+            </div>
+        </div>
+
+        <!-- 日志区域 -->
+        <div class="mt-8">
+            <div class="flex justify-between items-end mb-2">
+                <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">处理日志</h3>
+                <span id="status-badge" class="hidden text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">运行中</span>
+            </div>
+            <div id="log-container" class="custom-scroll bg-gray-900 text-green-400 font-mono text-xs p-4 h-64 overflow-y-auto rounded-lg shadow-inner">
+                <div class="text-gray-500 italic">系统就绪，等待任务...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- UI 元素 ---
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const urlInput = document.getElementById('url-input');
+        const urlBtn = document.getElementById('url-btn');
+        const actionsPanel = document.getElementById('actions-panel');
+        const fileInfo = document.getElementById('file-info');
+        const processBtn = document.getElementById('process-btn');
+        const logContainer = document.getElementById('log-container');
+        const statusBadge = document.getElementById('status-badge');
+
+        let rawHtml = '';
+        let originalFileName = 'index.html';
+
+        // --- 核心配置 ---
+        const mimeMap = {
+            'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
+            'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/x-icon': 'ico',
+            'text/css': 'css', 
+            'application/javascript': 'js', 'text/javascript': 'js', 'application/x-javascript': 'js',
+            'application/json': 'json',
+            'audio/mpeg': 'mp3', 'audio/wav': 'wav',
+            'video/mp4': 'mp4', 'video/webm': 'webm',
+            'model/gltf-binary': 'glb', 'model/gltf+json': 'gltf', 'application/octet-stream': 'bin'
+        };
+
+        const PROXY_GATEWAYS = [
+            { name: 'CorsProxy', gen: url => `https://corsproxy.io/?${encodeURIComponent(url)}` },
+            { name: 'Cors.sh', gen: url => `https://proxy.cors.sh/${url}`, headers: { 'x-cors-api-key': 'temp_f01dbb4b7a3e83e6956a1f271e698ee7' } },
+            { name: 'CodeTabs', gen: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` },
+            { name: 'ThingProxy', gen: url => `https://thingproxy.freeboard.io/fetch/${url}` }
+        ];
+
+        // --- 工具函数 ---
+        function addLog(msg, type = 'info') {
+            if (logContainer.querySelector('.italic')) logContainer.innerHTML = '';
+            const div = document.createElement('div');
+            const color = type === 'error' ? 'text-red-400' : (type === 'success' ? 'text-blue-400' : (type === 'warn' ? 'text-yellow-400' : 'text-green-400'));
+            div.className = `mb-1 break-all ${color}`;
+            div.textContent = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        async function fetchSmart(targetUrl, responseType = 'text') {
+            let lastError = null;
+            for (const gateway of PROXY_GATEWAYS) {
+                try {
+                    const proxyUrl = gateway.gen(targetUrl);
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000); 
+                    
+                    const res = await fetch(proxyUrl, { 
+                        signal: controller.signal, 
+                        headers: gateway.headers || {} 
+                    });
+                    clearTimeout(timeoutId);
+
+                    if (res.ok) return responseType === 'blob' ? await res.blob() : await res.text();
+                } catch (e) {
+                    lastError = e;
+                    continue;
+                }
+            }
+            throw new Error(`资源下载失败: ${targetUrl.substring(0,30)}...`);
+        }
+
+        // --- UI 交互 ---
+        dropZone.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drop-zone--over'); };
+        dropZone.ondragleave = () => dropZone.classList.remove('drop-zone--over');
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drop-zone--over');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        };
+
+        urlBtn.onclick = () => handleUrl(urlInput.value.trim());
+
+        function handleFile(file) {
+            if (!file) return;
+            originalFileName = file.name;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                rawHtml = e.target.result;
+                fileInfo.textContent = `本地文件: ${file.name}`;
+                actionsPanel.classList.remove('hidden');
+                addLog(`已加载: ${file.name}`, 'success');
+            };
+            reader.readAsText(file);
+        }
+
+        async function handleUrl(url) {
+            if (!url.startsWith('http')) return alert('请输入完整 URL');
+            urlBtn.disabled = true;
+            urlBtn.textContent = '解析中...';
+            logContainer.innerHTML = '';
+            
+            try {
+                addLog(`正在连接: ${url}`);
+                
+                let htmlText = '';
+                
+                // --- 修改：优先直连 (Direct Fetch) ---
+                try {
+                    // 尝试不使用任何代理直接访问
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    htmlText = await res.text();
+                    addLog('直连访问成功', 'success');
+                } catch (e) {
+                    addLog(`直连失败(可能跨域)，切换代理线路...`, 'warn');
+                    // 如果直连失败，回退到智能代理获取 HTML
+                    htmlText = await fetchSmart(url, 'text');
+                }
+                
+                let finalContent = htmlText;
+                let detectedName = 'online_project.html';
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlText, 'text/html');
+
+                if (url.includes('musk-online.fbcontent.cn')) {
+                    addLog('识别为 Musk 文档，提取中...');
+                    const iframe = doc.querySelector('iframe.content-iframe');
+                    if (iframe && iframe.getAttribute('srcdoc')) {
+                        const ta = document.createElement('textarea');
+                        ta.innerHTML = iframe.getAttribute('srcdoc');
+                        finalContent = ta.value;
+                    }
+                } else if (url.includes('html2web.com')) {
+                    addLog('识别为 HTML2Web，提取中...');
+                    const iframe = doc.querySelector('iframe#projectFrame');
+                    if (iframe) {
+                        let src = iframe.getAttribute('src');
+                        if (src.startsWith('//')) src = 'https:' + src;
+                        else if (!src.startsWith('http')) src = new URL(src, url).href;
+                        // 内部项目源码通常也需要代理，除非也是同源
+                        try {
+                            const res = await fetch(src);
+                            if(!res.ok) throw new Error('Direct failed');
+                            finalContent = await res.text();
+                        } catch(e) {
+                             finalContent = await fetchSmart(src, 'text');
+                        }
+                    }
+                }
+
+                const titleMatch = finalContent.match(/<title>(.*?)<\/title>/i);
+                if (titleMatch && titleMatch[1]) detectedName = titleMatch[1].trim().replace(/[\\/:*?"<>|]/g, '_') + '.html';
+
+                rawHtml = finalContent;
+                originalFileName = detectedName;
+                fileInfo.textContent = `在线解析: ${detectedName}`;
+                actionsPanel.classList.remove('hidden');
+                addLog('解析成功，准备打包', 'success');
+            } catch (e) {
+                addLog(`错误: ${e.message}`, 'error');
+            } finally {
+                urlBtn.disabled = false;
+                urlBtn.textContent = '智能解析';
+            }
+        }
+
+        // --- 核心打包逻辑 (智能判断版) ---
+        processBtn.onclick = async () => {
+            processBtn.disabled = true;
+            processBtn.textContent = '正在处理...';
+            statusBadge.classList.remove('hidden');
+
+            const zip = new JSZip();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(rawHtml, 'text/html');
+            
+            let pageTitle = doc.querySelector('title')?.innerText?.trim() || 'Offline_Project';
+            pageTitle = pageTitle.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_');
+            const rootFolder = zip.folder(pageTitle);
+            const assetsFolder = rootFolder.folder("assets");
+
+            const processedUrls = new Map(); // url -> uniquePath
+            let successCount = 0;
+
+            // 下载并保存
+            const downloadAndSave = async (url, folderType) => {
+                if (!url || !url.startsWith('http')) return null;
+                if (url.startsWith('//')) url = 'https:' + url;
+                if (processedUrls.has(url)) return processedUrls.get(url);
+
+                try {
+                    let fileName = '';
+                    try { fileName = new URL(url).pathname.split('/').pop(); } catch(e) { fileName = 'resource'; }
+                    fileName = fileName.split(/[?#]/)[0];
+                    if (!fileName) fileName = `res_${Math.random().toString(36).slice(2,7)}`;
+
+                    addLog(`下载: ${fileName}`, 'info');
+                    // 资源下载强制使用代理 (fetchSmart)
+                    let blob = await fetchSmart(url, 'blob');
+                    
+                    if (!fileName.includes('.')) {
+                        const ext = mimeMap[blob.type] || 'dat';
+                        fileName += `.${ext}`;
+                    }
+                    fileName = fileName.replace(/[<>:"/\\|?*]/g, '_');
+
+                    const basePath = `${folderType}/${fileName}`;
+                    let uniquePath = basePath;
+                    let counter = 1;
+                    while (zip.file(`${pageTitle}/assets/${uniquePath}`)) {
+                        uniquePath = `${folderType}/${fileName.replace(/(\.[^.]+)$/, `_${counter}$1`)}`;
+                        counter++;
+                    }
+
+                    processedUrls.set(url, uniquePath);
+
+                    // 外部 CSS 需深度解析，并且使用相对路径 "../"
+                    if (folderType === 'css' || fileName.endsWith('.css')) {
+                        let textContent = await blob.text();
+                        let processedText = await processCssContent(textContent, '../'); 
+                        blob = new Blob([processedText], { type: blob.type });
+                        assetsFolder.file(uniquePath, blob);
+                    } else {
+                        assetsFolder.file(uniquePath, blob);
+                    }
+
+                    successCount++;
+                    return uniquePath;
+                } catch (e) {
+                    addLog(`失败: ${url} (${e.message})`, 'warn');
+                    return null;
+                }
+            };
+
+            // 处理器：CSS
+            const processCssContent = async (cssText, pathPrefix) => {
+                const regex = /url\(\s*(?:["']?)(http[s]?:\/\/|(?:\/\/))([^"'\)]+)(?:["']?)\s*\)/gi;
+                const matches = [...cssText.matchAll(regex)];
+                
+                let newCss = cssText;
+                for (const match of matches) {
+                    const fullUrl = (match[1].startsWith('//') ? 'https:' : match[1]) + match[2];
+                    const uniquePath = await downloadAndSave(fullUrl, 'images');
+                    if (uniquePath) {
+                        const finalPath = `${pathPrefix}${uniquePath}`;
+                        newCss = newCss.replace(match[0], `url("${finalPath}")`);
+                    }
+                }
+                return newCss;
+            };
+
+            // 处理器：内联 JavaScript
+            const processJsContent = async (jsCode) => {
+                const jsAssetRegex = /(["'`])(https?:\/\/[^"']+\.(?:png|jpg|jpeg|gif|webp|svg|ico|mp3|mp4|webm|wav|json|glb|gltf|bin|css))(?:\?[^"']*)?\1/gi;
+                const matches = [...jsCode.matchAll(jsAssetRegex)];
+                let newJs = jsCode;
+                for (const match of matches) {
+                    const fullUrl = match[2];
+                    const uniquePath = await downloadAndSave(fullUrl, type = 'misc'); // 简化 type 推断
+                    if (uniquePath) {
+                        const finalPath = `./assets/${uniquePath}`; 
+                        const fullMatchStr = match[0]; 
+                        const newStr = fullMatchStr.replace(fullUrl, finalPath);
+                        newJs = newJs.replace(fullMatchStr, newStr);
+                    }
+                }
+                return newJs;
+            };
+
+            // --- 扫描 HTML ---
+            addLog('=== 阶段 1: 扫描 HTML 标签 ===', 'info');
+            
+            const selectors = [
+                { tag: 'img', attr: 'src', folder: 'images' },
+                { tag: 'img', attr: 'data-src', folder: 'images' },
+                { tag: 'link[rel="stylesheet"]', attr: 'href', folder: 'css' },
+                { tag: 'link[rel*="icon"]', attr: 'href', folder: 'icons' },
+                { tag: 'script[src]', attr: 'src', folder: 'js' }, 
+                { tag: 'video', attr: 'src', folder: 'media' },
+                { tag: 'video', attr: 'poster', folder: 'images' },
+                { tag: 'audio', attr: 'src', folder: 'media' },
+                { tag: 'source', attr: 'src', folder: 'media' }
+            ];
+
+            for (const item of selectors) {
+                const elements = doc.querySelectorAll(item.tag);
+                for (const el of elements) {
+                    const url = el.getAttribute(item.attr);
+                    if (url) {
+                        const uniquePath = await downloadAndSave(url, item.folder);
+                        if (uniquePath) {
+                            el.setAttribute(item.attr, `./assets/${uniquePath}`);
+                        }
+                    }
+                }
+            }
+
+            // 2. 内联 CSS
+            addLog('=== 阶段 2: 扫描内联 CSS ===', 'info');
+            const styles = doc.querySelectorAll('style');
+            for (const s of styles) {
+                s.textContent = await processCssContent(s.textContent, './assets/');
+            }
+            const inlineStyles = doc.querySelectorAll('*[style]');
+            for (const el of inlineStyles) {
+                const newStyle = await processCssContent(el.getAttribute('style'), './assets/');
+                el.setAttribute('style', newStyle);
+            }
+
+            // 3. 内联 JS
+            addLog('=== 阶段 3: 扫描内联 JS ===', 'info');
+            const scripts = doc.querySelectorAll('script:not([src])');
+            for (const s of scripts) {
+                if (s.textContent.includes('http')) {
+                    s.textContent = await processJsContent(s.textContent);
+                }
+            }
+
+            // --- 智能输出结果 ---
+            const finalHtml = "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+
+            if (successCount === 0) {
+                // 如果没有外链资源，直接下载 HTML 文件
+                addLog('未检测到需要下载的资源，生成单文件...', 'success');
+                const blob = new Blob([finalHtml], { type: 'text/html' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = originalFileName;
+                a.click();
+                addLog('单文件下载已触发！', 'success');
+            } else {
+                // 否则，生成 ZIP 包
+                addLog('=== 生成压缩包 ===', 'info');
+                rootFolder.file(originalFileName, finalHtml);
+                try {
+                    const content = await zip.generateAsync({ type: "blob" });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(content);
+                    a.download = `${pageTitle}_Packed.zip`;
+                    a.click();
+                    addLog(`打包完成！共处理 ${successCount} 个资源`, 'success');
+                } catch (e) {
+                    addLog(`打包失败: ${e.message}`, 'error');
+                }
+            }
+
+            processBtn.disabled = false;
+            processBtn.textContent = '开始处理';
+            statusBadge.classList.add('hidden');
+        };
+    </script>
+</body>
+</html>
