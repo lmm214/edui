@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>今日月相</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Google Fonts: Noto Sans SC (中文) + Space Mono (数字/科技感) -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;700;900&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap"
+        rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Space Mono', 'Noto Sans SC', monospace;
+            background-color: #020617;
+            /* Slate 950 */
+            color: #ecfeff;
+            /* Cyan 50 */
+            overflow-x: hidden;
+        }
+
+        /* 动态背景网格 */
+        .grid-bg {
+            background-image:
+                linear-gradient(rgba(6, 182, 212, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(6, 182, 212, 0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* 装饰性旋转环动画 */
+        @keyframes spin-slow {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes spin-reverse-slower {
+            from {
+                transform: rotate(360deg);
+            }
+
+            to {
+                transform: rotate(0deg);
+            }
+        }
+
+        .animate-spin-slow {
+            animation: spin-slow 60s linear infinite;
+        }
+
+        .animate-spin-reverse {
+            animation: spin-reverse-slower 80s linear infinite;
+        }
+
+        /* 隐藏滚动条但保留功能 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #06b6d4;
+        }
+
+        /* 玻璃拟态 */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(30, 41, 59, 0.8);
+        }
+
+        /* 霓虹发光文字 */
+        .text-glow {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+        }
+
+        /* 交互按钮点击效果 */
+        .btn-press:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+
+<body class="min-h-screen flex flex-col relative selection:bg-cyan-500 selection:text-black">
+
+    <!-- 背景层 -->
+    <div class="fixed inset-0 pointer-events-none z-0">
+        <div class="absolute inset-0 grid-bg"></div>
+        <div
+            class="absolute inset-0 bg-[radial-gradient(circle_at_center,_#1e293b_0%,_#020617_60%,_#000000_100%)] opacity-80">
+        </div>
+    </div>
+
+    <!-- 顶部 HUD 导航 -->
+    <header
+        class="relative z-20 w-full p-2 md:p-8 flex flex-col md:flex-row md:justify-between md:items-center gap-1 md:gap-4 border-b border-cyan-900/30 glass-panel">
+        <h1
+            class="text-xl md:text-5xl font-bold tracking-[0.1em] text-cyan-400 flex items-center justify-center md:justify-start gap-2 drop-shadow-lg">
+            今日月相
+        </h1>
+        <div class="text-center md:text-right">
+            <div id="display-date"
+                class="text-slate-300 text-xl md:text-2xl tracking-widest uppercase flex items-center justify-center md:justify-end gap-2 font-mono">
+                <!-- Javascript will populate this -->
+            </div>
+        </div>
+        <!-- Hidden year element to maintain JS compatibility -->
+        <div id="display-year" class="hidden">2026</div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main
+        class="relative z-10 w-full max-w-7xl mx-auto px-4 flex-1 flex flex-col md:flex-row items-center justify-between py-2 md:py-0 overflow-hidden">
+
+        <!-- 左侧数据面板 -->
+        <div class="hidden md:flex flex-col gap-8 w-80">
+            <div
+                class="stat-block group p-6 rounded border-l-4 border-transparent hover:border-cyan-500 hover:bg-cyan-950/20 transition-all duration-300">
+                <div class="flex items-center gap-2 text-cyan-600 mb-2 text-base font-bold tracking-widest">
+                    <i data-lucide="clock" class="w-5 h-5"></i> 月龄
+                </div>
+                <div id="stat-age" class="text-5xl text-slate-100 font-light font-mono">--</div>
+                <div class="text-sm text-slate-500 mt-2">朔望周期计算</div>
+            </div>
+
+            <div
+                class="stat-block group p-6 rounded border-l-4 border-transparent hover:border-cyan-500 hover:bg-cyan-950/20 transition-all duration-300">
+                <div class="flex items-center gap-2 text-cyan-600 mb-2 text-base font-bold tracking-widest">
+                    <i data-lucide="activity" class="w-5 h-5"></i> 照度
+                </div>
+                <div id="stat-illumination" class="text-5xl text-slate-100 font-light font-mono">--</div>
+                <div id="stat-illum-desc" class="text-sm text-slate-500 mt-2">--</div>
+            </div>
+
+            <div
+                class="stat-block group p-6 rounded border-l-4 border-transparent hover:border-cyan-500 hover:bg-cyan-950/20 transition-all duration-300">
+                <div class="flex items-center gap-2 text-cyan-600 mb-2 text-base font-bold tracking-widest">
+                    <i data-lucide="map-pin" class="w-5 h-5"></i> 地月距离
+                </div>
+                <div id="stat-distance" class="text-5xl text-slate-100 font-light font-mono">--</div>
+                <div class="text-sm text-slate-500 mt-2">实时模拟数据 (KM)</div>
+            </div>
+
+        </div>
+
+        <!-- 中间月球可视化 -->
+        <div class="flex-1 flex flex-col items-center justify-center relative w-full my-2 md:my-0">
+            <!-- 装饰圆环 -->
+            <!-- 装饰圆环 (已移除) -->
+
+
+            <!-- 月相名称显示 -->
+            <div class="mb-6 md:mb-12 text-center relative z-10">
+
+                <h2 id="phase-name-cn"
+                    class="text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-500 mt-2 md:mt-6 drop-shadow-xl tracking-tight">
+                    --
+                </h2>
+                <p id="phase-name-en"
+                    class="text-slate-500 font-mono text-sm md:text-xl mt-2 md:mt-4 tracking-[0.3em] uppercase">
+                    --
+                </p>
+            </div>
+
+            <!-- SVG 月球渲染容器 -->
+            <div id="moon-container"
+                class="relative w-full max-w-[360px] aspect-square md:w-96 md:h-96 flex items-center justify-center transition-all duration-1000 p-4">
+                <!-- 光晕 -->
+                <div id="moon-glow"
+                    class="absolute inset-0 rounded-full bg-cyan-500 blur-3xl opacity-20 transition-opacity duration-500">
+                </div>
+
+                <svg viewBox="-10 -10 220 220" class="w-full h-full drop-shadow-2xl overflow-visible">
+                    <defs>
+                        <radialGradient id="moonGradient" gradientUnits="userSpaceOnUse" cx="100" cy="100" r="90"
+                            fx="70" fy="70">
+                            <stop offset="0%" stop-color="#f8fafc" /> <!-- 更亮白 -->
+                            <stop offset="90%" stop-color="#cbd5e1" /> <!-- 亮灰蓝 -->
+                            <stop offset="100%" stop-color="#0f172a" /> <!-- 深色边缘 -->
+                        </radialGradient>
+
+                        <!-- 陨石坑纹理滤镜 & 边缘模糊 -->
+                        <filter id="craterTexture">
+                            <feTurbulence type="fractalNoise" baseFrequency="0.5" numOctaves="3" result="noise" />
+                            <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.3 0"
+                                in="noise" result="coloredNoise" />
+                            <feComposite operator="in" in="coloredNoise" in2="SourceGraphic" result="composite" />
+                            <feBlend mode="multiply" in="composite" in2="SourceGraphic" result="textured" />
+                            <feGaussianBlur in="textured" stdDeviation="1" result="blurred" /> <!-- 增加一点点模糊 -->
+                        </filter>
+
+                        <clipPath id="moon-clip">
+                            <circle cx="100" cy="100" r="90" />
+                        </clipPath>
+                    </defs>
+
+                    <!-- 1. 基础暗部 (背景圆) - 代表月球未被照亮的部分 -->
+                    <circle cx="100" cy="100" r="90" fill="#0f172a" stroke="#1e293b" stroke-width="1" />
+
+                    <!-- 2. 动态亮部 -->
+                    <g filter="url(#craterTexture)" clip-path="url(#moon-clip)">
+                        <!-- 当接近满月时，显示一个完整的底层亮圆，防止边缘计算误差产生的黑线 -->
+                        <circle id="full-moon-base" cx="100" cy="100" r="89.5" fill="url(#moonGradient)" opacity="0" />
+
+                        <!-- 核心路径：根据月相计算出的亮面 -->
+                        <path id="moon-path" d="" fill="url(#moonGradient)" />
+                    </g>
+
+                    <!-- 3. 纹理叠加层 (增加立体感) -->
+                    <circle cx="100" cy="100" r="90" fill="transparent" stroke="rgba(6,182,212,0.1)" stroke-width="1"
+                        opacity="0.5">
+                    </circle>
+                </svg>
+            </div>
+
+            <!-- 控制按钮 -->
+            <div class="hidden md:flex mt-12 items-center gap-8 z-20">
+                <button onclick="changeDay(-1)"
+                    class="btn-press flex flex-col items-center gap-2 text-slate-500 hover:text-cyan-400 transition-colors">
+                    <div
+                        class="p-3 md:p-4 rounded-full border border-slate-700 hover:border-cyan-500 bg-slate-900 shadow-lg hover:shadow-cyan-900/50 transition-all">
+                        <i data-lucide="chevron-left" class="w-6 h-6"></i>
+                    </div>
+                    <span class="text-[10px] tracking-widest font-bold">前一天</span>
+                </button>
+
+                <div class="flex flex-col items-center group cursor-pointer btn-press" onclick="setToday()">
+                    <button id="today-btn"
+                        class="w-16 h-16 md:w-20 md:h-20 rounded-full bg-cyan-600 text-white flex items-center justify-center shadow-[0_0_30px_rgba(6,182,212,0.4)] hover:scale-105 transition-transform hover:bg-cyan-400 hover:text-black relative overflow-hidden">
+                        <i data-lucide="refresh-cw" class="w-6 h-6 md:w-8 md:h-8 transition-transform duration-700"
+                            id="refresh-icon"></i>
+                    </button>
+                    <span
+                        class="mt-3 text-xs font-bold text-cyan-500 tracking-widest opacity-80 group-hover:opacity-100 transition-opacity">回到今日</span>
+                </div>
+
+                <button onclick="changeDay(1)"
+                    class="btn-press flex flex-col items-center gap-2 text-slate-500 hover:text-cyan-400 transition-colors">
+                    <div
+                        class="p-3 md:p-4 rounded-full border border-slate-700 hover:border-cyan-500 bg-slate-900 shadow-lg hover:shadow-cyan-900/50 transition-all">
+                        <i data-lucide="chevron-right" class="w-6 h-6"></i>
+                    </div>
+                    <span class="text-[10px] tracking-widest font-bold">后一天</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 右侧时间轴 -->
+        <div class="hidden md:flex flex-col w-80 gap-6 -mr-4">
+            <h3 class="text-base font-bold text-cyan-600 tracking-widest mb-2 flex items-center gap-2">
+                <i data-lucide="calendar" class="w-5 h-5"></i> 趋势预测
+            </h3>
+
+            <!-- 昨日卡片 -->
+            <div id="card-prev"
+                class="p-6 bg-slate-900/50 border border-slate-800 hover:border-cyan-500/50 transition-all group rounded-lg cursor-pointer">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded">昨日</span>
+                    <span class="text-base text-slate-400 font-mono prev-date-text">--</span>
+                </div>
+                <div
+                    class="text-xl font-bold text-slate-200 group-hover:text-cyan-300 transition-colors prev-phase-text">
+                    --</div>
+                <div class="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                    <div class="w-3 h-3 rounded-full bg-cyan-500 prev-dot"></div>
+                    <span class="prev-ill-text">--%</span>
+                </div>
+            </div>
+
+            <!-- 明日卡片 -->
+            <div id="card-next"
+                class="p-6 bg-slate-900/50 border border-slate-800 hover:border-cyan-500/50 transition-all group rounded-lg cursor-pointer">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded">明日</span>
+                    <span class="text-base text-slate-400 font-mono next-date-text">--</span>
+                </div>
+                <div
+                    class="text-xl font-bold text-slate-200 group-hover:text-cyan-300 transition-colors next-phase-text">
+                    --</div>
+                <div class="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                    <div class="w-3 h-3 rounded-full bg-cyan-500 next-dot"></div>
+                    <span class="next-ill-text">--%</span>
+                </div>
+            </div>
+
+            <!-- 进度条 -->
+            <div class="mt-auto border-t border-cyan-900/50 pt-6">
+                <div class="flex justify-between items-end mb-2">
+                    <span class="text-sm text-slate-500">本周期进度</span>
+                    <span id="cycle-percent" class="text-2xl font-bold text-cyan-400 font-mono">--%</span>
+                </div>
+                <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div id="cycle-bar" class="h-full bg-cyan-500 shadow-[0_0_10px_#06b6d4] transition-all duration-500"
+                        style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 移动端底部数据栏 -->
+    <div
+        class="md:hidden w-full p-4 grid grid-cols-3 gap-2 bg-slate-900/90 backdrop-blur border-t border-slate-800 z-20">
+        <button onclick="changeDay(-1)"
+            class="flex flex-col items-center justify-center text-slate-400 hover:text-cyan-400 active:scale-95 transition-all">
+            <i data-lucide="chevron-left" class="w-8 h-8 mb-1"></i>
+            <span class="text-sm">前一天</span>
+        </button>
+        <button onclick="setToday()"
+            class="flex flex-col items-center justify-center text-cyan-500 hover:text-cyan-300 active:scale-95 transition-all">
+            <i data-lucide="refresh-cw" class="w-8 h-8 mb-1"></i>
+            <span class="text-sm font-bold">回到今日</span>
+        </button>
+        <button onclick="changeDay(1)"
+            class="flex flex-col items-center justify-center text-slate-400 hover:text-cyan-400 active:scale-95 transition-all">
+            <i data-lucide="chevron-right" class="w-8 h-8 mb-1"></i>
+            <span class="text-sm">后一天</span>
+        </button>
+    </div>
+
+    <!-- 装饰角标 -->
+    <div class="fixed top-4 left-4 w-8 h-8 border-l-2 border-t-2 border-cyan-500 opacity-30 pointer-events-none"></div>
+    <div class="fixed top-4 right-4 w-8 h-8 border-r-2 border-t-2 border-cyan-500 opacity-30 pointer-events-none"></div>
+    <div class="fixed bottom-4 left-4 w-8 h-8 border-l-2 border-b-2 border-cyan-500 opacity-30 pointer-events-none">
+    </div>
+    <div class="fixed bottom-4 right-4 w-8 h-8 border-r-2 border-b-2 border-cyan-500 opacity-30 pointer-events-none">
+    </div>
+
+    <!-- 脚本逻辑 -->
+    <script>
+        // 初始化图标
+        lucide.createIcons();
+
+        // --- 核心逻辑 ---
+
+        const SYNODIC_MONTH = 29.53058867;
+        const REFERENCE_NEW_MOON = new Date('2000-01-06T18:14:00Z');
+
+        let currentDate = new Date('2026-01-10T00:00:00'); // 默认时间
+
+        function getLunarData(date) {
+            const diffTime = date.getTime() - REFERENCE_NEW_MOON.getTime();
+            const diffDays = diffTime / (1000 * 60 * 60 * 24);
+            const totalCycles = diffDays / SYNODIC_MONTH;
+            const currentCycleProgress = totalCycles - Math.floor(totalCycles);
+
+            const age = currentCycleProgress * SYNODIC_MONTH;
+
+            // 相位判断 (中文)
+            let phaseNameCN = '';
+            let phaseNameEN = '';
+
+            if (age < 1 || age > 28.5) { phaseNameCN = '新月'; phaseNameEN = 'New Moon'; }
+            else if (age < 6.4) { phaseNameCN = '蛾眉月'; phaseNameEN = 'Waxing Crescent'; }
+            else if (age < 8.4) { phaseNameCN = '上弦月'; phaseNameEN = 'First Quarter'; }
+            else if (age < 13.8) { phaseNameCN = '盈凸月'; phaseNameEN = 'Waxing Gibbous'; }
+            else if (age < 15.8) { phaseNameCN = '满月'; phaseNameEN = 'Full Moon'; }
+            else if (age < 21.1) { phaseNameCN = '亏凸月'; phaseNameEN = 'Waning Gibbous'; }
+            else if (age < 23.1) { phaseNameCN = '下弦月'; phaseNameEN = 'Last Quarter'; }
+            else { phaseNameCN = '残月'; phaseNameEN = 'Waning Crescent'; }
+
+            // 照度计算
+            const distFromFull = Math.abs(currentCycleProgress - 0.5);
+            const illumination = (0.5 - distFromFull) * 2 * 100;
+
+            return {
+                age: age.toFixed(1),
+                progress: currentCycleProgress, // 0 - 1
+                illumination: illumination.toFixed(1),
+                phaseNameCN,
+                phaseNameEN,
+                cycle: Math.floor(totalCycles)
+            };
+        }
+
+        // --- 渲染逻辑 ---
+
+        function updateUI() {
+            const data = getLunarData(currentDate);
+
+            // 日期显示
+            document.getElementById('display-year').innerText = currentDate.getFullYear();
+            const options = { month: 'long', day: 'numeric', weekday: 'long' };
+            document.getElementById('display-date').innerHTML = `<i data-lucide="clock" class="w-3 h-3"></i> ${currentDate.toLocaleDateString('zh-CN', options)}`;
+
+            // 核心数据
+            document.getElementById('stat-age').innerText = `${data.age} 天`;
+            document.getElementById('stat-illumination').innerText = `${data.illumination}%`;
+            document.getElementById('stat-illum-desc').innerText = data.illumination > 50 ? "高亮度" : "低亮度";
+
+            // 随机模拟地月距离 (为了视觉效果)
+            const simulatedDist = (360000 + Math.abs(Math.sin(data.age)) * 40000).toFixed(0);
+            document.getElementById('stat-distance').innerText = `${simulatedDist} KM`;
+
+            // 标题
+            document.getElementById('phase-name-cn').innerText = data.phaseNameCN;
+            document.getElementById('phase-name-en').innerText = data.phaseNameEN;
+
+            // 进度条
+            document.getElementById('cycle-percent').innerText = `${(data.progress * 100).toFixed(0)}%`;
+            document.getElementById('cycle-bar').style.width = `${data.progress * 100}%`;
+
+
+
+            // --- 月相 SVG 绘制 (关键修复) ---
+            renderMoonSVG(data.progress);
+
+            // 更新 lucide 图标 (动态插入的 HTML 需要重新渲染，这里主要是防止图标丢失)
+            lucide.createIcons();
+
+            // 更新侧边栏预览 (Yesterday/Tomorrow)
+            updateSideCards();
+        }
+
+        function renderMoonSVG(progress) {
+            const radius = 90;
+            const cx = 100;
+            const cy = 100;
+
+            // 修复：当极度接近满月（例如 illumination > 98%）时，直接显示全圆，避免浮点数计算导致的细微黑线
+            const isFullMoon = progress > 0.48 && progress < 0.52;
+            document.getElementById('full-moon-base').style.opacity = isFullMoon ? 1 : 0;
+
+            // 计算路径
+            const p = progress;
+            let d = "";
+
+            if (p < 0.01 || p > 0.99) {
+                // 新月: 全黑，路径为空
+                d = "";
+            } else if (isFullMoon) {
+                // 满月: 路径也是全圆，虽然有上面的 full-moon-base 辅助，但主路径也画上
+                d = `M ${cx} ${cy - radius} A ${radius} ${radius} 0 1 1 ${cx} ${cy + radius} A ${radius} ${radius} 0 1 1 ${cx} ${cy - radius}`;
+            } else {
+                // 核心算法
+                const isWaxing = p < 0.5; // 上半月 (右亮)
+
+                // 晨昏线宽度 (terminatorWidth)
+                // Math.cos(2 * PI * p)
+                // p=0.25 (上弦) -> cos=0 -> 直线
+                // p=0.5 (满月) -> cos=-1 -> 凸出 (覆盖整个半球)
+                const terminatorWidth = Math.cos(2 * Math.PI * p) * radius;
+
+                // 起点：北极点 (100, 10)
+                d = `M ${cx} ${cy - radius}`;
+
+                if (isWaxing) {
+                    // 盈月 (亮面在右)
+                    // 1. 画右半圆外弧 (从北极到南极)
+                    d += ` A ${radius} ${radius} 0 0 1 ${cx} ${cy + radius}`;
+
+                    // 2. 画晨昏线回归北极
+                    // 椭圆 X轴半径 = abs(terminatorWidth)
+                    // sweep 标志取决于凸月还是眉月
+                    // p < 0.25 (眉月): 凹进去 -> sweep 0
+                    // p > 0.25 (凸月): 凸出来 -> sweep 1
+                    const ellipseSweep = p < 0.25 ? 0 : 1;
+                    d += ` A ${Math.abs(terminatorWidth)} ${radius} 0 0 ${ellipseSweep} ${cx} ${cy - radius}`;
+                } else {
+                    // 亏月 (亮面在左)
+                    // 1. 画左半圆外弧 (从北极到南极)
+                    d += ` A ${radius} ${radius} 0 0 0 ${cx} ${cy + radius}`;
+
+                    // 2. 画晨昏线回归北极
+                    // p < 0.75 (凸月): 凸出来 -> sweep 1
+                    // p > 0.75 (残月): 凹进去 -> sweep 0
+                    const ellipseSweep = p < 0.75 ? 1 : 0;
+                    d += ` A ${Math.abs(terminatorWidth)} ${radius} 0 0 ${ellipseSweep} ${cx} ${cy - radius}`;
+                }
+            }
+
+            document.getElementById('moon-path').setAttribute('d', d);
+
+            // 光晕控制
+            const glow = document.getElementById('moon-glow');
+            if (p > 0.4 && p < 0.6) glow.style.opacity = 0.5;
+            else if (p > 0.2 && p < 0.8) glow.style.opacity = 0.2;
+            else glow.style.opacity = 0.05;
+        }
+
+        function updateSideCards() {
+            const prevD = new Date(currentDate); prevD.setDate(prevD.getDate() - 1);
+            const nextD = new Date(currentDate); nextD.setDate(nextD.getDate() + 1);
+
+            const prevData = getLunarData(prevD);
+            const nextData = getLunarData(nextD);
+
+            // 更新 DOM
+            document.querySelector('#card-prev .prev-date-text').innerText = `${prevD.getMonth() + 1}/${prevD.getDate()}`;
+            document.querySelector('#card-prev .prev-phase-text').innerText = prevData.phaseNameCN;
+            document.querySelector('#card-prev .prev-ill-text').innerText = `${prevData.illumination}%`;
+            document.querySelector('#card-prev .prev-dot').style.opacity = prevData.illumination / 100;
+
+            document.querySelector('#card-next .next-date-text').innerText = `${nextD.getMonth() + 1}/${nextD.getDate()}`;
+            document.querySelector('#card-next .next-phase-text').innerText = nextData.phaseNameCN;
+            document.querySelector('#card-next .next-ill-text').innerText = `${nextData.illumination}%`;
+            document.querySelector('#card-next .next-dot').style.opacity = nextData.illumination / 100;
+        }
+
+        // --- 交互 ---
+
+        function changeDay(days) {
+            currentDate.setDate(currentDate.getDate() + days);
+            updateUI();
+        }
+
+        function setToday() {
+            currentDate = new Date();
+            // 动画效果
+            const icon = document.getElementById('refresh-icon');
+            icon.classList.add('animate-spin');
+            setTimeout(() => icon.classList.remove('animate-spin'), 500);
+            updateUI();
+        }
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') changeDay(-1);
+            if (e.key === 'ArrowRight') changeDay(1);
+        });
+
+        // 启动
+        updateUI();
+
+    </script>
+</body>
+
+</html>
