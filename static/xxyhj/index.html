@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>小小银行家</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f0f7ff;
+            --machine-body: #00acc1;
+            --machine-border: #006064;
+            --tray-color: #37474f;
+            --cert-red: #d32f2f;
+            --cert-gold: #b8860b;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+            background-color: var(--bg-color);
+            background-image: radial-gradient(#bbdefb 10%, transparent 11%);
+            background-size: 20px 20px;
+            margin: 0;
+            height: 100vh; height: 100dvh; 
+            display: flex; flex-direction: column; align-items: center;
+            overflow: hidden; user-select: none;
+        }
+
+        /* === 开场输入名字界面 === */
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.98); z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .start-box {
+            background: #fff; padding: 40px; border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,188,212,0.2); text-align: center;
+            border: 5px solid #00acc1; width: 90%; max-width: 400px;
+            animation: bounceIn 0.5s;
+        }
+        .start-title { font-size: 2.2rem; color: #00838f; margin-bottom: 25px; font-weight: 800; text-shadow: 2px 2px 0 #b2ebf2;}
+        .name-input {
+            width: 100%; padding: 15px; font-size: 1.2rem;
+            border: 3px solid #b2ebf2; border-radius: 50px; margin-bottom: 25px;
+            text-align: center; outline: none; transition: 0.3s; color: #006064; font-weight: bold;
+        }
+        .name-input:focus { border-color: #00acc1; box-shadow: 0 0 10px rgba(0,172,193,0.3); }
+        .start-btn {
+            background: #ff6f00; color: white; border: none;
+            padding: 15px 40px; font-size: 1.3rem; border-radius: 50px;
+            cursor: pointer; font-weight: bold; box-shadow: 0 6px 0 #e65100;
+            transition: transform 0.1s; width: 100%;
+        }
+        .start-btn:active { transform: translateY(4px); box-shadow: none; }
+
+        /* === 规则弹窗 === */
+        #rule-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); z-index: 9998;
+            display: none; justify-content: center; align-items: center;
+            backdrop-filter: blur(5px);
+        }
+        .rule-box {
+            background: #fff; padding: 30px; border-radius: 20px;
+            border: 6px solid #ffca28; width: 90%; max-width: 450px;
+            text-align: left; animation: popIn 0.3s; position: relative;
+        }
+        .rule-title { text-align: center; font-size: 1.8rem; color: #d84315; font-weight: 800; margin-bottom: 20px; border-bottom: 2px dashed #ffe082; padding-bottom: 10px; }
+        .rule-item { font-size: 1.1rem; color: #455a64; margin-bottom: 15px; line-height: 1.6; display: flex; align-items: flex-start; }
+        .rule-icon { margin-right: 10px; font-size: 1.3rem; }
+        .rule-btn {
+            background: #00bcd4; color: white; border: none;
+            padding: 12px; font-size: 1.2rem; border-radius: 50px;
+            cursor: pointer; font-weight: bold; width: 100%; margin-top: 20px;
+            box-shadow: 0 5px 0 #0097a7;
+        }
+        .rule-btn:active { transform: translateY(3px); box-shadow: none; }
+
+        /* === 顶部栏 === */
+        .header {
+            width: 100%; flex-shrink: 0;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 15px; background: rgba(255,255,255,0.95);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05); z-index: 100;
+        }
+        .title-group { display: flex; flex-direction: column; }
+        h1 { margin: 0; color: #0277bd; font-size: 1.2rem; font-weight: 800; line-height: 1.2;}
+        .player-info { font-size: 0.8rem; color: #546e7a; margin-top: 2px; }
+        .header-right { display: flex; align-items: center; gap: 8px; }
+        .music-btn { background: none; border: none; font-size: 1.4rem; cursor: pointer; padding: 0; }
+        .progress-badge {
+            background: #ff6f00; color: #fff; padding: 5px 12px;
+            border-radius: 15px; font-weight: bold; font-size: 0.9rem;
+            white-space: nowrap; margin-left: 10px;
+        }
+
+        /* === 游戏舞台 === */
+        .stage {
+            flex: 1; width: 100%; max-width: 1000px;
+            display: flex; flex-direction: row;
+            align-items: center; justify-content: center;
+            gap: 20px; padding: 10px; position: relative; overflow: hidden;
+        }
+
+        /* === 钱包 === */
+        .wallet {
+            background: #fff; border: 4px solid #5c6bc0; border-radius: 15px;
+            display: flex; flex-direction: column;
+            width: 280px; height: 90%;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+        }
+        .wallet-title {
+            text-align: center; padding: 10px; color: #3949ab; font-weight: bold;
+            border-bottom: 2px dashed #e8eaf6; font-size: 1rem; flex-shrink: 0;
+        }
+        .wallet-grid {
+            flex: 1; 
+            display: grid;
+            grid-template-columns: 1fr 1fr; 
+            align-content: center; justify-items: center;
+            gap: 15px; padding: 15px;
+            overflow: hidden; 
+        }
+
+        /* === 机器 === */
+        .machine-wrapper {
+            position: relative; display: flex; flex-direction: column; align-items: center;
+            z-index: 10; height: 100%; justify-content: center;
+        }
+        .task-card {
+            background: #fff; color: #d84315; padding: 8px 30px; border-radius: 50px;
+            font-size: 1.4rem; font-weight: 800; border: 3px solid #ffab91;
+            margin-bottom: 40px; box-shadow: 0 5px 0 #bf360c;
+            animation: bounceIn 0.5s; z-index: 20; display: flex; align-items: center; gap: 8px; white-space: nowrap;
+        }
+        .story-icon { font-size: 1.6rem; }
+        .machine-body {
+            width: 320px; height: 420px;
+            background: var(--machine-body); border: 6px solid var(--machine-border);
+            border-radius: 30px 30px 10px 10px; position: relative; z-index: 20;
+            display: flex; flex-direction: column; align-items: center;
+            padding-top: 15px; box-shadow: inset 5px 5px 20px rgba(0,0,0,0.2);
+        }
+        .lcd {
+            width: 85%; background: #263238; color: #00e676;
+            font-family: monospace; font-size: 1.2rem; padding: 5px;
+            text-align: center; border: 2px solid #b0bec5; border-radius: 4px; margin-bottom: 8px;
+        }
+        .drop-zone {
+            width: 85%; height: 160px; background: rgba(255,255,255,0.8);
+            border: 2px dashed #00838f; border-radius: 8px;
+            position: relative; display: flex; flex-wrap: wrap;
+            align-content: flex-start; padding: 5px; gap: 2px; overflow: hidden;
+        }
+        .hint-text {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #78909c; text-align: center; pointer-events: none; font-size: 0.9rem; width: 100%;
+        }
+        .mini-money { transform: scale(0.65); margin: -10px; cursor: pointer; transition: transform 0.1s; }
+        .mini-money:active { transform: scale(0.55); }
+
+        .controls { margin-top: 15px; display: flex; gap: 8px; width: 90%; justify-content: center; }
+        .btn {
+            flex: 1; border: none; padding: 10px 0; border-radius: 8px;
+            font-size: 1rem; font-weight: bold; color: white; cursor: pointer;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.3); display: flex; flex-direction: column; align-items: center; transition: all 0.1s;
+        }
+        .btn:active { transform: translateY(4px); box-shadow: none; }
+        .btn-coin { background: #fbc02d; border-bottom: 3px solid #f57f17; color: #3e2723; }
+        .btn-paper { background: #29b6f6; border-bottom: 3px solid #0288d1; }
+        .btn-clear { background: #ef5350; border-bottom: 3px solid #c62828; max-width: 60px; }
+        .slot-mouth {
+            margin-top: auto; width: 200px; height: 25px; background: #263238;
+            border-radius: 12px; margin-bottom: 25px; box-shadow: inset 0 3px 6px #000; position: relative; z-index: 22;
+        }
+        .tray {
+            width: 360px; height: 110px; background: var(--tray-color);
+            border-radius: 0 0 25px 25px; border: 6px solid var(--machine-border); border-top: none;
+            position: relative; z-index: 5; margin-top: -10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3); display: flex; justify-content: center; align-items: flex-end; padding-bottom: 15px;
+        }
+
+        /* === 动画与交互 === */
+        .output-money { position: absolute; top: -120px; opacity: 0; z-index: 10; transition: top 0.6s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.2s; }
+        .output-money.slide-out { top: 10px; opacity: 1; }
+        .flying-money { position: fixed; pointer-events: none; z-index: 2000; transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s; }
+        .money-item { transition: transform 0.1s; cursor: grab; position: relative; flex-shrink: 0; }
+        .money-item:active { cursor: grabbing; transform: scale(0.9); }
+        .confetti { position: fixed; width: 10px; height: 10px; background: #f00; z-index: 9999; pointer-events: none; opacity: 0; }
+
+        /* === 手机适配 === */
+        @media (max-width: 768px) {
+            .header { padding: 5px 10px; }
+            h1 { font-size: 1.1rem; }
+            .stage { flex-direction: column; padding: 5px; gap: 0; justify-content: flex-start; }
+            .machine-wrapper { height: auto; flex-shrink: 0; transform-origin: top center; transform: scale(0.85); margin-bottom: -20px; }
+            .task-card { font-size: 1.1rem; margin-bottom: 15px; max-width: 95%; white-space: normal; text-align: center; }
+            .machine-body { width: 290px; height: 320px; }
+            .drop-zone { height: 110px; } .slot-mouth { margin-bottom: 15px; }
+            .tray { width: 310px; height: 80px; }
+            .wallet { width: 100%; height: auto; flex: 1; flex-direction: row; border-width: 2px; margin-top: 5px; }
+            .wallet-title { writing-mode: vertical-rl; padding: 0 5px; border-bottom: none; border-right: 1px dashed #e8eaf6; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }
+            .wallet-grid { display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: 5px; padding: 5px; overflow: visible; }
+            .money-item { margin: 2px; }
+            .money-item svg { width: 52px; height: 52px; }
+            .money-item[data-type="paper"] svg { width: 75px; height: 38px; }
+        }
+
+        /* === 弹窗与证书 === */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 3000; }
+        .modal-box { background: white; padding: 25px; border-radius: 20px; text-align: center; border: 5px solid #ffca28; width: 85%; max-width: 400px; animation: popIn 0.3s; }
+        
+        .cert-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 5000; justify-content: center; align-items: center; flex-direction: column; animation: fadeIn 0.5s; overflow-y: auto; }
+        .certificate-container { background: #fffaf0; padding: 25px; border-radius: 15px; box-shadow: 0 0 40px rgba(255, 215, 0, 0.3); text-align: center; position: relative; width: 90%; max-width: 450px; }
+        .cert-border { border: 6px double var(--cert-gold); padding: 15px; position: relative; display: flex; flex-direction: column; align-items: center; }
+        .ribbon { position: absolute; top: -15px; width: 180px; height: 36px; background: var(--cert-red); display: flex; justify-content: center; align-items: center; color: #fff; font-weight: bold; font-size: 1.1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .ribbon::before, .ribbon::after { content: ''; position: absolute; bottom: -10px; border-top: 10px solid var(--cert-red); }
+        .ribbon::before { left: 0; border-left: 15px solid transparent; } .ribbon::after { right: 0; border-right: 15px solid transparent; }
+        .cert-title { font-family: "Songti SC", serif; font-size: 2.2rem; color: #333; margin-top: 30px; margin-bottom: 10px; font-weight: bold; }
+        .cert-body { font-size: 1.1rem; color: #555; line-height: 1.6; margin: 20px 0; }
+        .highlight { color: var(--cert-red); font-weight: bold; }
+        .cert-footer { margin-top: 20px; width: 100%; display: flex; flex-direction: column; align-items: center; }
+        .stamp-box { position: relative; width: 110px; height: 110px; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; }
+        .stamp { border: 4px solid var(--cert-red); color: var(--cert-red); border-radius: 50%; width: 100px; height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 900; transform: rotate(-15deg); font-size: 1.3rem; line-height: 1.2; background: rgba(211, 47, 47, 0.05); box-shadow: inset 0 0 0 3px #fff; }
+        .cert-date { font-size: 0.9rem; color: #777; }
+        .cert-actions { margin-top: 20px; width: 100%; display: flex; flex-direction: row; justify-content: center; gap: 15px; }
+        .cert-btn { border: none; padding: 10px 20px; border-radius: 50px; font-size: 0.9rem; font-weight: bold; color: white; cursor: pointer; box-shadow: 0 4px 0 rgba(0,0,0,0.3); display: inline-flex; align-items: center; justify-content: center; min-width: 120px; transition: all 0.1s; }
+        .cert-btn:active { transform: translateY(3px); box-shadow: none; }
+        .btn-save-img { background: #1976d2; border-bottom: 4px solid #0d47a1; }
+        .btn-restart { background: #fbc02d; border-bottom: 4px solid #f57f17; color: #3e2723; }
+
+        @keyframes popIn { 0%{transform:scale(0.5);} 100%{transform:scale(1);} }
+        @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+        @keyframes bounceIn { 0% {transform: scale(0.8);} 60% {transform: scale(1.1);} 100% {transform: scale(1);} }
+        @keyframes shake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-5px);} 75%{transform:translateX(5px);} }
+        .shaking { animation: shake 0.4s; }
+        #toast { position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: #fff; padding: 12px 24px; border-radius: 30px; display: none; z-index: 6000; font-size: 1.1rem; }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <div class="start-box">
+            <div class="start-title">🏦 小小银行家</div>
+            <p style="margin-bottom:15px; color:#666; font-size:1.1rem;">我是新来的小小银行家：</p>
+            <input type="text" id="player-name-input" class="name-input" placeholder="输入你的名字" maxlength="8">
+            <button class="start-btn" onclick="showRules()">下一步 ➡</button>
+        </div>
+    </div>
+
+    <div id="rule-modal">
+        <div class="rule-box">
+            <div class="rule-title">📜 游戏规则</div>
+            <div class="rule-item"><span class="rule-icon">👀</span> 1. 看清上面的【任务目标】</div>
+            <div class="rule-item"><span class="rule-icon">👆</span> 2. 点击或拖动【钱包】里的钱</div>
+            <div class="rule-item"><span class="rule-icon">✅</span> 3. 凑齐金额，点击【兑换】按钮</div>
+            <div class="rule-item"><span class="rule-icon">🎉</span> 金额正确就能兑换成功哦！</div>
+            <button class="rule-btn" onclick="realStart()">我知道啦，开始挑战！🚀</button>
+        </div>
+    </div>
+
+    <div class="header">
+        <div class="title-group">
+            <h1>🏦 小小银行家</h1>
+            <div class="player-info" id="display-name">玩家：...</div>
+        </div>
+        <div class="header-right">
+            <button class="music-btn" onclick="toggleMusic()" id="music-icon">🔇</button>
+            <div class="progress-badge" id="level-ind">1 / 10</div>
+        </div>
+    </div>
+
+    <div class="stage">
+        <div class="machine-wrapper">
+            <div class="task-card" id="task-card">
+                <span class="story-icon" id="story-icon">🐱</span>
+                <span id="task-text">...</span>
+            </div>
+            
+            <div class="machine-body" id="machine-body">
+                <div class="lcd" id="balance">当前: 0分</div>
+                <div class="drop-zone" id="drop-zone" ondragover="allowDrop(event)" ondrop="handleDrop(event)" onclick="flashHint()">
+                    <div class="hint-text" id="hint-text">点击左边<br>或拖拽钱币</div>
+                </div>
+                <div class="controls">
+                    <button class="btn btn-coin" onclick="exchange('coin')"><span>🔘</span>换硬币</button>
+                    <button class="btn btn-paper" onclick="exchange('paper')"><span>🎫</span>换纸币</button>
+                    <button class="btn btn-clear" onclick="clearZone()"><span>❌</span></button>
+                </div>
+                <div class="slot-mouth"></div>
+            </div>
+            <div class="tray" id="tray"></div>
+        </div>
+
+        <div class="wallet">
+            <div class="wallet-title">我的钱包</div>
+            <div class="wallet-grid" id="wallet-grid"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="success-modal">
+        <div class="modal-box">
+            <h2 style="color:#2e7d32; margin:0 0 10px 0;">🎉 兑换成功！</h2>
+            <div id="success-msg" style="margin:15px 0; font-size:1.2rem; color:#546e7a;"></div>
+            <button class="btn btn-paper" onclick="nextLevel()" style="width:100%; padding:12px; font-size:1.1rem;">下一关 ➡</button>
+        </div>
+    </div>
+
+    <div class="cert-modal" id="cert-modal">
+        <div class="certificate-container" id="certificate-capture">
+            <div class="cert-border">
+                <div class="ribbon">小小银行家</div>
+                <div class="cert-title">荣誉证书</div>
+                <div class="cert-body">
+                    恭喜 <span class="highlight" style="color:#d32f2f;font-weight:bold;" id="cert-name-field">小朋友</span><br>
+                    成功通过所有人民币挑战！<br>
+                    特授予 <span class="highlight" style="color:#d32f2f;font-weight:bold;">特级银行家</span> 称号。
+                </div>
+                <div class="cert-footer">
+                    <div class="stamp-box">
+                        <div class="stamp"><span>满分</span><span>通过</span></div>
+                    </div>
+                    <div class="cert-date">日期：<span id="today-date"></span></div>
+                </div>
+            </div>
+        </div>
+        <div class="cert-actions">
+            <button class="cert-btn btn-save-img" onclick="saveCertificate()">💾 保存图片</button>
+            <button class="cert-btn btn-restart" onclick="location.reload()">🔄 再玩一次</button>
+        </div>
+    </div>
+
+    <div id="toast">提示</div>
+
+    <script>
+        // === 全局变量 ===
+        let playerName = "聪明的小朋友";
+        let isMusicPlaying = false;
+        let musicInterval;
+
+        // === SVG 素材 ===
+        const createCoinSVG = (color, border, text, size=70) => `
+            <svg width="${size}" height="${size}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="pointer-events:none;">
+                <circle cx="50" cy="50" r="48" fill="${color}" stroke="${border}" stroke-width="4"/>
+                <circle cx="50" cy="50" r="40" fill="none" stroke="${border}" stroke-width="1" stroke-dasharray="4 2"/>
+                <text x="50" y="62" font-size="32" font-weight="900" text-anchor="middle" fill="${border}" font-family="Arial">${text}</text>
+            </svg>`;
+        const createPaperSVG = (color, border, text, width=110) => `
+            <svg width="${width}" height="${width*0.5}" viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg" style="pointer-events:none;">
+                <rect x="2" y="2" width="196" height="96" rx="8" fill="${color}" stroke="${border}" stroke-width="5"/>
+                <rect x="20" y="20" width="160" height="60" rx="4" fill="none" stroke="white" stroke-width="3" opacity="0.6"/>
+                <text x="100" y="68" font-size="50" font-weight="900" text-anchor="middle" fill="${border}" font-family="Arial">${text}</text>
+            </svg>`;
+
+        const moneyTypes = [
+            { id: '1f', val: 1, type: 'coin', name:'1分', svg: createCoinSVG('#ffecb3', '#ff6f00', '1分') },
+            { id: '2f', val: 2, type: 'coin', name:'2分', svg: createCoinSVG('#ffecb3', '#ff6f00', '2分') },
+            { id: '5f', val: 5, type: 'coin', name:'5分', svg: createCoinSVG('#ffecb3', '#ff6f00', '5分') },
+            { id: '1j_c', val: 10, type: 'coin', name:'1角', svg: createCoinSVG('#f5f5f5', '#616161', '1角') },
+            { id: '5j_c', val: 50, type: 'coin', name:'5角', svg: createCoinSVG('#fff176', '#fbc02d', '5角') },
+            { id: '1y_c', val: 100, type: 'coin', name:'1元', svg: createCoinSVG('#e0e0e0', '#424242', '1元', 80) },
+            { id: '1j_p', val: 10, type: 'paper', name:'1角', svg: createPaperSVG('#d7ccc8', '#5d4037', '1角') },
+            { id: '5j_p', val: 50, type: 'paper', name:'5角', svg: createPaperSVG('#e1bee7', '#7b1fa2', '5角') },
+            { id: '1y_p', val: 100, type: 'paper', name:'1元', svg: createPaperSVG('#c8e6c9', '#2e7d32', '1元') },
+            { id: '5y_p', val: 500, type: 'paper', name:'5元', svg: createPaperSVG('#b39ddb', '#512da8', '5元', 120) },
+            { id: '10y_p', val: 1000, type: 'paper', name:'10元', svg: createPaperSVG('#81d4fa', '#0277bd', '10元', 120) }
+        ];
+
+        const levels = [
+            { target: 10, story: "小猫想买一条鱼", icon: "🐱" },
+            { target: 20, story: "小狗要买根骨头", icon: "🐶" },
+            { target: 50, story: "熊猫要买竹子", icon: "🐼" },
+            { target: 100, story: "小兔买根胡萝卜", icon: "🐰" },
+            { target: 150, story: "猴子买两根香蕉", icon: "🐵" },
+            { target: 200, story: "帮妈妈买把葱", icon: "👩" },
+            { target: 500, story: "买一个大西瓜", icon: "🍉" },
+            { target: 1000, story: "买一本故事书", icon: "📕" }
+        ];
+
+        let currentLevel = 0;
+        let deposited = [];
+        let visualElements = [];
+
+        function init() {
+            renderWallet();
+            const d = new Date();
+            document.getElementById('today-date').innerText = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+        }
+
+        // === 流程控制 (新) ===
+        function showRules() {
+            const input = document.getElementById('player-name-input').value;
+            if(input.trim() !== "") playerName = input.trim();
+            document.getElementById('display-name').innerText = `玩家：${playerName}`;
+            document.getElementById('cert-name-field').innerText = playerName;
+            
+            // 隐藏名字页，显示规则页
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('rule-modal').style.display = 'flex';
+        }
+
+        function realStart() {
+            // 隐藏规则页，正式开始
+            document.getElementById('rule-modal').style.display = 'none';
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            toggleMusic(); 
+            loadLevel(0);
+        }
+
+        function renderWallet() {
+            const grid = document.getElementById('wallet-grid');
+            moneyTypes.forEach(m => {
+                const div = document.createElement('div');
+                div.className = 'money-item';
+                div.setAttribute('data-type', m.type);
+                div.innerHTML = m.svg;
+                div.draggable = true;
+                div.ondragstart = (e) => { e.dataTransfer.setData('text/plain', JSON.stringify(m)); playSound('drag'); };
+                div.onclick = (e) => userAddsMoneyClick(e, m);
+                grid.appendChild(div);
+            });
+        }
+
+        function loadLevel(idx) {
+            if(idx >= levels.length) {
+                document.getElementById('cert-modal').style.display = 'flex';
+                playSound('cheer');
+                stopMusic();
+                return;
+            }
+            currentLevel = idx;
+            document.getElementById('task-text').innerText = `${levels[idx].story} (需${formatMoney(levels[idx].target)})`;
+            document.getElementById('story-icon').innerText = levels[idx].icon;
+            document.getElementById('level-ind').innerText = `${idx+1} / ${levels.length}`;
+            document.getElementById('tray').innerHTML = '';
+            clearZone(false);
+        }
+
+        function allowDrop(e) { e.preventDefault(); }
+        function handleDrop(e) {
+            e.preventDefault();
+            const data = e.dataTransfer.getData('text/plain');
+            if(data) addMoney(JSON.parse(data), false);
+        }
+
+        function userAddsMoneyClick(e, item) {
+            playSound('swish');
+            deposited.push(item);
+            const startRect = e.currentTarget.getBoundingClientRect();
+            const dropRect = document.getElementById('drop-zone').getBoundingClientRect();
+            const flyer = document.createElement('div');
+            flyer.className = 'flying-money';
+            flyer.innerHTML = item.svg;
+            flyer.style.left = startRect.left + 'px';
+            flyer.style.top = startRect.top + 'px';
+            document.body.appendChild(flyer);
+            const targetX = dropRect.left + dropRect.width/2 - 35 + (Math.random()*60-30);
+            const targetY = dropRect.top + dropRect.height/2 - 35 + (Math.random()*60-30);
+            requestAnimationFrame(() => {
+                flyer.style.transform = `translate(${targetX - startRect.left}px, ${targetY - startRect.top}px) scale(0.6)`;
+                setTimeout(() => {
+                    flyer.style.opacity = 0;
+                    addVisual(item);
+                    setTimeout(() => flyer.remove(), 200);
+                }, 400);
+            });
+        }
+
+        function addVisual(item) {
+            const zone = document.getElementById('drop-zone');
+            document.getElementById('hint-text').style.display = 'none';
+            const el = document.createElement('div');
+            el.className = 'mini-money';
+            el.innerHTML = item.svg;
+            el.onclick = () => removeMoney(el, item);
+            el.style.transform = "scale(0)";
+            zone.appendChild(el);
+            requestAnimationFrame(() => el.style.transform = "scale(0.65)");
+            visualElements.push(el);
+            updateBalanceDisplay();
+            playSound('drop');
+        }
+
+        function addMoney(item, fromAnim) {
+            if(!fromAnim) deposited.push(item);
+            addVisual(item);
+        }
+
+        function removeMoney(el, item) {
+            el.style.transform = "scale(0)";
+            setTimeout(() => el.remove(), 200);
+            const idx = deposited.findIndex(d => d.val === item.val);
+            if(idx > -1) deposited.splice(idx, 1);
+            const vIdx = visualElements.indexOf(el);
+            if(vIdx > -1) visualElements.splice(vIdx, 1);
+            updateBalanceDisplay();
+            playSound('pop');
+            if(visualElements.length === 0) document.getElementById('hint-text').style.display = 'block';
+        }
+
+        function clearZone(play=true) {
+            document.getElementById('drop-zone').innerHTML = '<div class="hint-text" id="hint-text">点击左边<br>或拖拽钱币</div>';
+            deposited = []; visualElements = [];
+            updateBalanceDisplay();
+            if(play) playSound('clear');
+        }
+
+        function updateBalanceDisplay() {
+            const total = deposited.reduce((a, b) => a + b.val, 0);
+            document.getElementById('balance').innerText = `当前: ${formatMoney(total)}`;
+        }
+
+        function flashHint() {
+            const hint = document.getElementById('hint-text');
+            if(hint) { hint.style.color = "#d32f2f"; setTimeout(()=>hint.style.color="#78909c", 200); }
+        }
+
+        function exchange(targetType) {
+            const targetVal = levels[currentLevel].target;
+            const currentVal = deposited.reduce((a, b) => a + b.val, 0);
+            const machine = document.getElementById('machine-body');
+            playSound('click');
+            if(currentVal !== targetVal) {
+                machine.classList.add('shaking'); playSound('error');
+                const diff = currentVal - targetVal;
+                showToast(`❌ 不对哦，${diff>0?'多了':'少了'} ${formatMoney(Math.abs(diff))}`);
+                setTimeout(()=>machine.classList.remove('shaking'), 400); return;
+            }
+            const rewards = calculateChange(targetVal, targetType);
+            if(!rewards) { showToast("机器没有这种零钱 😅"); playSound('error'); return; }
+            animateDispense(rewards);
+        }
+
+        function calculateChange(amt, type) {
+            const avail = moneyTypes.filter(m => m.type === type).sort((a,b) => b.val - a.val);
+            let remain = amt; let res = [];
+            for(let m of avail) { while(remain >= m.val) { remain -= m.val; res.push(m); } }
+            return remain === 0 ? res : null;
+        }
+
+        function animateDispense(rewards) {
+            playSound('machine_whir');
+            const tray = document.getElementById('tray'); tray.innerHTML = '';
+            const itemWidth = 50; const totalWidth = rewards.length * itemWidth;
+            const startX = (tray.clientWidth - totalWidth) / 2 + 15;
+            rewards.forEach((item, i) => {
+                const el = document.createElement('div');
+                el.className = 'mini-money output-money'; el.innerHTML = item.svg;
+                el.style.left = `${startX + i * itemWidth}px`;
+                tray.appendChild(el); void el.offsetWidth;
+                setTimeout(() => { el.classList.add('slide-out'); playSound('cash'); }, i * 300);
+            });
+            setTimeout(() => showSuccess(rewards), rewards.length * 300 + 800);
+        }
+
+        function showSuccess(rewards) {
+            fireConfetti();
+            const modal = document.getElementById('success-modal');
+            const msg = document.getElementById('success-msg');
+            const counts = {}; rewards.forEach(r => counts[r.name] = (counts[r.name]||0)+1);
+            const str = Object.keys(counts).map(k => `${counts[k]} 个 ${k}`).join('，');
+            msg.innerHTML = `机器吐出了：<b style="color:#e65100;">${str}</b>`;
+            modal.style.display = 'flex'; playSound('success');
+        }
+
+        function fireConfetti() {
+            const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff'];
+            for(let i=0; i<50; i++) {
+                const c = document.createElement('div');
+                c.className = 'confetti';
+                c.style.backgroundColor = colors[Math.floor(Math.random()*colors.length)];
+                c.style.left = '50%'; c.style.top = '50%';
+                document.body.appendChild(c);
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = 100 + Math.random() * 200;
+                const tx = Math.cos(angle) * velocity;
+                const ty = Math.sin(angle) * velocity;
+                c.animate([
+                    { transform: 'translate(0,0) scale(1)', opacity: 1 },
+                    { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
+                ], { duration: 1000, easing: 'cubic-bezier(0, .9, .57, 1)' }).onfinish = () => c.remove();
+            }
+        }
+
+        function nextLevel() {
+            document.getElementById('success-modal').style.display = 'none';
+            loadLevel(currentLevel + 1);
+        }
+
+        function saveCertificate() {
+            const certElement = document.getElementById('certificate-capture');
+            showToast("正在生成图片...");
+            html2canvas(certElement, { scale: 2, backgroundColor: null }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = '小小银行家_荣誉证书.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                showToast("✅ 已保存！");
+            }).catch(err => { showToast("保存失败"); console.error(err); });
+        }
+
+        function formatMoney(fen) {
+            if(fen === 0) return "0"; let s = "";
+            if(fen >= 100) { s += Math.floor(fen/100) + "元"; fen %= 100; }
+            if(fen >= 10) { s += Math.floor(fen/10) + "角"; fen %= 10; }
+            if(fen > 0) s += fen + "分"; return s;
+        }
+
+        function showToast(txt) {
+            const t = document.getElementById('toast');
+            t.innerText = txt; t.style.display = 'block'; setTimeout(()=>t.style.display='none', 2000);
+        }
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function toggleMusic() {
+            if (isMusicPlaying) { stopMusic(); } else { startMusic(); }
+        }
+        function startMusic() {
+            if(isMusicPlaying) return;
+            isMusicPlaying = true;
+            document.getElementById('music-icon').innerText = '🎵';
+            const melody = [523, 659, 784, 1046, 784, 659];
+            let noteIdx = 0;
+            musicInterval = setInterval(() => {
+                playTone(melody[noteIdx % melody.length], 0.3, 0.03);
+                noteIdx++;
+            }, 800);
+        }
+        function stopMusic() {
+            isMusicPlaying = false;
+            document.getElementById('music-icon').innerText = '🔇';
+            clearInterval(musicInterval);
+        }
+        function playTone(freq, duration, vol) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.type = 'sine'; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.start(); osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playSound(type) {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            const t = audioCtx.currentTime; const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain(); osc.connect(gain); gain.connect(audioCtx.destination);
+            if(type === 'swish') { osc.type='triangle';osc.frequency.linearRampToValueAtTime(600,t+0.2);gain.gain.linearRampToValueAtTime(0,t+0.3);osc.start(t);osc.stop(t+0.3); }
+            else if(type === 'drop') { osc.type='sine';osc.frequency.setValueAtTime(1200,t);gain.gain.exponentialRampToValueAtTime(0.01,t+0.1);osc.start(t);osc.stop(t+0.1); }
+            else if(type === 'cash') { osc.type='square';osc.frequency.setValueAtTime(400,t);osc.frequency.linearRampToValueAtTime(200,t+0.1);gain.gain.linearRampToValueAtTime(0,t+0.1);osc.start(t);osc.stop(t+0.1); }
+            else if(type === 'machine_whir') { osc.type='sawtooth';osc.frequency.linearRampToValueAtTime(100,t+0.5);gain.gain.linearRampToValueAtTime(0,t+0.5);osc.start(t);osc.stop(t+0.5); }
+            // 修正后的低音音效
+            else if(type === 'success') { playNote(261.6,t,0.1,0.05);playNote(329.6,t+0.1,0.1,0.05);playNote(392.0,t+0.2,0.3,0.05); }
+            // 修正后的欢呼音效
+            else if(type === 'cheer') { 
+                const notes = [196, 261, 329, 392, 523];
+                notes.forEach((f, i) => { playNote(f, t + i * 0.1, i === notes.length - 1 ? 0.6 : 0.1, 0.05); });
+            }
+            else if(type === 'error') { osc.type='sawtooth';osc.frequency.setValueAtTime(150,t);gain.gain.linearRampToValueAtTime(0,t+0.3);osc.start(t);osc.stop(t+0.3); }
+            else if(type === 'click') { osc.frequency.setValueAtTime(600,t);gain.gain.exponentialRampToValueAtTime(0.01,t+0.05);osc.start(t);osc.stop(t+0.05); }
+            else if(type === 'clear') { osc.frequency.setValueAtTime(300,t);osc.frequency.linearRampToValueAtTime(800,t+0.2);gain.gain.linearRampToValueAtTime(0,t+0.2);osc.start(t);osc.stop(t+0.2); }
+            else if(type === 'drag') { osc.frequency.setValueAtTime(200,t);gain.gain.exponentialRampToValueAtTime(0.01,t+0.05);osc.start(t);osc.stop(t+0.05); }
+        }
+        // 更新 playNote 支持音量参数
+        function playNote(f,t,d,vol=0.1) { const o=audioCtx.createOscillator();const g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.type='sine';o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(vol,t);g.gain.linearRampToValueAtTime(0,t+d);o.start(t);o.stop(t+d); }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
