@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>钉阵正方形探究</title>
+    <style>
+        :root {
+            --primary: #FF5600;
+            --bg: #F4F3EC;
+            --text: #0C0302;
+            --secondary: #74706E;
+            --accent: #FF8941;
+
+            /* Ported Colors */
+            --orange-50: #fff7ed;
+            --orange-100: #ffedd5;
+            --orange-200: #fed7aa;
+            --orange-400: #fb923c;
+            --orange-600: #ea580c;
+            --orange-800: #9a3412;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+        }
+
+        body {
+            background-color: #E5E4DA;
+            color: var(--text);
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .app-container {
+            width: 100%;
+            height: 100%;
+            max-width: 1200px;
+            max-height: 800px;
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Sidebar Layout */
+        .sidebar {
+            width: 33.33%;
+            border-radius: 1.5rem;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .title-text {
+            font-size: 2.25rem;
+            line-height: 2.5rem;
+            font-weight: 900;
+            color: var(--orange-600);
+            margin-top: 0;
+            margin-bottom: 2rem;
+        }
+
+        .step-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        /* Stats Module */
+        .stats-section {
+            margin-top: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .font-medium {
+            font-weight: 500;
+        }
+
+        .current-size {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--orange-600);
+        }
+
+        .count-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background-color: var(--orange-50);
+            border-radius: 1rem;
+            border: 1px solid var(--orange-100);
+        }
+
+        .count-label {
+            font-weight: 500;
+            color: var(--orange-800);
+        }
+
+        .count-value-group {
+            display: flex;
+            align-items: baseline;
+            gap: 0.25rem;
+        }
+
+        .count-number {
+            font-size: 1.875rem;
+            font-weight: 900;
+            color: var(--orange-600);
+        }
+
+        .count-unit {
+            font-size: 0.875rem;
+            color: var(--orange-400);
+        }
+
+        /* Controls */
+        .controls-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .indicator-row {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .buttons-row {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .btn-base {
+            flex: 1;
+            padding: 0.75rem 0;
+            border-radius: 0.75rem;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+
+        .btn-prev {
+            background-color: transparent;
+            border: 2px solid var(--orange-200);
+            color: var(--orange-600);
+            transition: all 0.3s ease;
+        }
+
+        .btn-prev:hover {
+            background-color: var(--orange-50);
+        }
+
+        .btn-prev:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 86, 0, 0.3);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.95);
+        }
+
+        .hint-text {
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--gray-400);
+            margin: 0;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border-radius: 1.5rem;
+        }
+
+        .grid-container-wrapper {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .svg-layer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .dot-container {
+            display: grid;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .dot-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            background: #333;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+        }
+
+        .dot.highlight {
+            background: var(--primary);
+            transform: scale(1.5);
+            box-shadow: 0 0 10px var(--primary);
+        }
+
+        .rubber-band {
+            fill: rgba(255, 86, 0, 0.15);
+            stroke: var(--primary);
+            stroke-width: 3;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            cursor: grab;
+        }
+
+        .rubber-band:active {
+            cursor: grabbing;
+        }
+
+        .step-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ddd;
+            transition: all 0.3s ease;
+        }
+
+        .step-indicator.active {
+            background: var(--primary);
+            transform: scale(1.2);
+        }
+
+        .toast-message {
+            position: absolute;
+            bottom: 2.5rem;
+            background-color: var(--gray-900);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateY(1rem);
+            pointer-events: none;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Dynamic Content Styles */
+        .animate-fade-in {
+            animation: fadeIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .step-title {
+            font-size: 1.875rem;
+            font-weight: 900;
+            color: var(--gray-800);
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+        }
+
+        .step-desc {
+            font-size: 1.25rem;
+            color: var(--secondary);
+            line-height: 1.625;
+            margin: 0;
+        }
+
+        .calc-table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            font-size: 1.5rem;
+        }
+
+        .calc-table thead tr {
+            background-color: var(--orange-100);
+            color: var(--orange-800);
+        }
+
+        .calc-table th {
+            padding: 1rem;
+            text-align: left;
+            font-weight: normal;
+        }
+
+        .calc-table tbody {
+            color: #374151;
+        }
+
+        .data-row {
+            border-bottom: 1px solid #e5e7eb;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+
+        .data-row:hover {
+            background-color: var(--orange-50);
+        }
+
+        .cell-size {
+            padding: 1rem;
+            font-weight: 900;
+            font-size: 1.875rem;
+            color: var(--orange-600);
+        }
+
+        .cell-calc {
+            padding: 1rem;
+        }
+
+        .cell-count {
+            padding: 1rem;
+            color: var(--orange-600);
+            font-weight: 900;
+            font-size: 2.25rem;
+        }
+
+        .table-hint {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            color: var(--gray-400);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- 侧边栏 -->
+        <div class="sidebar glass-card">
+            <div>
+                <h1 class="title-text">钉阵正方形探究</h1>
+
+                <div id="step-content" class="step-container">
+                    <!-- 动态内容 -->
+                </div>
+
+                <div id="stats-module" class="stats-section">
+
+                    <div class="count-card">
+                        <span class="count-label">已发现个数:</span>
+                        <div class="count-value-group">
+                            <span id="found-count-num" class="count-number">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls-section">
+                <div class="indicator-row">
+                    <div class="step-indicator active"></div>
+                    <div class="step-indicator"></div>
+                    <div class="step-indicator"></div>
+                    <div class="step-indicator"></div>
+                </div>
+                <div class="buttons-row">
+                    <button id="prev-btn" class="btn-base btn-prev">上一步</button>
+                    <button id="next-btn" class="btn-base btn-primary">下一步</button>
+                </div>
+                <p class="hint-text">提示：直接拖动正方形进行探究</p>
+            </div>
+        </div>
+
+        <!-- 主展示区 -->
+        <div class="main-content glass-card">
+            <div id="grid-container" class="grid-container-wrapper">
+                <svg id="svg-layer" class="svg-layer">
+                    <g id="ghost-container" opacity="0.4"></g>
+                    <rect id="rubber-band" class="rubber-band" x="0" y="0" width="0" height="0" rx="4" opacity="0"
+                        pointer-events="auto"></rect>
+                </svg>
+                <div id="dot-grid" class="dot-container">
+                    <!-- 动态生成点 -->
+                </div>
+            </div>
+
+            <!-- 提示浮层 -->
+            <div id="toast" class="toast-message">
+                拖动正方形观察规律
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const rows = 4;
+        const cols = 5;
+        let currentStep = 0;
+        let isDragging = false;
+        let dragStartPos = { x: 0, y: 0 };
+        let dragStartGrid = { r: 0, c: 0 };
+        let dragDirection = null; // 'h' or 'v'
+        let currentPos = { r: 0, c: 0 };
+        let visitedPositions = new Set();
+        let demoInterval = null;
+        let unitGap = 0;
+
+        const steps = [
+            { title: "观察边长为 1", desc: "在 4×5 的点阵中，边长为 1 的小正方形有多少个呢？请拖动它来数一数。", size: 1 },
+            { title: "寻找边长为 2", desc: "现在增加难度，看看边长为 2 的正方形。注意它们是可以相互重叠的哦！", size: 2 },
+            { title: "挑战边长为 3", desc: "在这个点阵中，边长为 3 的正方形已经是最大的了。你能找到几个？", size: 3 },
+            { title: "规律汇总", desc: "点击表格行，观察右侧自动演示：", size: 1 }
+        ];
+
+        function initGrid() {
+            const grid = document.getElementById('dot-grid');
+            const container = document.getElementById('grid-container');
+            grid.innerHTML = '';
+            for (let i = 0; i < rows * cols; i++) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'dot-wrapper';
+                const dot = document.createElement('div');
+                dot.className = 'dot';
+                dot.id = `dot-${Math.floor(i / cols)}-${i % cols}`;
+                wrapper.appendChild(dot);
+                grid.appendChild(wrapper);
+            }
+
+            requestAnimationFrame(() => {
+                const containerRect = container.getBoundingClientRect();
+                const padding = 120;
+                // 计算单位间距（点中心到点中心的距离）
+                unitGap = Math.floor(Math.min((containerRect.width - padding) / (cols - 1), (containerRect.height - padding) / (rows - 1)));
+
+                // 容器宽度 = (列数-1)*间距 + 一个单元格的宽度(即unitGap)
+                // 这样每个单元格宽度正好是 unitGap，点在单元格中心，间距就是 unitGap
+                const finalW = unitGap * cols;
+                const finalH = unitGap * rows;
+
+                grid.style.width = `${finalW}px`;
+                grid.style.height = `${finalH}px`;
+                grid.style.gridTemplateColumns = `repeat(${cols}, ${unitGap}px)`;
+                grid.style.gridTemplateRows = `repeat(${rows}, ${unitGap}px)`;
+
+                const svg = document.getElementById('svg-layer');
+                svg.setAttribute('width', finalW);
+                svg.setAttribute('height', finalH);
+                svg.style.left = `${(containerRect.width - finalW) / 2}px`;
+                svg.style.top = `${(containerRect.height - finalH) / 2}px`;
+
+                updateStep();
+            });
+        }
+
+        function updateStep() {
+            const step = steps[currentStep];
+            const isLastStep = currentStep === steps.length - 1;
+
+            stopDemo();
+
+            if (isLastStep) {
+                document.getElementById('step-content').innerHTML = `
+                    <div class="animate-fade-in">
+                        <h3 class="step-title">${step.title}</h3>
+                        <table class="calc-table">
+                            <thead>
+                                <tr>
+                                    <th>边长</th>
+                                    <th>计算公式</th>
+                                    <th>数量</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="data-row" onclick="startDemo(1)">
+                                    <td class="cell-size">1</td>
+                                    <td class="cell-calc">3 × 4</td>
+                                    <td class="cell-count">12</td>
+                                </tr>
+                                <tr class="data-row" onclick="startDemo(2)">
+                                    <td class="cell-size">2</td>
+                                    <td class="cell-calc">2 × 3</td>
+                                    <td class="cell-count">6</td>
+                                </tr>
+                                <tr class="data-row" onclick="startDemo(3)">
+                                    <td class="cell-size">3</td>
+                                    <td class="cell-calc">1 × 2</td>
+                                    <td class="cell-count">2</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p class="table-hint">提示：点击表格行查看自动演示</p>
+                    </div>
+                `;
+            } else {
+                document.getElementById('step-content').innerHTML = `
+                    <div class="animate-fade-in">
+                        <h3 class="step-title">${step.title}</h3>
+                        <p class="step-desc">${step.desc}</p>
+                    </div>
+                `;
+            }
+
+
+
+            // 第四步隐去统计模块
+            const statsModule = document.getElementById('stats-module');
+            if (isLastStep) {
+                statsModule.classList.add('hidden');
+            } else {
+                statsModule.classList.remove('hidden');
+            }
+
+            document.querySelectorAll('.step-indicator').forEach((el, i) => {
+                el.classList.toggle('active', i === currentStep);
+            });
+
+            document.getElementById('prev-btn').disabled = currentStep === 0;
+            document.getElementById('next-btn').innerText = currentStep === steps.length - 1 ? "重新开始" : "下一步";
+
+            visitedPositions.clear();
+            document.getElementById('ghost-container').innerHTML = '';
+            updateCounter();
+            showSquare(0, 0, step.size);
+        }
+
+        function showSquare(r, c, size, instant = false) {
+            const band = document.getElementById('rubber-band');
+            const dots = [];
+
+            r = Math.max(0, Math.min(r, rows - size - 1));
+            c = Math.max(0, Math.min(c, cols - size - 1));
+            currentPos = { r, c };
+
+            for (let i = 0; i <= size; i++) {
+                for (let j = 0; j <= size; j++) {
+                    const dot = document.getElementById(`dot-${r + i}-${c + j}`);
+                    if (dot) dots.push(dot);
+                }
+            }
+
+            document.querySelectorAll('.dot').forEach(d => d.classList.remove('highlight'));
+            dots.forEach(d => d.classList.add('highlight'));
+
+            // 基于 unitGap 的精确几何中心计算
+            const x = (c + 0.5) * unitGap;
+            const y = (r + 0.5) * unitGap;
+            const side = size * unitGap;
+
+            if (instant) {
+                band.style.transition = 'none';
+            }
+
+            band.setAttribute('x', x);
+            band.setAttribute('y', y);
+            band.setAttribute('width', side);
+            band.setAttribute('height', side);
+            band.setAttribute('rx', '2'); // 减小圆角，更符合钉阵连接感
+            band.setAttribute('opacity', '1');
+
+            if (instant) {
+                // 强制重绘以应用无过渡状态
+                band.getBoundingClientRect();
+                band.style.transition = '';
+            }
+
+            // 记录足迹
+            const posKey = `${r}-${c}`;
+            if (!visitedPositions.has(posKey)) {
+                visitedPositions.add(posKey);
+                addGhostSquare(x, y, side);
+                updateCounter();
+            }
+        }
+
+        function addGhostSquare(x, y, side) {
+            const ghost = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            ghost.setAttribute('x', x);
+            ghost.setAttribute('y', y);
+            ghost.setAttribute('width', side);
+            ghost.setAttribute('height', side);
+            ghost.setAttribute('rx', '2');
+            ghost.setAttribute('fill', 'none');
+            ghost.setAttribute('stroke', '#FF8941');
+            ghost.setAttribute('stroke-width', '3');
+            ghost.setAttribute('stroke-dasharray', '6 4');
+            ghost.setAttribute('opacity', '0.5');
+            document.getElementById('ghost-container').appendChild(ghost);
+        }
+
+        function updateCounter() {
+            document.getElementById('found-count-num').innerText = visitedPositions.size;
+        }
+
+        function stopDemo() {
+            if (demoInterval) {
+                clearInterval(demoInterval);
+                demoInterval = null;
+            }
+        }
+
+        function startDemo(size) {
+            stopDemo();
+            visitedPositions.clear();
+            document.getElementById('ghost-container').innerHTML = '';
+
+            let r = 0, c = 0;
+            const maxR = rows - size - 1;
+            const maxC = cols - size - 1;
+
+            // 立即显示起始位置
+            showSquare(r, c, size, true);
+
+            demoInterval = setInterval(() => {
+                c++;
+                let isWrap = false;
+                if (c > maxC) {
+                    c = 0;
+                    r++;
+                    isWrap = true; // 换行时瞬移
+                }
+                if (r > maxR) {
+                    r = 0;
+                    c = 0;
+                    isWrap = true;
+                }
+                showSquare(r, c, size, isWrap);
+            }, 600); // 稍微放慢演示速度，配合新的动画节奏
+        }
+
+        const band = document.getElementById('rubber-band');
+
+        function handleStart(e) {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const rect = band.getBoundingClientRect();
+
+            if (clientX >= rect.left && clientX <= rect.right &&
+                clientY >= rect.top && clientY <= rect.bottom) {
+                isDragging = true;
+                dragStartPos = { x: clientX, y: clientY };
+                dragStartGrid = { ...currentPos };
+                dragDirection = null;
+            }
+        }
+
+        function handleMove(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            const grid = document.getElementById('dot-grid');
+            const gridRect = grid.getBoundingClientRect();
+
+            const step = steps[currentStep];
+            const size = step.size;
+
+            // 自由连续拖动逻辑：计算相对于起始点的偏移量，并转换为网格坐标
+            const dx = clientX - dragStartPos.x;
+            const dy = clientY - dragStartPos.y;
+
+            let targetC = dragStartGrid.c + Math.round(dx / unitGap);
+            let targetR = dragStartGrid.r + Math.round(dy / unitGap);
+
+            // 限制范围
+            targetC = Math.max(0, Math.min(targetC, cols - size - 1));
+            targetR = Math.max(0, Math.min(targetR, rows - size - 1));
+
+            if (targetC !== currentPos.c || targetR !== currentPos.r) {
+                showSquare(targetR, targetC, size);
+            }
+        }
+
+        function handleEnd() {
+            isDragging = false;
+        }
+
+        window.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+        window.addEventListener('touchstart', handleStart, { passive: false });
+        window.addEventListener('touchmove', handleMove, { passive: false });
+        window.addEventListener('touchend', handleEnd);
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(1rem)';
+            }, 1000);
+        }
+
+        document.getElementById('next-btn').onclick = () => {
+            currentStep = (currentStep + 1) % steps.length;
+            updateStep();
+        };
+
+        document.getElementById('prev-btn').onclick = () => {
+            if (currentStep > 0) {
+                currentStep--;
+                updateStep();
+            }
+        };
+
+        initGrid();
+        window.onresize = initGrid;
+    </script>
+</body>
+
+</html>
