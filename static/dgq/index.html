@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手绘点格棋 - 策略对战</title>
+    <script src="https://metis-online.fbcontent.cn/metis-misc/zgLDUdmazTYc0B4K6Cor.js"></script>
+    <script src="https://metis-online.fbcontent.cn/metis-misc/zZZY40t7WJC7UdQCPACm.js"></script>
+    <style>
+        @font-face {
+            font-family: 'Handwritten';
+            src: local('Comic Sans MS'), local('Marker Felt'), sans-serif;
+        }
+        body {
+            background-color: #fdfcf0;
+            font-family: 'Handwritten', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .paper-texture {
+            background-image: url('https://www.transparenttextures.com/patterns/paper-fibers.png');
+        }
+        .player-card {
+            transition: all 0.3s ease;
+            border: 3px solid transparent;
+            padding: 0.5rem;
+            border-radius: 1.5rem;
+            width: 140px;
+        }
+        @media (max-width: 768px) {
+            .player-card {
+                width: auto;
+                min-width: 140px;
+                flex-direction: row !important;
+                padding: 0.5rem 1rem;
+                gap: 0.75rem;
+                align-items: center;
+            }
+            .player-card img {
+                width: 40px !important;
+                height: 50px !important;
+                margin-bottom: 0 !important;
+            }
+            .player-info-text {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .player-card .text-2xl { font-size: 1rem; line-height: 1.2; }
+            .player-card .text-5xl { font-size: 1.5rem; line-height: 1; margin-top: 0.25rem !important; }
+        }
+        .player-card.active {
+            transform: scale(1.1);
+            border-color: currentColor;
+            background: rgba(255,255,255,0.3);
+        }
+        canvas {
+            cursor: crosshair;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .hand-drawn-border {
+            border: 4px solid #4a4a4a;
+            border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+        }
+        .btn-hand-drawn {
+            border: 2px solid #4a4a4a;
+            border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+            transition: transform 0.2s;
+        }
+    </style>
+</head>
+<body class="paper-texture">
+
+    <div class="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 w-full max-w-7xl px-4 py-4">
+        <!-- 移动端顶部并列容器 -->
+        <div class="flex flex-row md:hidden justify-center gap-4 w-full">
+            <div id="p1-mobile-placeholder"></div>
+            <div id="p2-mobile-placeholder"></div>
+        </div>
+
+        <!-- 蓝色玩家 (Player 1) -->
+        <div id="player1-card" class="player-card active flex flex-col items-center text-blue-600">
+            <img id="p1-img" src="https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/kD3o6uchYSX35ggFYP9QYj.jpg" class="w-32 h-40 object-contain mb-2" alt="Blue Player">
+            <div class="player-info-text">
+                <div class="text-2xl font-bold">蓝方</div>
+                <div id="p1-score" class="text-5xl font-black mt-2">0</div>
+            </div>
+        </div>
+
+        <!-- 游戏画布容器 -->
+        <div class="relative bg-white/40 p-4 md:p-6 hand-drawn-border">
+            <canvas id="gameCanvas"></canvas>
+        </div>
+
+        <!-- 银黑色玩家 (AI/Player 2) -->
+        <div id="player2-card" class="player-card flex flex-col items-center text-slate-800">
+            <img id="p2-img" src="https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/bepkWFuomi8cgj2tQ9mNeD.jpg" class="w-32 h-40 object-contain mb-2" alt="AI Player">
+            <div class="player-info-text">
+                <div class="text-2xl font-bold">AI</div>
+                <div id="p2-score" class="text-5xl font-black mt-2">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 控制按钮 -->
+    <div class="fixed bottom-8 right-8">
+        <button onclick="resetGame()" class="btn-hand-drawn p-3 bg-white hover:bg-gray-100 shadow-sm flex items-center justify-center" title="重置游戏">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- 设置按钮 -->
+    <div class="fixed top-4 right-4 z-40">
+        <button onclick="toggleSettings()" class="btn-hand-drawn p-3 bg-white hover:bg-gray-100 shadow-sm flex items-center justify-center" title="设置">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-3xl hand-drawn-border text-center max-w-sm w-full mx-4">
+            <h2 class="text-2xl font-bold mb-6">游戏设置</h2>
+            
+            <div class="mb-6 text-left">
+                <label class="block text-sm font-bold mb-2">棋盘形状</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="setShape('RECT')" id="shape-rect" class="btn-hand-drawn py-2 bg-yellow-100">矩形</button>
+                    <button onclick="setShape('TRIANGLE')" id="shape-tri" class="btn-hand-drawn py-2">三角形</button>
+                </div>
+            </div>
+
+            <div class="mb-6 text-left">
+                <label class="block text-sm font-bold mb-2">棋盘尺寸</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="setGridSize(5)" id="size-5" class="btn-hand-drawn py-2 bg-yellow-100">5×5</button>
+                    <button onclick="setGridSize(8)" id="size-8" class="btn-hand-drawn py-2">8×8</button>
+                    <button onclick="setGridSize(12)" id="size-12" class="btn-hand-drawn py-2">12×12</button>
+                </div>
+            </div>
+
+            <div class="mb-8 text-left">
+                <label class="block text-sm font-bold mb-2">对战模式</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="setMode('PVP')" id="mode-pvp" class="btn-hand-drawn py-2">两人对战</button>
+                    <button onclick="setMode('PVE')" id="mode-pve" class="btn-hand-drawn py-2 bg-yellow-100">人机对战</button>
+                </div>
+            </div>
+
+            <button onclick="applySettings()" class="btn-hand-drawn w-full py-3 bg-blue-500 text-white font-bold text-lg">
+                保存并开始
+            </button>
+        </div>
+    </div>
+
+    <!-- 胜利弹窗 -->
+    <div id="win-modal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-3xl hand-drawn-border text-center max-w-sm">
+            <h2 id="win-title" class="text-3xl font-bold mb-4">恭喜！</h2>
+            <p id="win-msg" class="text-xl mb-6">蓝色玩家获胜了！</p>
+            <button onclick="resetGame()" class="btn-hand-drawn px-8 py-3 bg-yellow-400 hover:bg-yellow-500 font-bold text-lg">
+                再玩一局
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const p1ScoreEl = document.getElementById('p1-score');
+        const p2ScoreEl = document.getElementById('p2-score');
+        const p1Card = document.getElementById('player1-card');
+        const p2Card = document.getElementById('player2-card');
+        const p1Img = document.getElementById('p1-img');
+        const p2Img = document.getElementById('p2-img');
+        const winModal = document.getElementById('win-modal');
+        const winTitle = document.getElementById('win-title');
+        const winMsg = document.getElementById('win-msg');
+
+        let ROWS = 5;
+        let COLS = 5;
+        let gameMode = 'PVE'; // 默认人机对战
+        let boardShape = 'RECT'; // 'RECT' 或 'TRIANGLE'
+        let tempRows = 5;
+        let tempMode = 'PVE';
+        let tempShape = 'RECT';
+        const DOT_RADIUS = 5;
+        const LINE_WIDTH = window.innerWidth < 768 ? 4 : 6;
+        const PADDING = 50;
+
+        let currentPlayer = 1;
+        let hLines = [];
+        let vLines = [];
+        let boxes = [];
+        let scores = [0, 0];
+        let emoteTimeout = null;
+        let animatingLine = null;
+
+        // 滑动交互状态
+        let isDragging = false;
+        let startDot = null;
+        let currentMousePos = {x: 0, y: 0};
+
+        const IMGS = {
+            p1_happy: 'https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/kD3o6uchYSX35ggFYP9QYj.jpg',
+            p1_sad: 'https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/tAsw8Tpn69uhHoeJvqGeW2.jpg',
+            p2_happy: 'https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/bepkWFuomi8cgj2tQ9mNeD.jpg',
+            p2_sad: 'https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/bepkWFuomi8cgj2tQ9mNeD.jpg'
+        };
+
+        function drawHandLine(x1, y1, x2, y2, color, width, progress = 1) {
+            const seed = Math.sin(x1 * 12.9898 + y1 * 78.233 + x2 * 37.719 + y2 * 11.135) * 43758.5453;
+            let randomVal = seed % 1;
+            function pseudoRandom() {
+                randomVal = (randomVal * 9301 + 49297) % 233280;
+                return randomVal / 233280;
+            }
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            const targetX = x1 + (x2 - x1) * progress;
+            const targetY = y1 + (y2 - y1) * progress;
+            
+            const dist = Math.sqrt((targetX - x1) ** 2 + (targetY - y1) ** 2);
+            const segments = Math.max(2, Math.floor(dist / 5));
+            
+            ctx.moveTo(x1, y1);
+            for (let i = 1; i <= segments; i++) {
+                const t = i / segments;
+                const offset = (pseudoRandom() - 0.5) * 3;
+                const tx = x1 + (targetX - x1) * t + offset;
+                const ty = y1 + (targetY - y1) * t + offset;
+                ctx.lineTo(tx, ty);
+            }
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function init() {
+            const maxCanvasSize = Math.min(window.innerWidth * 0.8, window.innerHeight * 0.6);
+            const currentCellSize = boardShape === 'RECT' ? 
+                Math.floor((maxCanvasSize - PADDING * 2) / (COLS - 1)) :
+                Math.floor((maxCanvasSize - PADDING * 2) / (ROWS - 1));
+            const finalCellSize = Math.max(30, Math.min(100, currentCellSize));
+            
+            window.currentCellSize = finalCellSize;
+            
+            if (boardShape === 'RECT') {
+                canvas.width = (COLS - 1) * finalCellSize + PADDING * 2;
+                canvas.height = (ROWS - 1) * finalCellSize + PADDING * 2;
+                hLines = Array.from({ length: ROWS }, () => Array(COLS - 1).fill(0));
+                vLines = Array.from({ length: ROWS - 1 }, () => Array(COLS).fill(0));
+                boxes = Array.from({ length: ROWS - 1 }, () => Array(COLS - 1).fill(0));
+            } else {
+                canvas.width = (ROWS - 1) * finalCellSize + PADDING * 2;
+                canvas.height = (ROWS - 1) * finalCellSize * Math.sin(Math.PI/3) + PADDING * 2;
+                triLines.h = Array.from({ length: ROWS }, (_, i) => Array(i).fill(0));
+                triLines.sl = Array.from({ length: ROWS - 1 }, (_, i) => Array(i + 1).fill(0));
+                triLines.sr = Array.from({ length: ROWS - 1 }, (_, i) => Array(i + 1).fill(0));
+                triFaces = Array.from({ length: ROWS - 1 }, (_, i) => Array(i * 2 + 1).fill(0));
+            }
+
+            // 移动端布局适配
+            if (window.innerWidth < 768) {
+                const p1Placeholder = document.getElementById('p1-mobile-placeholder');
+                const p2Placeholder = document.getElementById('p2-mobile-placeholder');
+                if (p1Placeholder && p1Card.parentElement !== p1Placeholder) p1Placeholder.appendChild(p1Card);
+                if (p2Placeholder && p2Card.parentElement !== p2Placeholder) p2Placeholder.appendChild(p2Card);
+            }
+            
+            scores = [0, 0];
+            currentPlayer = 1;
+            updateUI();
+            draw();
+        }
+
+        function getTriPos(r, c) {
+            const CELL_SIZE = window.currentCellSize || 100;
+            const h = CELL_SIZE * Math.sin(Math.PI / 3);
+            const startX = canvas.width / 2 - (r * CELL_SIZE) / 2;
+            return { x: startX + c * CELL_SIZE, y: PADDING + r * h };
+        }
+
+        function draw() {
+            const CELL_SIZE = window.currentCellSize || 100;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (boardShape === 'RECT') {
+                // 绘制已占领的矩形格子
+                for (let r = 0; r < ROWS - 1; r++) {
+                    for (let c = 0; c < COLS - 1; c++) {
+                        if (boxes[r][c] !== 0) {
+                            const x = PADDING + c * CELL_SIZE;
+                            const y = PADDING + r * CELL_SIZE;
+                            let fillColor, text, textColor;
+                            if (boxes[r][c] === 1) {
+                                fillColor = 'rgba(59, 130, 246, 0.08)';
+                                text = 'B';
+                                textColor = '#2563eb';
+                            } else {
+                                fillColor = gameMode === 'PVE' ? 'rgba(30, 41, 59, 0.08)' : 'rgba(220, 38, 38, 0.08)';
+                                text = gameMode === 'PVE' ? 'A' : 'R';
+                                textColor = gameMode === 'PVE' ? '#4a4a4a' : '#dc2626';
+                            }
+                            
+                            // 创建径向渐变增强质感
+                            const rectGradient = ctx.createRadialGradient(
+                                x + CELL_SIZE/2, y + CELL_SIZE/2, 0,
+                                x + CELL_SIZE/2, y + CELL_SIZE/2, CELL_SIZE/2
+                            );
+                            rectGradient.addColorStop(0, fillColor);
+                            rectGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                            
+                            ctx.fillStyle = rectGradient;
+                            ctx.fillRect(x + 4, y + 4, CELL_SIZE - 8, CELL_SIZE - 8);
+                            ctx.fillStyle = textColor;
+                            ctx.font = 'bold 25px Handwritten';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(text, x + CELL_SIZE/2, y + CELL_SIZE/2);
+                        }
+                    }
+                }
+                // 绘制矩形线条
+                for (let r = 0; r < hLines.length; r++) {
+                    for (let c = 0; c < hLines[r].length; c++) {
+                        if (hLines[r][c] !== 0) {
+                            const x = PADDING + c * CELL_SIZE, y = PADDING + r * CELL_SIZE;
+                            const color = hLines[r][c] === 1 ? '#2563eb' : (gameMode === 'PVE' ? '#4a4a4a' : '#dc2626');
+                            drawHandLine(x, y, x + CELL_SIZE, y, color, LINE_WIDTH);
+                        }
+                    }
+                }
+                for (let r = 0; r < vLines.length; r++) {
+                    for (let c = 0; c < vLines[r].length; c++) {
+                        if (vLines[r][c] !== 0) {
+                            const x = PADDING + c * CELL_SIZE, y = PADDING + r * CELL_SIZE;
+                            const color = vLines[r][c] === 1 ? '#2563eb' : (gameMode === 'PVE' ? '#4a4a4a' : '#dc2626');
+                            drawHandLine(x, y, x, y + CELL_SIZE, color, LINE_WIDTH);
+                        }
+                    }
+                }
+                // 绘制拖拽预览线
+                if (isDragging && startDot) {
+                    const sx = PADDING + startDot.c * CELL_SIZE;
+                    const sy = PADDING + startDot.r * CELL_SIZE;
+                    const color = currentPlayer === 1 ? 'rgba(37, 99, 235, 0.6)' : (gameMode === 'PVE' ? 'rgba(74, 74, 74, 0.6)' : 'rgba(220, 38, 38, 0.6)');
+                    drawHandLine(sx, sy, currentMousePos.x, currentMousePos.y, color, LINE_WIDTH * 0.8);
+                }
+                // 绘制矩形点
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        const x = PADDING + c * CELL_SIZE, y = PADDING + r * CELL_SIZE;
+                        ctx.beginPath(); ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2); ctx.fillStyle = '#4a4a4a'; ctx.fill();
+                    }
+                }
+            } else {
+                // 绘制三角形格子填充
+                for (let r = 0; r < ROWS - 1; r++) {
+                    for (let c = 0; c < triFaces[r].length; c++) {
+                        if (triFaces[r][c] !== 0) {
+                            const isUp = c % 2 === 0;
+                            const baseC = Math.floor(c / 2);
+                            const pts = isUp ? 
+                                [getTriPos(r, baseC), getTriPos(r+1, baseC), getTriPos(r+1, baseC+1)] :
+                                [getTriPos(r, baseC), getTriPos(r, baseC+1), getTriPos(r+1, baseC+1)];
+                            
+                            const colorBase = triFaces[r][c] === 1 ? '59, 130, 246' : (gameMode === 'PVE' ? '30, 41, 59' : '220, 38, 38');
+                            
+                            // 创建径向渐变
+                            const triCenterX = (pts[0].x + pts[1].x + pts[2].x) / 3;
+                            const triCenterY = (pts[0].y + pts[1].y + pts[2].y) / 3;
+                            const triGradient = ctx.createRadialGradient(triCenterX, triCenterY, 0, triCenterX, triCenterY, CELL_SIZE/2);
+                            triGradient.addColorStop(0, `rgba(${colorBase}, 0.1)`);
+                            triGradient.addColorStop(1, `rgba(${colorBase}, 0)`);
+                            
+                            ctx.fillStyle = triGradient;
+                            ctx.beginPath();
+                            ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); ctx.lineTo(pts[2].x, pts[2].y); ctx.closePath(); ctx.fill();
+                            
+                            // 绘制字母
+                            ctx.fillStyle = triFaces[r][c] === 1 ? '#2563eb' : (gameMode === 'PVE' ? '#4a4a4a' : '#dc2626');
+                            ctx.font = 'bold 18px Handwritten';
+                            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                            ctx.fillText(triFaces[r][c] === 1 ? 'B' : (gameMode === 'PVE' ? 'A' : 'R'), triCenterX, triCenterY);
+                        }
+                    }
+                }
+                // 绘制三角形线条
+                const drawTriLines = (lines, type) => {
+                    for (let r = 0; r < lines.length; r++) {
+                        for (let c = 0; c < lines[r].length; c++) {
+                            if (lines[r][c] !== 0) {
+                                const p1 = getTriPos(r, c);
+                                let p2;
+                                if (type === 'h') p2 = getTriPos(r, c + 1);
+                                else if (type === 'sl') p2 = getTriPos(r + 1, c);
+                                else p2 = getTriPos(r + 1, c + 1);
+                                const color = lines[r][c] === 1 ? '#2563eb' : (gameMode === 'PVE' ? '#4a4a4a' : '#dc2626');
+                                drawHandLine(p1.x, p1.y, p2.x, p2.y, color, LINE_WIDTH);
+                            }
+                        }
+                    }
+                };
+                drawTriLines(triLines.h, 'h'); drawTriLines(triLines.sl, 'sl'); drawTriLines(triLines.sr, 'sr');
+                // 绘制拖拽预览线
+                if (isDragging && startDot) {
+                    const p1 = boardShape === 'RECT' ? {x: PADDING + startDot.c * window.currentCellSize, y: PADDING + startDot.r * window.currentCellSize} : getTriPos(startDot.r, startDot.c);
+                    const color = currentPlayer === 1 ? 'rgba(37, 99, 235, 0.6)' : (gameMode === 'PVE' ? 'rgba(74, 74, 74, 0.6)' : 'rgba(220, 38, 38, 0.6)');
+                    drawHandLine(p1.x, p1.y, currentMousePos.x, currentMousePos.y, color, LINE_WIDTH * 0.8);
+                }
+                // 绘制三角形点
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c <= r; c++) {
+                        const p = getTriPos(r, c);
+                        ctx.beginPath(); ctx.arc(p.x, p.y, DOT_RADIUS, 0, Math.PI * 2); ctx.fillStyle = '#4a4a4a'; ctx.fill();
+                    }
+                }
+            }
+
+            // 绘制动画线
+            if (animatingLine) {
+                const { type, r, c, progress, player } = animatingLine;
+                let p1, p2;
+                if (boardShape === 'RECT') {
+                    p1 = {x: PADDING + c * CELL_SIZE, y: PADDING + r * CELL_SIZE};
+                    p2 = type === 'h' ? {x: p1.x + CELL_SIZE, y: p1.y} : {x: p1.x, y: p1.y + CELL_SIZE};
+                } else {
+                    p1 = getTriPos(r, c);
+                    if (type === 'h') p2 = getTriPos(r, c + 1);
+                    else if (type === 'sl') p2 = getTriPos(r + 1, c);
+                    else p2 = getTriPos(r + 1, c + 1);
+                }
+                const color = player === 1 ? '#2563eb' : (gameMode === 'PVE' ? '#4a4a4a' : '#dc2626');
+                drawHandLine(p1.x, p1.y, p1.x + (p2.x - p1.x) * progress, p1.y + (p2.y - p1.y) * progress, color, LINE_WIDTH);
+            }
+        }
+
+        function updateUI(isFeedbackEnd = false) {
+            p1ScoreEl.innerText = scores[0];
+            p2ScoreEl.innerText = scores[1];
+            
+            p1Card.classList.toggle('active', currentPlayer === 1);
+            p2Card.classList.toggle('active', currentPlayer === 2);
+
+            if (emoteTimeout) return;
+
+            // 默认状态：双方保持正常/开心
+            p1Img.src = IMGS.p1_happy;
+            p2Img.src = IMGS.p2_happy;
+        }
+
+        function showFeedbackEmotes(scoringPlayer) {
+            if (emoteTimeout) clearTimeout(emoteTimeout);
+            
+            if (scoringPlayer === 1) {
+                p1Img.src = IMGS.p1_happy; 
+                p2Img.src = IMGS.p2_sad;
+            } else {
+                p1Img.src = IMGS.p1_sad; 
+                p2Img.src = IMGS.p2_happy;
+            }
+
+            emoteTimeout = setTimeout(() => {
+                emoteTimeout = null;
+                updateUI();
+            }, 1500); // 延长反馈时间至1.5秒，让学生看清反馈
+        }
+
+        let triLines = { h: [], sl: [], sr: [] };
+        let triFaces = [];
+
+        function checkSquare(r, c) {
+            if (r < 0 || r >= ROWS - 1 || c < 0 || c >= COLS - 1) return false;
+            if (boxes[r][c] !== 0) return false;
+            if (hLines[r][c] !== 0 && hLines[r+1][c] !== 0 && vLines[r][c] !== 0 && vLines[r][c+1] !== 0) {
+                boxes[r][c] = currentPlayer; scores[currentPlayer - 1]++; return true;
+            }
+            return false;
+        }
+
+        function checkTriangle(r, c, isUp) {
+            if (boardShape !== 'TRIANGLE') return false;
+            if (r < 0 || r >= ROWS - 1) return false;
+            
+            const faceIdx = isUp ? c * 2 : c * 2 + 1;
+            if (triFaces[r][faceIdx] !== 0) return false;
+
+            let isClosed = false;
+            if (isUp) {
+                // 正三角 (Up): sl[r][c], sr[r][c], h[r+1][c]
+                if (c >= 0 && c <= r && 
+                    triLines.sl[r] && triLines.sl[r][c] !== 0 && 
+                    triLines.sr[r] && triLines.sr[r][c] !== 0 && 
+                    triLines.h[r+1] && triLines.h[r+1][c] !== 0) {
+                    isClosed = true;
+                }
+            } else {
+                // 倒三角 (Down): h[r][c], sl[r][c+1], sr[r][c]
+                if (c >= 0 && c < r && 
+                    triLines.h[r] && triLines.h[r][c] !== 0 && 
+                    triLines.sl[r] && triLines.sl[r][c+1] !== 0 && 
+                    triLines.sr[r] && triLines.sr[r][c] !== 0) {
+                    isClosed = true;
+                }
+            }
+
+            if (isClosed) {
+                triFaces[r][faceIdx] = currentPlayer;
+                scores[currentPlayer - 1]++;
+                return true;
+            }
+            return false;
+        }
+
+        function getDotAt(x, y) {
+            const CELL_SIZE = window.currentCellSize || 100;
+            if (boardShape === 'RECT') {
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        const dx = PADDING + c * CELL_SIZE, dy = PADDING + r * CELL_SIZE;
+                        if (Math.sqrt((x - dx)**2 + (y - dy)**2) < 30) return {r, c};
+                    }
+                }
+            } else {
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c <= r; c++) {
+                        const p = getTriPos(r, c);
+                        if (Math.sqrt((x - p.x)**2 + (y - p.y)**2) < 30) return {r, c};
+                    }
+                }
+            }
+            return null;
+        }
+
+        const handleStart = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            const dot = getDotAt(x, y);
+            if (dot) { isDragging = true; startDot = dot; currentMousePos = {x, y}; }
+        };
+
+        const handleMove = (e) => {
+            if (!isDragging) return;
+            const rect = canvas.getBoundingClientRect();
+            currentMousePos = { x: (e.clientX || e.touches[0].clientX) - rect.left, y: (e.clientY || e.touches[0].clientY) - rect.top };
+            draw();
+        };
+
+        const handleEnd = (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.changedTouches[0].clientX) - rect.left;
+            const y = (e.clientY || e.changedTouches[0].clientY) - rect.top;
+            const endDot = getDotAt(x, y);
+
+            if (endDot && startDot && (startDot.r !== endDot.r || startDot.c !== endDot.c)) {
+                let lineMade = false, squareMade = false;
+                
+                if (boardShape === 'RECT') {
+                    const dr = Math.abs(startDot.r - endDot.r), dc = Math.abs(startDot.c - endDot.c);
+                    if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+                        if (dr === 0) {
+                            const r = startDot.r, c = Math.min(startDot.c, endDot.c);
+                            if (hLines[r][c] === 0) { hLines[r][c] = currentPlayer; lineMade = true; if (checkSquare(r, c)) squareMade = true; if (checkSquare(r - 1, c)) squareMade = true; }
+                        } else {
+                            const r = Math.min(startDot.r, endDot.r), c = startDot.c;
+                            if (vLines[r][c] === 0) { vLines[r][c] = currentPlayer; lineMade = true; if (checkSquare(r, c)) squareMade = true; if (checkSquare(r, c - 1)) squareMade = true; }
+                        }
+                    }
+                } else {
+                    // 三角形连线逻辑 - 强化判定
+                    const r1 = startDot.r, c1 = startDot.c, r2 = endDot.r, c2 = endDot.c;
+                    const dr = r2 - r1, dc = c2 - c1;
+                    
+                    if (dr === 0 && Math.abs(dc) === 1) {
+                        // 水平线 h[r][c]
+                        const r = r1, c = Math.min(c1, c2);
+                        if (triLines.h[r] && triLines.h[r][c] === 0) {
+                            triLines.h[r][c] = currentPlayer; lineMade = true;
+                            // 1. 作为底边，尝试封闭上方的正三角 (r-1, c, true)
+                            if (checkTriangle(r - 1, c, true)) squareMade = true;
+                            // 2. 作为顶边，尝试封闭下方的倒三角 (r, c, false)
+                            if (checkTriangle(r, c, false)) squareMade = true;
+                        }
+                    } else if (Math.abs(dr) === 1 && (dc === 0 || dc === dr)) {
+                        // 斜线判定
+                        const r = Math.min(r1, r2);
+                        const c = (dr === 1) ? c1 : c2;
+                        if (dc === 0) {
+                            // 左斜线 sl[r][c]
+                            if (triLines.sl[r][c] === 0) {
+                                triLines.sl[r][c] = currentPlayer; lineMade = true;
+                                if (checkTriangle(r, c, true)) squareMade = true;    // 右侧的正三角
+                                if (checkTriangle(r, c - 1, false)) squareMade = true; // 左侧的倒三角
+                            }
+                        } else {
+                            // 右斜线 sr[r][c]
+                            if (triLines.sr[r][c] === 0) {
+                                triLines.sr[r][c] = currentPlayer; lineMade = true;
+                                if (checkTriangle(r, c, true)) squareMade = true;    // 左侧的正三角
+                                if (checkTriangle(r, c, false)) squareMade = true;   // 右侧的倒三角
+                            }
+                        }
+                    }
+                }
+
+                if (lineMade) {
+                    if (squareMade) {
+                        showFeedbackEmotes(currentPlayer);
+                        const totalFaces = boardShape === 'RECT' ? (ROWS - 1) * (COLS - 1) : (ROWS - 1) * (ROWS - 1);
+                        if (scores[0] + scores[1] === totalFaces) endGame();
+                    } else {
+                        currentPlayer = currentPlayer === 1 ? 2 : 1;
+                        if (gameMode === 'PVE' && currentPlayer === 2) setTimeout(aiMove, 600);
+                    }
+                }
+            }
+            startDot = null; updateUI(); draw();
+        };
+
+        canvas.addEventListener('mousedown', handleStart); canvas.addEventListener('mousemove', handleMove); canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleStart(e); });
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e); });
+        canvas.addEventListener('touchend', (e) => { e.preventDefault(); handleEnd(e); });
+
+        function animateLine(type, r, c, player, callback) {
+            let progress = 0;
+            const step = () => {
+                progress += 0.1;
+                if (progress >= 1) { animatingLine = null; callback(); return; }
+                animatingLine = { type, r, c, progress, player }; draw(); requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+        }
+
+        function aiMove() {
+            if (currentPlayer !== 2) return;
+            let possibleMoves = [], scoringMoves = [];
+
+            if (boardShape === 'RECT') {
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS - 1; c++) {
+                        if (hLines[r][c] === 0) {
+                            let canScore = (r > 0 && hLines[r-1][c] !== 0 && vLines[r-1][c] !== 0 && vLines[r-1][c+1] !== 0) || (r < ROWS - 1 && hLines[r+1][c] !== 0 && vLines[r][c] !== 0 && vLines[r][c+1] !== 0);
+                            if (canScore) scoringMoves.push({type: 'h', r, c}); else possibleMoves.push({type: 'h', r, c});
+                        }
+                    }
+                }
+                for (let r = 0; r < ROWS - 1; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (vLines[r][c] === 0) {
+                            let canScore = (c > 0 && vLines[r][c-1] !== 0 && hLines[r][c-1] !== 0 && hLines[r+1][c-1] !== 0) || (c < COLS - 1 && vLines[r][c+1] !== 0 && hLines[r][c] !== 0 && hLines[r+1][c] !== 0);
+                            if (canScore) scoringMoves.push({type: 'v', r, c}); else possibleMoves.push({type: 'v', r, c});
+                        }
+                    }
+                }
+            } else {
+                // 修正后的三角形 AI 逻辑
+                // 1. 水平线
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < r; c++) {
+                        if (triLines.h[r] && triLines.h[r][c] === 0) {
+                            let canScore = false;
+                            // 作为底边封闭上方正三角 (r-1, c, true)
+                            if (r > 0 && triLines.sl[r-1] && triLines.sl[r-1][c] !== 0 && triLines.sr[r-1] && triLines.sr[r-1][c] !== 0) canScore = true;
+                            // 作为顶边封闭下方倒三角 (r, c, false)
+                            if (r < ROWS - 1 && triLines.sl[r] && triLines.sl[r][c+1] !== 0 && triLines.sr[r] && triLines.sr[r][c] !== 0) canScore = true;
+                            if (canScore) scoringMoves.push({type: 'h', r, c}); else possibleMoves.push({type: 'h', r, c});
+                        }
+                    }
+                }
+                // 2. 左斜线 (\)
+                for (let r = 0; r < ROWS - 1; r++) {
+                    for (let c = 0; c <= r; c++) {
+                        if (triLines.sl[r] && triLines.sl[r][c] === 0) {
+                            let canScore = false;
+                            if (triLines.h[r+1] && triLines.h[r+1][c] !== 0 && triLines.sr[r] && triLines.sr[r][c] !== 0) canScore = true;
+                            if (c > 0 && triLines.h[r] && triLines.h[r][c-1] !== 0 && triLines.sr[r] && triLines.sr[r][c-1] !== 0) canScore = true;
+                            if (canScore) scoringMoves.push({type: 'sl', r, c}); else possibleMoves.push({type: 'sl', r, c});
+                        }
+                    }
+                }
+                // 3. 右斜线 (/)
+                for (let r = 0; r < ROWS - 1; r++) {
+                    for (let c = 0; c <= r; c++) {
+                        if (triLines.sr[r] && triLines.sr[r][c] === 0) {
+                            let canScore = false;
+                            if (triLines.h[r+1] && triLines.h[r+1][c] !== 0 && triLines.sl[r] && triLines.sl[r][c] !== 0) canScore = true;
+                            if (c < r && triLines.h[r] && triLines.h[r][c] !== 0 && triLines.sl[r] && triLines.sl[r][c+1] !== 0) canScore = true;
+                            if (canScore) scoringMoves.push({type: 'sr', r, c}); else possibleMoves.push({type: 'sr', r, c});
+                        }
+                    }
+                }
+            }
+
+            const move = scoringMoves.length > 0 ? scoringMoves[Math.floor(Math.random() * scoringMoves.length)] : possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+            if (!move) return;
+
+            animateLine(move.type, move.r, move.c, 2, () => {
+                let squareMade = false;
+                if (boardShape === 'RECT') {
+                    if (move.type === 'h') {
+                        hLines[move.r][move.c] = 2; if (checkSquare(move.r, move.c)) squareMade = true; if (checkSquare(move.r - 1, move.c)) squareMade = true;
+                    } else {
+                        vLines[move.r][move.c] = 2; if (checkSquare(move.r, move.c)) squareMade = true; if (checkSquare(move.r, move.c - 1)) squareMade = true;
+                    }
+                } else {
+                    if (move.type === 'h') {
+                        triLines.h[move.r][move.c] = 2;
+                        if (checkTriangle(move.r - 1, move.c, true)) squareMade = true;
+                        if (checkTriangle(move.r, move.c, false)) squareMade = true;
+                    } else if (move.type === 'sl') {
+                        triLines.sl[move.r][move.c] = 2; if (checkTriangle(move.r, move.c, true)) squareMade = true; if (checkTriangle(move.r, move.c - 1, false)) squareMade = true;
+                    } else {
+                        triLines.sr[move.r][move.c] = 2; if (checkTriangle(move.r, move.c, true)) squareMade = true; if (checkTriangle(move.r, move.c, false)) squareMade = true;
+                    }
+                }
+
+                if (squareMade) {
+                    showFeedbackEmotes(2);
+                    const totalFaces = boardShape === 'RECT' ? (ROWS - 1) * (COLS - 1) : (ROWS - 1) * (ROWS - 1);
+                    if (scores[0] + scores[1] === totalFaces) endGame(); else setTimeout(aiMove, 400);
+                } else { currentPlayer = 1; }
+                updateUI(); draw();
+            });
+        }
+
+        window.toggleSettings = () => document.getElementById('settings-modal').classList.toggle('hidden');
+        window.setGridSize = (size) => { tempRows = size; [5, 8, 12].forEach(s => document.getElementById(`size-${s}`).classList.toggle('bg-yellow-100', s === size)); };
+        window.setMode = (mode) => {
+            tempMode = mode;
+            document.getElementById('mode-pvp').classList.toggle('bg-yellow-100', mode === 'PVP');
+            document.getElementById('mode-pve').classList.toggle('bg-yellow-100', mode === 'PVE');
+            document.querySelector('#player2-card .text-2xl').innerText = mode === 'PVE' ? 'AI' : '红方';
+            p2Card.className = `player-card flex flex-col items-center ${mode === 'PVE' ? 'text-slate-800' : 'text-red-600'}`;
+            
+            // 动态切换 Player 2 的图片资源
+            if (mode === 'PVE') {
+                IMGS.p2_happy = 'https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/bepkWFuomi8cgj2tQ9mNeD.jpg';
+                IMGS.p2_sad = 'https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/bepkWFuomi8cgj2tQ9mNeD.jpg';
+            } else {
+                IMGS.p2_happy = 'https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/kqbXrAA2RuuEhpR3NXrTAQ.jpg';
+                IMGS.p2_sad = 'https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/Jyt9YYZjr6wAG9Rz5jGgUa.jpg';
+            }
+            updateUI();
+        };
+        window.setShape = (shape) => {
+            tempShape = shape;
+            document.getElementById('shape-rect').classList.toggle('bg-yellow-100', shape === 'RECT');
+            document.getElementById('shape-tri').classList.toggle('bg-yellow-100', shape === 'TRIANGLE');
+        };
+        window.applySettings = () => {
+            ROWS = COLS = tempRows;
+            gameMode = tempMode;
+            boardShape = tempShape;
+            document.getElementById('settings-modal').classList.add('hidden');
+            resetGame();
+        };
+        window.resetGame = () => { winModal.classList.add('hidden'); init(); };
+
+        function endGame() {
+            winModal.classList.remove('hidden');
+            const scoreDisplay = `<div class="text-6xl font-black my-4"><span class="text-blue-600">${scores[0]}</span><span class="text-gray-400">:</span><span class="${gameMode === 'PVE' ? 'text-slate-800' : 'text-red-600'}">${scores[1]}</span></div>`;
+            if (scores[0] > scores[1]) {
+                winTitle.innerText = "蓝方获胜！"; winTitle.className = "text-4xl font-bold mb-2 text-blue-600 text-center w-full";
+            } else if (scores[1] > scores[0]) {
+                winTitle.innerText = gameMode === 'PVE' ? "AI 获胜！" : "红方获胜！";
+                winTitle.className = `text-4xl font-bold mb-2 ${gameMode === 'PVE' ? 'text-slate-800' : 'text-red-600'} text-center w-full`;
+            } else {
+                winTitle.innerText = "平局！"; winTitle.className = "text-4xl font-bold mb-2 text-gray-600 text-center w-full";
+            }
+            winMsg.innerHTML = scoreDisplay;
+        }
+
+        init();
+    </script>
+</body>
+</html>
