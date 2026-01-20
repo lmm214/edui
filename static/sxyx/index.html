@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数学藤蔓：数字顺序大对战</title>
+    <script src="https://metis-online.fbcontent.cn/metis-misc/zgLDUdmazTYc0B4K6Cor.js"></script>
+    <script src="https://metis-online.fbcontent.cn/metis-misc/zZZY40t7WJC7UdQCPACm.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.cn/css2?family=Ma+Shan+Zheng&display=swap');
+        
+        :root {
+            --p1-color: #FF6421;
+            --p2-color: #3B82F6;
+            --bg-color: #FDF5E6;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Ma Shan Zheng', cursive;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; /* 恢复垂直水平居中 */
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            position: absolute; /* 标题绝对定位在顶部 */
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .handwritten {
+            font-family: 'Ma Shan Zheng', cursive;
+        }
+
+        .grid-cell {
+            aspect-ratio: 1 / 1;
+            border: 1px solid rgba(0, 0, 0, 0.15); /* 增强网格线可见度 */
+            position: relative;
+            background: rgba(255, 255, 255, 0.4);
+            font-family: 'Ma Shan Zheng', cursive;
+            font-size: 3.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
+        .grid-cell.highlight-target {
+            animation: pulse-bg 1.5s infinite alternate;
+        }
+
+        @keyframes pulse-bg {
+            from { background: var(--highlight-color-start); }
+            to { background: var(--highlight-color-end); }
+        }
+
+        .grid-cell.drag-over {
+            background: var(--highlight-color-end) !important;
+            z-index: 5;
+            /* 移除内凹阴影 */
+        }
+
+        .grid-container {
+            transition: border-color 0.5s ease;
+            width: 500px;
+            height: 500px;
+            position: relative;
+        }
+
+        #grid {
+            display: grid !important;
+            grid-template-columns: repeat(6, 1fr) !important;
+            grid-template-rows: repeat(6, 1fr) !important;
+            width: 100%;
+            height: 100%;
+        }
+
+        .vine-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .player-card {
+            transition: all 0.3s ease;
+            background: transparent;
+            border: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            width: 160px;
+        }
+
+        .player-card img {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin-bottom: 10px;
+            border: 4px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .player-card.active {
+            transform: scale(1.05);
+        }
+
+        .player-card.active img {
+            border-color: currentColor;
+            box-shadow: 0 0 20px currentColor;
+        }
+
+        /* 右上角问号按钮 & 右下角刷新按钮 */
+        #help-btn, #refresh-btn {
+            position: fixed;
+            width: 45px;
+            height: 45px;
+            background: white;
+            border: 2px solid #ccc;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+            pointer-events: auto;
+        }
+
+        #help-btn {
+            top: 20px;
+            right: 20px;
+        }
+
+        #refresh-btn {
+            bottom: 20px;
+            right: 20px;
+        }
+
+        #help-modal {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            width: 300px;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            z-index: 99;
+            display: none;
+            border: 1px solid #eee;
+        }
+
+        /* 自定义结束弹窗 */
+        #game-over-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 30px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+        }
+
+        /* 移动端适配优化 */
+        @media (max-width: 768px) {
+            .game-container {
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: space-between;
+                gap: 0.5rem;
+                padding: 10px;
+            }
+            .player-card {
+                width: 48% !important;
+                flex-direction: row !important;
+                align-items: center !important;
+                text-align: left !important;
+                order: 1;
+                padding: 5px !important;
+                background: transparent !important; /* 去除白色背景 */
+                box-shadow: none !important; /* 去除阴影 */
+                gap: 5px;
+            }
+            .player-card img {
+                width: 35px !important;
+                height: 35px !important;
+                margin-bottom: 0 !important;
+            }
+            .player-card h2 {
+                font-size: 1.1rem !important; /* 减小字号 */
+            }
+            .player-card div {
+                font-size: 0.9rem !important; /* 减小字号 */
+            }
+            .grid-container {
+                width: 94vw !important;
+                height: 94vw !important;
+                order: 2;
+                margin-top: 10px;
+            }
+            header h1 {
+                font-size: 2rem !important;
+            }
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <!-- 右上角帮助 & 右下角刷新 -->
+    <div id="help-btn" title="玩法说明">?</div>
+    <div id="refresh-btn" title="重新开始">↻</div>
+    <div id="help-modal" class="handwritten">
+        <h3 class="text-xl font-bold mb-2">玩法说明</h3>
+        <p class="text-lg leading-relaxed">
+            ✍️ 从自己的数字上<span class="text-orange-600 font-bold">拖动</span>到相邻空格，填入新数字！<br><br>
+            🏁 填满棋盘后，数字最大者获胜！
+        </p>
+    </div>
+
+    <!-- 结束弹窗 -->
+    <div id="game-over-modal">
+        <div class="modal-content handwritten">
+            <h2 id="winner-text" class="text-4xl font-bold mb-6">红方获胜！</h2>
+            <p id="final-score" class="text-xl mb-8 text-gray-600">红方 20 | 蓝方 15</p>
+            <button id="modal-reset-btn" class="px-12 py-3 bg-green-800 text-white rounded-full text-xl shadow-lg hover:bg-green-900 transition-all">再来一局</button>
+        </div>
+    </div>
+
+    <!-- 顶部标题 -->
+    <header class="text-center mb-4">
+        <h1 class="text-5xl font-bold text-gray-800 handwritten">顺序游戏</h1>
+    </header>
+
+    <main class="game-container flex flex-row gap-8 items-center justify-center w-full max-w-6xl">
+        
+        <!-- 红方 控制区 -->
+        <div id="p1-panel" class="player-card active" style="color: var(--p1-color);">
+            <img src="https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/j5YXCCSwNBCMQdWhZm6zzL.jpg">
+            <div class="flex flex-col">
+                <h2 class="text-2xl font-bold handwritten">红方</h2>
+                <div class="text-xl font-bold handwritten" id="p1-max">最大数: 3</div>
+            </div>
+        </div>
+
+        <!-- 游戏棋盘 -->
+        <div id="grid-container" class="relative grid-container bg-white/80 backdrop-blur-sm p-1 rounded-lg shadow-xl border-8 border-orange-500">
+            <canvas id="vine-canvas" class="vine-canvas"></canvas>
+            <div id="grid">
+                <!-- 格子由 JS 生成 -->
+            </div>
+        </div>
+
+        <!-- 蓝方 控制区 -->
+        <div id="p2-panel" class="player-card" style="color: var(--p2-color);">
+            <img src="https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/7FfS3ba6YMDdjijVf5nNZ2.jpg">
+            <div class="flex flex-col">
+                <h2 class="text-2xl font-bold handwritten">蓝方</h2>
+                <div class="text-xl font-bold handwritten" id="p2-max">最大数: 3</div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 底部 -->
+    <footer class="mt-4">
+    </footer>
+
+    <script type="module">
+        const GRID_SIZE = 6;
+        let currentPlayer = 1;
+        let gameState = [];
+        let dragSource = null;
+        let dragOverCell = null;
+        let vines = [];
+
+        const gridEl = document.getElementById('grid');
+        const canvas = document.getElementById('vine-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function initGame() {
+            gameState = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(null));
+            vines = [];
+            currentPlayer = 1;
+            dragSource = null;
+            
+            gameState[0][0] = { value: 1, player: 1 };
+            gameState[1][1] = { value: 2, player: 1 };
+            gameState[2][2] = { value: 3, player: 1 };
+            vines.push({ from: {r:0, c:0}, to: {r:1, c:1}, player: 1 });
+            vines.push({ from: {r:1, c:1}, to: {r:2, c:2}, player: 1 });
+
+            gameState[5][5] = { value: 1, player: 2 };
+            gameState[4][4] = { value: 2, player: 2 };
+            gameState[3][3] = { value: 3, player: 2 };
+            vines.push({ from: {r:5, c:5}, to: {r:4, c:4}, player: 2 });
+            vines.push({ from: {r:4, c:4}, to: {r:3, c:3}, player: 2 });
+
+            renderGrid();
+            updateUI();
+            resizeCanvas();
+        }
+
+        function resizeCanvas() {
+            const rect = gridEl.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            drawVines();
+        }
+
+        function renderGrid() {
+            gridEl.innerHTML = '';
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell flex items-center justify-center text-3xl font-bold';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    
+                    const data = gameState[r][c];
+                    if (data) {
+                        cell.textContent = data.value;
+                        cell.style.color = data.player === 1 ? 'var(--p1-color)' : 'var(--p2-color)';
+                    }
+
+                    // 拖拽事件绑定
+                    cell.onmousedown = (e) => startDrag(r, c, e);
+                    cell.ontouchstart = (e) => startDrag(r, c, e);
+                    
+                    gridEl.appendChild(cell);
+                }
+            }
+        }
+
+        function startDrag(r, c, e) {
+            const cellData = gameState[r][c];
+            if (cellData && cellData.player === currentPlayer) {
+                dragSource = { r, c, value: cellData.value };
+                highlightPossibleTargets(r, c);
+            }
+        }
+
+        function highlightPossibleTargets(r, c) {
+            const startColor = currentPlayer === 1 ? 'rgba(255, 100, 33, 0.1)' : 'rgba(59, 130, 246, 0.1)';
+            const endColor = currentPlayer === 1 ? 'rgba(255, 100, 33, 0.4)' : 'rgba(59, 130, 246, 0.4)';
+            
+            document.documentElement.style.setProperty('--highlight-color-start', startColor);
+            document.documentElement.style.setProperty('--highlight-color-end', endColor);
+
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+                    const nr = r + dr;
+                    const nc = c + dc;
+                    if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) {
+                        if (!gameState[nr][nc]) {
+                            gridEl.children[nr * GRID_SIZE + nc].classList.add('highlight-target');
+                        }
+                    }
+                }
+            }
+        }
+
+        function clearHighlights() {
+            Array.from(gridEl.children).forEach(el => {
+                el.classList.remove('highlight-target', 'drag-over');
+            });
+        }
+
+        // 全局拖拽监听
+        window.onmousemove = (e) => handleDragMove(e);
+        window.ontouchmove = (e) => handleDragMove(e);
+        window.onmouseup = (e) => endDrag(e);
+        window.ontouchend = (e) => endDrag(e);
+
+        function handleDragMove(e) {
+            if (!dragSource) return;
+            
+            const point = e.touches ? e.touches[0] : e;
+            const target = document.elementFromPoint(point.clientX, point.clientY);
+            
+            if (target && target.classList.contains('grid-cell')) {
+                const r = parseInt(target.dataset.r);
+                const c = parseInt(target.dataset.c);
+                
+                if (target.classList.contains('highlight-target')) {
+                    if (dragOverCell) gridEl.children[dragOverCell.r * GRID_SIZE + dragOverCell.c].classList.remove('drag-over');
+                    dragOverCell = { r, c };
+                    target.classList.add('drag-over');
+                } else {
+                    if (dragOverCell) gridEl.children[dragOverCell.r * GRID_SIZE + dragOverCell.c].classList.remove('drag-over');
+                    dragOverCell = null;
+                }
+            }
+        }
+
+        function endDrag(e) {
+            if (dragSource && dragOverCell) {
+                const { r, c } = dragOverCell;
+                const newValue = dragSource.value + 1;
+                
+                gameState[r][c] = { value: newValue, player: currentPlayer };
+                vines.push({ from: { r: dragSource.r, c: dragSource.c }, to: { r, c }, player: currentPlayer });
+                
+                // 逻辑修改：检查对手是否能动
+                const nextPlayer = currentPlayer === 1 ? 2 : 1;
+                if (canPlayerMove(nextPlayer)) {
+                    currentPlayer = nextPlayer;
+                } else if (!canPlayerMove(currentPlayer)) {
+                    // 如果对手不能动，且自己也不能动，则结束
+                    checkGameOver(true);
+                }
+                // 如果对手不能动但自己能动，保持 currentPlayer 不变
+
+                renderGrid();
+                updateUI();
+                drawVines();
+                checkGameOver();
+            }
+            
+            dragSource = null;
+            dragOverCell = null;
+            clearHighlights();
+        }
+
+        function canPlayerMove(player) {
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const data = gameState[r][c];
+                    if (data && data.player === player) {
+                        // 检查周围是否有空格
+                        for (let dr = -1; dr <= 1; dr++) {
+                            for (let dc = -1; dc <= 1; dc++) {
+                                if (dr === 0 && dc === 0) continue;
+                                const nr = r + dr;
+                                const nc = c + dc;
+                                if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) {
+                                    if (!gameState[nr][nc]) return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function drawVines() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const cellW = canvas.width / GRID_SIZE;
+            const cellH = canvas.height / GRID_SIZE;
+
+            vines.forEach(vine => {
+                ctx.beginPath();
+                ctx.lineWidth = 5;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = vine.player === 1 ? 'rgba(255, 100, 33, 0.5)' : 'rgba(59, 130, 246, 0.5)';
+                
+                const startX = vine.from.c * cellW + cellW / 2;
+                const startY = vine.from.r * cellH + cellH / 2;
+                const endX = vine.to.c * cellW + cellW / 2;
+                const endY = vine.to.r * cellH + cellH / 2;
+
+                ctx.moveTo(startX, startY);
+                const cpX = (startX + endX) / 2 + (Math.sin(startX) * 15);
+                const cpY = (startY + endY) / 2 + (Math.cos(startY) * 15);
+                ctx.quadraticCurveTo(cpX, cpY, endX, endY);
+                ctx.stroke();
+            });
+        }
+
+        function updateUI() {
+            let p1Max = 0, p2Max = 0;
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const data = gameState[r][c];
+                    if (data) {
+                        if (data.player === 1) {
+                            p1Max = Math.max(p1Max, data.value);
+                        } else {
+                            p2Max = Math.max(p2Max, data.value);
+                        }
+                    }
+                }
+            }
+
+            document.getElementById('p1-max').textContent = `最大数: ${p1Max}`;
+            document.getElementById('p2-max').textContent = `最大数: ${p2Max}`;
+
+            // 激活面板效果
+            document.getElementById('p1-panel').classList.toggle('active', currentPlayer === 1);
+            document.getElementById('p2-panel').classList.toggle('active', currentPlayer === 2);
+            
+            // 棋盘外圈颜色切换
+            const gridContainer = document.getElementById('grid-container');
+            gridContainer.style.borderColor = currentPlayer === 1 ? 'var(--p1-color)' : 'var(--p2-color)';
+        }
+
+        function checkGameOver(forceEnd = false) {
+            let emptyCells = 0;
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (!gameState[r][c]) emptyCells++;
+                }
+            }
+
+            // 只有棋盘满，或者双方都不能动时才结束
+            if (emptyCells === 0 || forceEnd || (!canPlayerMove(1) && !canPlayerMove(2))) {
+                let p1Max = 0, p2Max = 0;
+                for (let r = 0; r < GRID_SIZE; r++) {
+                    for (let c = 0; c < GRID_SIZE; c++) {
+                        const data = gameState[r][c];
+                        if (data) {
+                            if (data.player === 1) p1Max = Math.max(p1Max, data.value);
+                            else p2Max = Math.max(p2Max, data.value);
+                        }
+                    }
+                }
+                
+                const modal = document.getElementById('game-over-modal');
+                const winnerText = document.getElementById('winner-text');
+                const finalScore = document.getElementById('final-score');
+
+                if (p1Max > p2Max) {
+                    winnerText.textContent = '红方获胜！';
+                    winnerText.style.color = 'var(--p1-color)';
+                } else if (p2Max > p1Max) {
+                    winnerText.textContent = '蓝方获胜！';
+                    winnerText.style.color = 'var(--p2-color)';
+                } else {
+                    winnerText.textContent = '握手言和！';
+                    winnerText.style.color = '#666';
+                }
+
+                finalScore.innerHTML = `<span style="color: var(--p1-color)">红方 ${p1Max}</span> | <span style="color: var(--p2-color)">蓝方 ${p2Max}</span>`;
+                modal.style.display = 'flex';
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        document.getElementById('refresh-btn').onclick = initGame;
+        document.getElementById('modal-reset-btn').onclick = () => {
+            document.getElementById('game-over-modal').style.display = 'none';
+            initGame();
+        };
+        
+        const helpBtn = document.getElementById('help-btn');
+        const helpModal = document.getElementById('help-modal');
+        helpBtn.onclick = (e) => {
+            e.stopPropagation();
+            helpModal.style.display = helpModal.style.display === 'block' ? 'none' : 'block';
+        };
+        document.body.onclick = () => {
+            helpModal.style.display = 'none';
+        };
+
+        // 启动
+        initGame();
+    </script>
+</body>
+</html>
