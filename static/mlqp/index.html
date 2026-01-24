@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>棋盘上的麦粒 - 沉浸式 3D 体验</title>
+  <script src="https://metis-online.fbcontent.cn/metis-misc/zgLDUdmazTYc0B4K6Cor.js"></script>
+  <script src="https://metis-online.fbcontent.cn/metis-misc/zZZY40t7WJC7UdQCPACm.js"></script>
+  <script src="https://metis-online.fbcontent.cn/metis-misc/RzWcgrRY7zuXErSSLsDmh0.js"></script>
+  <script src="https://metis-online.fbcontent.cn/metis-misc/PHKmR6MjMLnuPRSU9CYwog.js"></script>
+  <style>
+    :root {
+      --primary: #FF5600;
+      --bg: #050505;
+      --text: #ffffff;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Noto Serif SC', serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    /* 故事场景 */
+    #scene-story {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/X9GjCctUN7r4cx3RfR6q3e.jpg') center/cover no-repeat;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      cursor: pointer;
+    }
+
+    .story-container {
+      max-width: 800px;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .story-line {
+      font-size: 2rem;
+      line-height: 1.6;
+      opacity: 0;
+      display: none;
+      text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+
+    .story-line.active {
+      display: block;
+    }
+
+    .click-hint {
+      position: absolute; 
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 1rem;
+      color: rgba(255,255,255,0.5);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.8; }
+    }
+
+    /* 3D 场景 */
+    #scene-main {
+      position: fixed;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.5s ease;
+    }
+
+    #scene-main.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+    }
+
+    .ui-overlay {
+      position: absolute;
+      top: 50%;
+      right: 30px;
+      transform: translateY(-50%);
+      width: 80px;
+      background: transparent;
+      padding: 0;
+      border-radius: 0;
+      border: none;
+      box-shadow: none;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      align-items: center;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      margin-top: 0;
+    }
+
+    .round-btn {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 2px solid rgba(212, 175, 55, 0.6);
+      background: rgba(15, 15, 15, 0.8);
+      color: #D4AF37;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      font-size: 0.8rem;
+      text-align: center;
+      padding: 0;
+      backdrop-filter: blur(10px);
+    }
+
+    .round-btn:hover {
+      transform: scale(1.1);
+      background: #D4AF37;
+      color: #000;
+      box-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+    }
+
+    .round-btn.primary {
+      background: #D4AF37;
+      color: #000;
+    }
+
+    .top-subtitle {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 1.2rem;
+      color: #fff;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+      width: 90%;
+      text-align: center;
+      z-index: 10;
+      line-height: 1.4;
+    }
+
+    .counter-display {
+      font-family: 'Courier New', monospace;
+      background: rgba(0,0,0,0.5);
+      padding: 20px 40px;
+      border-radius: 25px;
+      display: inline-block;
+      margin-top: 10px;
+      border: 2px solid rgba(212, 175, 55, 0.5);
+      line-height: 1.6;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      min-width: 600px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+
+<!-- 故事场景 -->
+<div id="scene-story" onclick="nextStory()">
+  <button id="skip-btn" onclick="event.stopPropagation(); startMainScene();" style="position: absolute; top: 30px; right: 30px; padding: 10px 20px; background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.3); border-radius: 20px; cursor: pointer; z-index: 110; font-size: 0.9rem;">跳过剧情</button>
+  <div class="story-container">
+    <h1 id="story-title" style="font-size: 5rem; color: #D4AF37; margin-bottom: 3rem; text-shadow: 0 0 30px rgba(212,175,55,0.6);">国王的赏赐</h1>
+    <div class="story-line">相传，古印度有一位国王名叫舍罕。</div>
+    <div class="story-line">他的宰相西萨发明了国际象棋，国王决定重赏他。</div>
+    <div class="story-line">国王问：“你想要什么赏赐？”</div>
+    <div class="story-line">西萨指着棋盘说：“陛下，请在第1格放1粒麦子...”</div>
+    <div class="story-line">“第2格放2粒，第3格放4粒，每一格都是前一格的两倍。”</div>
+    <div class="story-line">国王哈哈大笑：“你的要求太简单了！”</div>
+    <div class="story-line">然而，当大臣们开始计算时，所有人都惊呆了——</div>
+    <div class="story-line">这竟然是一个天文数字！</div>
+  </div>
+  <div class="click-hint">点击屏幕继续故事</div>
+</div>
+
+<!-- 主场景 -->
+<div id="scene-main">
+  <div id="canvas-container"></div>
+  <div class="top-subtitle">
+    <div class="counter-display" id="full-counter"></div>
+  </div>
+  
+  <div class="ui-overlay">
+    <div class="controls">
+      <button class="round-btn primary" onclick="step()">下一格</button>
+      <button class="round-btn" onclick="autoPlay()" id="auto-btn">自动</button>
+      <button class="round-btn" onclick="reset()">重置</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentStoryIdx = 0;
+  const storyLines = document.querySelectorAll('.story-line');
+  const voiceUrls = [
+    "https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/audio/QSdqBsvCaqENuJvd78fd7k.mp3",
+    "https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/audio/um5AcXngQZsVsv2cQESMPS.mp3",
+    "https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/audio/tKzHYAtX6ZbE5YrTwUYCtT.mp3",
+    "https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/audio/9L7ZQcyABzRXxwmxsZ2nXY.mp3",
+    "https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/audio/eiR4itjipRtUXHiaVHDESC.mp3",
+    "https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/audio/VCLQTMkWHY3c4fz4Y63ZRF.mp3",
+    "https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/audio/qwVougUTNaGRtm4yVRRSEY.mp3",
+    "https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/audio/AQnbxY6sGWJcHGvcTpt2m3.mp3"
+  ];
+  let currentAudio = null;
+
+  function playVoice(idx) {
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    if (voiceUrls[idx]) {
+      currentAudio = new Audio(voiceUrls[idx]);
+      currentAudio.play().catch(e => console.log("Audio play blocked"));
+    }
+  }
+
+  function nextStory() {
+    // 如果是第一次点击（currentStoryIdx 为 0 且标题还在），仅处理标题消失和第一句配音，不增加索引
+    const title = document.getElementById('story-title');
+    if (title && title.style.display !== 'none') {
+      anime({ 
+        targets: '#story-title', 
+        opacity: 0, 
+        translateY: -30, 
+        duration: 800, 
+        easing: 'easeInQuad', 
+        complete: () => {
+          title.style.display = 'none';
+          // 确保第一行文字显示
+          storyLines[0].classList.add('active');
+          anime({
+            targets: storyLines[0],
+            opacity: [0, 1],
+            translateY: [20, 0],
+            duration: 800,
+            easing: 'easeOutExpo'
+          });
+        } 
+      });
+      playVoice(0);
+      return;
+    }
+
+    if (currentStoryIdx < storyLines.length - 1) {
+      anime({
+        targets: storyLines[currentStoryIdx],
+        opacity: 0,
+        translateY: -20,
+        duration: 500,
+        easing: 'easeInQuad',
+        complete: () => {
+          storyLines[currentStoryIdx].classList.remove('active');
+          currentStoryIdx++;
+          storyLines[currentStoryIdx].classList.add('active');
+          playVoice(currentStoryIdx);
+          anime({
+            targets: storyLines[currentStoryIdx],
+            opacity: [0, 1],
+            translateY: [20, 0],
+            duration: 800,
+            easing: 'easeOutExpo'
+          });
+        }
+      });
+    } else {
+      if (currentAudio) currentAudio.pause();
+      startMainScene();
+    }
+  }
+
+  // 移除之前的冗余监听器，统一由 nextStory 处理
+  // 第一次点击时触发第一句配音逻辑已整合进 nextStory
+
+  function startMainScene() {
+    anime({
+      targets: '#scene-story',
+      opacity: 0,
+      duration: 1500,
+      easing: 'easeInOutQuad',
+      complete: () => {
+        document.getElementById('scene-story').style.display = 'none';
+        document.getElementById('scene-main').classList.add('active');
+        initThree();
+      }
+    });
+  }
+
+  // Three.js 逻辑
+  let scene, camera, renderer, controls, bars = [];
+  let currentIdx = 0;
+  let isAuto = false;
+  let timer = null;
+
+  function initThree() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050505);
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100000);
+    // 调整相机位置，使其从更高、更远的角度俯瞰，并向下偏移
+    camera.position.set(20, 35, 45);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
+    const pointLight = new THREE.PointLight(0xffffff, 1);
+    pointLight.position.set(50, 100, 50);
+    scene.add(pointLight);
+
+    const boardSize = 30;
+    const cellSize = boardSize / 8;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const hue = (r * 8 + c) / 64;
+        const geo = new THREE.BoxGeometry(cellSize, 0.2, cellSize);
+        const mat = new THREE.MeshStandardMaterial({ 
+          color: new THREE.Color().setHSL(hue, 0.8, 0.4),
+          roughness: 0.5,
+          metalness: 0.1
+        });
+        const cell = new THREE.Mesh(geo, mat);
+        cell.position.set(c * cellSize - boardSize/2 + cellSize/2, -0.11, r * cellSize - boardSize/2 + cellSize/2);
+        scene.add(cell);
+
+        const barGeo = new THREE.BoxGeometry(cellSize * 0.8, 1, cellSize * 0.8);
+        const barMat = new THREE.MeshPhysicalMaterial({ 
+          color: new THREE.Color().setHSL(hue, 0.8, 0.6),
+          transparent: true,
+          opacity: 0.85,
+          metalness: 0.3,
+          roughness: 0.2,
+          transmission: 0.2,
+          emissive: new THREE.Color().setHSL(hue, 0.8, 0.1)
+        });
+        const bar = new THREE.Mesh(barGeo, barMat);
+        bar.position.set(cell.position.x, 0, cell.position.z);
+        bar.scale.set(1, 0.001, 1);
+        bar.userData = { targetY: 0.001 };
+        scene.add(bar);
+        bars.push(bar);
+      }
+    }
+
+    animate();
+    updateDisplay();
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+
+    bars.forEach(bar => {
+      bar.scale.y += (bar.userData.targetY - bar.scale.y) * 0.1;
+      bar.position.y = (bar.scale.y / 2) + 0.02;
+    });
+
+    renderer.render(scene, camera);
+  }
+
+  function formatNum(n) {
+    const s = n.toString();
+    if (s.length <= 4) return s;
+    return `${s.charAt(0)}.${s.charAt(1)} × 10<sup>${s.length - 1}</sup>`;
+  }
+
+  function updateDisplay() {
+    const currentVal = BigInt(2) ** BigInt(currentIdx);
+    const totalVal = (BigInt(2) ** BigInt(currentIdx + 1)) - BigInt(1n);
+
+    // 四位一级格式化
+    const currentStr = currentVal.toString().replace(/\B(?=(\d{4})+(?!\d))/g, ",");
+    const totalStr = totalVal.toString().replace(/\B(?=(\d{4})+(?!\d))/g, ",");
+    const sciStr = formatNum(currentVal);
+    
+    const displayEl = document.getElementById('full-counter');
+    displayEl.innerHTML = `第 ${currentIdx + 1} 格：${currentStr} 粒 (${sciStr})<br><span style="font-size: 0.85em; opacity: 0.8;">累计总数：${totalStr} 粒</span>`;
+    
+    const containerWidth = window.innerWidth * 0.95;
+    let fontSize = 2.2;
+    displayEl.style.fontSize = fontSize + 'rem';
+    while (displayEl.scrollWidth > containerWidth && fontSize > 0.8) {
+      fontSize -= 0.1;
+      displayEl.style.fontSize = fontSize + 'rem';
+    }
+
+    // 视觉高度调整
+    bars.forEach((bar, i) => {
+      if (i <= currentIdx) {
+        let h;
+        if (i < 16) {
+          // 前两行严格翻倍
+          h = 0.001 * Math.pow(2, i);
+        } else {
+          // 之后平滑增长
+          h = (0.001 * Math.pow(2, 15)) * Math.pow(1.12, i - 15);
+        }
+        bar.userData.targetY = h;
+      } else {
+        bar.userData.targetY = 0.001;
+      }
+    });
+
+    // 相机平滑跟随：极致下移构图
+    const dist = 55 + (currentIdx * 0.6);
+    const cameraY = 50 + (currentIdx * 0.4);
+    anime({
+      targets: camera.position,
+      x: 30, y: cameraY, z: dist,
+      duration: 1000,
+      easing: 'easeOutQuad'
+    });
+    
+    // 将目标点抬得更高，迫使相机视线向下倾斜，使棋盘在屏幕中处于极低位置
+    controls.target.set(0, 18, 0);
+
+    const storyBeats = [
+      "西萨说：‘陛下，请在第1格放1粒麦子...’",
+      "‘第2格放2粒，第3格放4粒...每一格都是前一格的两倍。’",
+      "国王哈哈大笑：‘你的胃口太小了，这有何难？’",
+      "第一排填满了，总共只有255粒。国王依然不以为意。",
+      "第二排结束，麦粒已经装满了几袋。国王收起了笑容。",
+      "半个棋盘过去了，麦粒堆满了宫殿的角落。大臣们开始流汗。",
+      "数字开始失控！这已经超过了整个王国的库存！",
+      "最终的数字是天文级的！这需要全球生产500年才能填满。"
+    ];
+    // 移除字幕更新逻辑
+  }
+
+  function step() {
+    if (currentIdx < 63) {
+      currentIdx++;
+      updateDisplay();
+    }
+  }
+
+  function autoPlay() {
+    const btn = document.getElementById('auto-btn');
+    if (isAuto) {
+      clearInterval(timer);
+      btn.innerText = "自动";
+    } else {
+      timer = setInterval(() => {
+        if (currentIdx < 63) step();
+        else { clearInterval(timer); btn.innerText = "自动"; isAuto = false; }
+      }, 600);
+      btn.innerText = "暂停";
+    }
+    isAuto = !isAuto;
+  }
+
+  function reset() {
+    currentIdx = 0;
+    if (isAuto) autoPlay();
+    updateDisplay();
+  }
+
+  window.addEventListener('resize', () => {
+    if (camera && renderer) {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  });
+</script>
+</body>
+</html>
