@@ -246,6 +246,7 @@
         let scores = [0, 0];
         let emoteTimeout = null;
         let animatingLine = null;
+        let easyWinCount = 0;
 
         // 滑动交互状态
         let isDragging = false;
@@ -325,16 +326,10 @@
             }
 
             scores = [0, 0];
+            currentPlayer = 1;
 
             const p2Name = gameMode === 'PVE' ? (aiDifficulty === 'EASY' ? 'AI(简单)' : 'AI(困难)') : '红方';
             document.querySelector('#player2-card .text-2xl').innerText = p2Name;
-
-            if (gameMode === 'PVE' && aiDifficulty === 'HARD') {
-                currentPlayer = 2;
-                setTimeout(aiMove, 1000);
-            } else {
-                currentPlayer = 1;
-            }
 
             updateUI();
             draw();
@@ -846,12 +841,64 @@
                     if (safeMoves.length > 0) {
                         move = safeMoves[Math.floor(Math.random() * safeMoves.length)];
                     } else {
-                        // 实在没有安全步数，只能随机
-                        move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+                        // 实在没有安全步数，AI 被迫送分。
+                        // 策略：选择送分最少的步数 (Minimize Loss)
+                        // 模拟每一可能的步数，看对手能连取多少分
+                        let minLoss = Infinity;
+                        let bestBadMoves = [];
+
+                        for (let m of possibleMoves) {
+                            let loss = 0;
+
+                            // 1. Apply move temporarily
+                            if (boardShape === 'RECT') {
+                                if (m.type === 'h') hLines[m.r][m.c] = 2; else vLines[m.r][m.c] = 2;
+                            } else {
+                                if (m.type === 'h') triLines.h[m.r][m.c] = 2;
+                                else if (m.type === 'sl') triLines.sl[m.r][m.c] = 2;
+                                else triLines.sr[m.r][m.c] = 2;
+                            }
+
+                            // 2. Count opponent's potential greedy streak
+                            loss = calculateGreedyLoss();
+
+                            // 3. Revert move
+                            if (boardShape === 'RECT') {
+                                if (m.type === 'h') hLines[m.r][m.c] = 0; else vLines[m.r][m.c] = 0;
+                            } else {
+                                if (m.type === 'h') triLines.h[m.r][m.c] = 0;
+                                else if (m.type === 'sl') triLines.sl[m.r][m.c] = 0;
+                                else triLines.sr[m.r][m.c] = 0;
+                            }
+
+                            if (loss < minLoss) {
+                                minLoss = loss;
+                                bestBadMoves = [m];
+                            } else if (loss === minLoss) {
+                                bestBadMoves.push(m);
+                            }
+                        }
+
+                        // Pick one of the "least bad" moves
+                        move = bestBadMoves.length > 0 ? bestBadMoves[Math.floor(Math.random() * bestBadMoves.length)] : possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
                     }
                 } else {
-                    // 简单模式：完全随机
-                    move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+                    // 简单模式：自适应难度
+                    // 获胜越多，AI 越聪明 (Starting smartFactor 0 -> increases by 0.2 per win, max 0.8)
+                    const smartFactor = Math.min(0.8, easyWinCount * 0.2);
+                    const isSmartTurn = Math.random() < smartFactor;
+
+                    if (isSmartTurn) {
+                        const safeMoves = possibleMoves.filter(m => !givesAwayPoint(m));
+                        if (safeMoves.length > 0) {
+                            move = safeMoves[Math.floor(Math.random() * safeMoves.length)];
+                        } else {
+                            move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+                        }
+                    } else {
+                        // 完全随机
+                        move = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+                    }
                 }
             }
 
@@ -884,6 +931,103 @@
                 } else { currentPlayer = 1; }
                 updateUI(); draw();
             });
+        }
+
+        // 模拟计算对手能连续得分的数量
+        function calculateGreedyLoss() {
+            // Need a deep copy of lines/faces status to simulate chain reaction
+            // Since recursion/looping on simulation is complex without full state clone,
+            // we will do a simpler iterative check:
+            // Find all boxes with 3 lines. Close them. Repeat until no more.
+
+            // To be safe and clean, we clone the relevant arrays
+            let tempHLines, tempVLines, tempBoxes;
+            let tempTriLines, tempTriFaces;
+            let totalScore = 0;
+
+            if (boardShape === 'RECT') {
+                tempHLines = hLines.map(arr => [...arr]);
+                tempVLines = vLines.map(arr => [...arr]);
+                tempBoxes = boxes.map(arr => [...arr]);
+
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    for (let r = 0; r < ROWS - 1; r++) {
+                        for (let c = 0; c < COLS - 1; c++) {
+                            if (tempBoxes[r][c] !== 0) continue;
+
+                            // Check lines count
+                            let cnt = 0;
+                            if (tempHLines[r][c]) cnt++;
+                            if (tempHLines[r + 1][c]) cnt++;
+                            if (tempVLines[r][c]) cnt++;
+                            if (tempVLines[r][c + 1]) cnt++;
+
+                            if (cnt === 3) {
+                                // Simulate opponent taking it
+                                tempBoxes[r][c] = 1; // dummy taken
+                                totalScore++;
+                                changed = true;
+                                // Automatically fill the missing line to continue the chain
+                                if (!tempHLines[r][c]) tempHLines[r][c] = 1;
+                                else if (!tempHLines[r + 1][c]) tempHLines[r + 1][c] = 1;
+                                else if (!tempVLines[r][c]) tempVLines[r][c] = 1;
+                                else if (!tempVLines[r][c + 1]) tempVLines[r][c + 1] = 1;
+                            }
+                        }
+                    }
+                }
+            } else {
+                tempTriLines = {
+                    h: triLines.h.map(arr => [...arr]),
+                    sl: triLines.sl.map(arr => [...arr]),
+                    sr: triLines.sr.map(arr => [...arr])
+                };
+                tempTriFaces = triFaces.map(arr => [...arr]);
+
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    for (let r = 0; r < ROWS - 1; r++) {
+                        for (let i = 0; i < tempTriFaces[r].length; i++) {
+                            if (tempTriFaces[r][i] !== 0) continue;
+
+                            // Re-implement line counting for simulation
+                            // Mapping linear index i to (c, isUp)
+                            // i=0 -> c=0, Up; i=1 -> c=0, Down; i=2 -> c=1, Up ...
+                            // c = floor(i/2)
+                            // isUp = (i%2 === 0)
+                            const c = Math.floor(i / 2);
+                            const isUp = (i % 2 === 0);
+
+                            let cnt = 0;
+                            let missingLine = null; // {type, r, c}
+
+                            if (isUp) { // r, c, Up -> sl[r][c], sr[r][c], h[r+1][c]
+                                if (tempTriLines.sl[r][c]) cnt++; else missingLine = { type: 'sl', r: r, c: c };
+                                if (tempTriLines.sr[r][c]) cnt++; else missingLine = { type: 'sr', r: r, c: c };
+                                if (tempTriLines.h[r + 1] && tempTriLines.h[r + 1][c]) cnt++; else missingLine = { type: 'h', r: r + 1, c: c };
+                            } else { // r, c, Down -> h[r][c], sl[r][c+1], sr[r][c]
+                                if (tempTriLines.h[r] && tempTriLines.h[r][c]) cnt++; else missingLine = { type: 'h', r: r, c: c };
+                                if (tempTriLines.sl[r][c + 1]) cnt++; else missingLine = { type: 'sl', r: r, c: c + 1 };
+                                if (tempTriLines.sr[r][c]) cnt++; else missingLine = { type: 'sr', r: r, c: c };
+                            }
+
+                            if (cnt === 3 && missingLine) {
+                                tempTriFaces[r][i] = 1;
+                                totalScore++;
+                                changed = true;
+                                // Fill missing line
+                                if (missingLine.type === 'h') tempTriLines.h[missingLine.r][missingLine.c] = 1;
+                                else if (missingLine.type === 'sl') tempTriLines.sl[missingLine.r][missingLine.c] = 1;
+                                else tempTriLines.sr[missingLine.r][missingLine.c] = 1;
+                            }
+                        }
+                    }
+                }
+            }
+            return totalScore;
         }
 
         window.toggleSettings = () => document.getElementById('settings-modal').classList.toggle('hidden');
@@ -931,24 +1075,77 @@
                 IMGS.p2_sad = 'https://musk-online.fbcontent.cn/pub-musk-ai-studio/workflow/file/picture/Jyt9YYZjr6wAG9Rz5jGgUa.jpg';
             }
 
+            // Save to database
+            saveSettingsSilent();
+
             resetGame();
         };
         window.resetGame = () => { winModal.classList.add('hidden'); init(); };
+
+        function saveSettingsSilent() {
+            localStorage.setItem('dgq_settings', JSON.stringify({
+                rows: ROWS,
+                mode: gameMode,
+                difficulty: aiDifficulty,
+                shape: boardShape,
+                easyWinCount: easyWinCount
+            }));
+        }
 
         function endGame() {
             winModal.classList.remove('hidden');
             const scoreDisplay = `<div class="text-6xl font-black my-4"><span class="text-blue-600">${scores[0]}</span><span class="text-gray-400">:</span><span class="${gameMode === 'PVE' ? 'text-slate-800' : 'text-red-600'}">${scores[1]}</span></div>`;
             if (scores[0] > scores[1]) {
                 winTitle.innerText = "蓝方获胜！"; winTitle.className = "text-4xl font-bold mb-2 text-blue-600 text-center w-full";
+
+                // Adaptive: Win -> Harder
+                if (gameMode === 'PVE' && aiDifficulty === 'EASY') {
+                    easyWinCount++;
+                    saveSettingsSilent();
+                }
             } else if (scores[1] > scores[0]) {
                 winTitle.innerText = gameMode === 'PVE' ? "AI 获胜！" : "红方获胜！";
                 winTitle.className = `text-4xl font-bold mb-2 ${gameMode === 'PVE' ? 'text-slate-800' : 'text-red-600'} text-center w-full`;
+
+                // Adaptive: Lose -> Easier
+                if (gameMode === 'PVE' && aiDifficulty === 'EASY') {
+                    easyWinCount = Math.max(0, easyWinCount - 1);
+                    saveSettingsSilent();
+                }
             } else {
                 winTitle.innerText = "平局！"; winTitle.className = "text-4xl font-bold mb-2 text-gray-600 text-center w-full";
             }
             winMsg.innerHTML = scoreDisplay;
         }
 
+        function loadSettings() {
+            const saved = localStorage.getItem('dgq_settings');
+            if (saved) {
+                try {
+                    const s = JSON.parse(saved);
+                    if (s.rows) tempRows = s.rows;
+                    if (s.mode) {
+                        if (s.mode === 'PVP') tempMode = 'PVP';
+                        else tempMode = (s.difficulty === 'HARD') ? 'PVE_HARD' : 'PVE_EASY';
+                    }
+                    if (s.shape) tempShape = s.shape;
+                    if (s.easyWinCount !== undefined) easyWinCount = s.easyWinCount;
+
+                    // Sync UI button states
+                    window.setGridSize(tempRows);
+                    window.setMode(tempMode);
+                    window.setShape(tempShape);
+
+                    // Apply to game globals immediately for first init
+                    ROWS = COLS = tempRows;
+                    gameMode = s.mode;
+                    aiDifficulty = s.difficulty || 'EASY';
+                    boardShape = tempShape;
+                } catch (e) { console.error('Error loading settings:', e); }
+            }
+        }
+
+        loadSettings();
         init();
     </script>
 </body>
