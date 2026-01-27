@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>九宫格数学探险</title>
+    <style>
+        /* --- 基础设置 --- */
+        :root {
+            /* 颜色变量 (提取自 Tailwind) */
+            --emerald-50: #ecfdf5;
+            --emerald-100: #d1fae5;
+            --emerald-200: #a7f3d0;
+            --emerald-500: #10b981;
+            --emerald-600: #059669;
+            --emerald-700: #047857;
+            --emerald-800: #065f46;
+            
+            --blue-50: #eff6ff;
+            --blue-100: #dbeafe;
+            --blue-200: #bfdbfe;
+            --blue-700: #1d4ed8;
+            --blue-800: #1e40af;
+            
+            --orange-50: #fff7ed;
+            --orange-200: #fed7aa;
+            --orange-800: #9a3412;
+            
+            --purple-100: #f3e8ff;
+            --purple-200: #e9d5ff;
+            --purple-700: #7e22ce;
+            
+            --red-200: #fecaca;
+            --red-500: #ef4444;
+            --red-600: #dc2626;
+            
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-300: #d1d5db;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            
+            --yellow-200: #fde047; /* 近似 */
+            --yellow-800: #854d0e;
+            
+            --white: #ffffff;
+            --black: #000000;
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #EEF2FF;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            touch-action: manipulation;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* 安全区域 */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        /* --- 通用工具类 (替代 Tailwind) --- */
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-3 { gap: 0.75rem; }
+        
+        .w-full { width: 100%; }
+        .h-full { height: 100%; }
+        .relative { position: relative; }
+        .absolute { position: absolute; }
+        .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+        
+        .hidden { display: none !important; }
+        
+        .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+        .shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+        .shadow-inner { box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); }
+        
+        .rounded-full { border-radius: 9999px; }
+        .rounded-xl { border-radius: 0.75rem; }
+        .rounded-2xl { border-radius: 1rem; }
+        .rounded-3xl { border-radius: 1.5rem; }
+        
+        .border { border-width: 1px; border-style: solid; }
+        .border-2 { border-width: 2px; border-style: solid; }
+        .border-4 { border-width: 4px; border-style: solid; }
+        
+        .transition { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+        .active-scale:active { transform: scale(0.95); }
+        
+        .cursor-pointer { cursor: pointer; }
+        .select-none { user-select: none; }
+        .pointer-events-none { pointer-events: none; }
+
+        /* --- 具体组件样式 --- */
+
+        /* 顶部 Header */
+        header {
+            background-color: var(--white);
+            z-index: 20;
+            padding-top: 0.75rem;
+            padding-bottom: 1rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+            flex-shrink: 0;
+        }
+
+        .header-top-row {
+            max-width: 56rem; /* max-w-4xl */
+            padding: 0 0.25rem;
+            margin-bottom: 0.75rem;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--emerald-800);
+            letter-spacing: 0.025em;
+            margin: 0;
+        }
+        @media (min-width: 640px) { h1 { font-size: 1.875rem; } }
+        h1:hover { opacity: 0.7; }
+
+        /* 魔法按钮 */
+        #toggle-mode-btn {
+            width: 2.5rem;
+            height: 2.5rem;
+            background-color: var(--purple-100);
+            color: var(--purple-700);
+            border: 1px solid var(--purple-200);
+            font-size: 1.25rem;
+            padding: 0;
+            cursor: pointer;
+        }
+        #toggle-mode-btn:hover { background-color: var(--purple-200); }
+
+        /* 提示文字 */
+        #instruction-text {
+            color: var(--emerald-700);
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-align: right;
+            max-width: 120px;
+            line-height: 1.25;
+            transition: opacity 300ms;
+            margin: 0;
+        }
+        @media (min-width: 640px) { #instruction-text { font-size: 0.875rem; max-width: none; } }
+        .opacity-0 { opacity: 0; }
+
+        /* 提示按钮 */
+        .hint-btn {
+            font-size: 1rem;
+            font-weight: 700;
+            background-color: var(--blue-100);
+            color: var(--blue-700);
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--blue-200);
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .hint-btn:active { background-color: var(--blue-200); }
+
+        /* 数字仓库 */
+        .number-bank-container {
+            width: 100%;
+            max-width: 56rem;
+            background-color: var(--gray-50);
+            padding: 0.75rem;
+            border: 1px solid var(--gray-100);
+            min-height: 6rem;
+        }
+        #number-bank{flex-wrap: wrap;}
+        /* 数字卡片 */
+        .number-card {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            border-bottom-width: 4px;
+            border-style: solid;
+            width: 3.5rem; height: 3rem;
+            font-size: 1.5rem;
+            border-radius: 0.75rem;
+            transition: all 0.2s;
+        }
+        @media (min-width: 640px) { 
+            .number-card { width: 5rem; height: 4rem; font-size: 1.875rem; } 
+        }
+
+        /* 偶数卡片样式 */
+        .card-even { background-color: var(--blue-50); color: var(--blue-800); border-color: var(--blue-200); }
+        /* 奇数卡片样式 */
+        .card-odd { background-color: var(--orange-50); color: var(--orange-800); border-color: var(--orange-200); }
+
+        .number-card.selected {
+            transform: scale(1.1) translateY(-3px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            border: 3px solid #F59E0B; /* Amber-500 */
+            background-color: #FFFBEB; /* Amber-50 */
+            z-index: 50;
+        }
+        .number-card:active { transform: scale(0.95); }
+
+
+        /* 主游戏区 */
+        main {
+            background-color: rgba(236, 253, 245, 0.5); /* emerald-50/50 */
+            /* 确保 main 占据剩余高度 */
+            flex: 1;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem 5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            aspect-ratio: 1 / 1;
+            /* 默认配置：宽度优先（竖屏模式逻辑），但限制最大高度不超过父容器 */
+            width: 100%;
+            height: auto;
+            max-height: 100%;
+        }
+
+        /* 横屏模式优化：高度优先 */
+        @media (orientation: landscape) {
+            .game-container {
+                height: 100%;
+                width: auto;
+                max-width: 100%;
+            }
+        }
+
+        /* 保持正方形 (冗余类保留以防万一) */
+        .aspect-square { aspect-ratio: 1 / 1; }
+
+        .bg-deco-1 { background-color: var(--emerald-200); transform: rotate(1deg); }
+        .bg-deco-2 { background-color: var(--emerald-100); transform: rotate(-1deg); }
+
+        /* 网格 */
+        .grid-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 0.75rem;
+            padding: 1rem;
+            z-index: 10;
+        }
+
+        /* 格子 Cell */
+        .cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 1rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            /* 响应式字体 */
+            font-size: clamp(2rem, 7vw, 4rem);
+        }
+
+        /* 空格子样式 */
+        .cell-empty {
+            background-color: rgba(236, 253, 245, 0.6);
+            color: var(--gray-300);
+            border: 4px dashed rgba(167, 243, 208, 0.7);
+        }
+        .cell-empty:hover {
+            border-color: var(--emerald-500); /* 稍微深一点的绿 */
+            background-color: var(--white);
+        }
+
+        /* 已填入格子样式 */
+        .cell-filled {
+            background-color: var(--white);
+            border: 2px solid transparent;
+        }
+        .cell-filled:hover { border-color: var(--red-200); }
+        
+        /* 待填入高亮样式 */
+        .cell-waiting {
+            background-color: var(--blue-100);
+            border: 4px solid var(--blue-800);
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        /* 文本颜色 */
+        .text-blue-800 { color: var(--blue-800); }
+        .text-orange-800 { color: var(--orange-800); }
+
+        /* 气泡覆盖层 */
+        .bubble-overlay {
+            display: grid;
+            gap: 0.75rem;
+            padding: 1rem;
+            z-index: 20;
+            pointer-events: none;
+        }
+        .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-rows-3 { grid-template-rows: repeat(3, 1fr); }
+
+        .bubble {
+            position: absolute;
+            min-width: 2.5rem;
+            height: 2.5rem;
+            padding: 0 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 700;
+            border-width: 2px;
+            border-style: solid;
+            z-index: 30;
+        }
+        @media (min-width: 640px) { .bubble { font-size: 1rem; } }
+
+        /* 气泡定位 */
+        .pos-col { left: 50%; transform: translateX(-50%); bottom: -1.25rem; }
+        @media (min-width: 640px) { .pos-col { bottom: -4rem; } }
+
+        .pos-row { top: 50%; transform: translateY(-50%); right: -1.25rem; }
+        @media (min-width: 640px) { .pos-row { right: -5rem; } }
+
+        /* 气泡状态 */
+        .bubble-correct { background-color: var(--emerald-500); color: var(--white); border-color: var(--emerald-600); }
+        .bubble-wrong { background-color: var(--red-500); color: var(--white); border-color: var(--red-600); animation: bounce 1s infinite; }
+
+        /* 弹窗 */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background-color: var(--white);
+            border-radius: 2rem;
+            padding: 2rem;
+            max-width: 24rem;
+            width: 100%;
+            text-align: center;
+            border: 4px solid var(--emerald-100);
+        }
+        .btn-primary {
+            background-color: var(--emerald-500);
+            color: var(--white);
+            padding: 1rem 2rem;
+            border-radius: 1rem;
+            font-weight: 700;
+            font-size: 1.25rem;
+            border: none;
+            width: 100%;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .btn-primary:active { transform: scale(0.95); }
+        .btn-primary:hover { background-color: var(--emerald-600); }
+
+        /* 动画关键帧 */
+        @keyframes bubblePop {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes celebrate {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2) rotate(5deg); }
+            100% { transform: scale(1) rotate(0); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(-25%); animation-timing-function: cubic-bezier(0.8,0,1,1); }
+            50% { transform: none; animation-timing-function: cubic-bezier(0,0,0.2,1); }
+        }
+        /* 特殊修正：气泡 Bounce 时需要结合自身的定位 translate，比较复杂，这里简化 bounce 仅上下浮动 */
+        /* 由于 bubble 已经有 transform，动画会覆盖它。
+           为了简单起见，我们重新定义一个专门给气泡用的 bounce-col 和 bounce-row 动画 */
+        @keyframes bounce-col {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-25%); }
+        }
+        @keyframes bounce-row {
+            0%, 100% { transform: translateY(-50%) translateX(0); }
+            50% { transform: translateY(-50%) translateX(-25%); }
+        }
+        
+        /* 重新应用 bounce 动画 */
+        .pos-col.bubble-wrong { animation: bounce-col 1s infinite; }
+        .pos-row.bubble-wrong { animation: bounce-row 1s infinite; }
+
+
+        .pop-in { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .bubble-pop { animation: bubblePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .celebration { animation: celebrate 0.5s ease-in-out infinite; }
+        .animate-bounce { animation: bounce 1s infinite; } 
+        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+    </style>
+</head>
+<body>
+
+    <!-- 顶部区域 -->
+    <header class="flex flex-col items-center w-full shadow-sm">
+        
+        <!-- 标题行 -->
+        <div class="header-top-row flex justify-between items-center w-full">
+            <div class="flex items-center gap-3">
+                <!-- 标题 -->
+                <h1 onclick="resetGame()" class="cursor-pointer select-none" title="点击重置">
+                    九宫格数学探险
+                </h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <!-- 提示语 -->
+                <p id="instruction-text" class="opacity-0"></p>
+            </div>
+
+            
+                
+                <!-- 魔法开关 -->
+                <button id="toggle-mode-btn" onclick="toggleMode()" class="rounded-full flex items-center justify-center transition active-scale shadow-sm">
+                    <span style="font-size: 1.25rem;">🪄</span>
+                </button>
+        </div>
+
+        <!-- 数字仓库区域 -->
+        <div class="number-bank-container rounded-xl shadow-inner relative flex flex-wrap justify-center gap-3">
+            <div id="number-bank" class="flex flex-wrap justify-center gap-3 w-full">
+                <!-- JS生成 -->
+            </div>
+        </div>
+    </header>
+
+    <!-- 主游戏区 -->
+    <main>
+        
+        <!-- 网格容器 -->
+        <div class="game-container">
+            
+            <!-- 背景装饰 -->
+            <div class="absolute inset-0 bg-deco-1 rounded-3xl shadow-lg"></div>
+            <div class="absolute inset-0 bg-deco-2 rounded-3xl shadow-inner"></div>
+
+            <!-- 3x3 实际网格 (z-10) -->
+            <div class="grid-board absolute inset-0">
+                <!-- 格子 0-8 -->
+                <div class="cell cursor-pointer" onclick="handleCellClick(0)"></div>
+                <div class="cell cursor-pointer" onclick="handleCellClick(1)"></div>
+                <div class="cell cursor-pointer" onclick="handleCellClick(2)"></div>
+                
+                <div class="cell cursor-pointer" onclick="handleCellClick(3)"></div>
+                <div class="cell cursor-pointer" onclick="handleCellClick(4)"></div>
+                <div class="cell cursor-pointer" onclick="handleCellClick(5)"></div>
+                
+                <div class="cell cursor-pointer" onclick="handleCellClick(6)"></div>
+                <div class="cell cursor-pointer" onclick="handleCellClick(7)"></div>
+                <div class="cell cursor-pointer" onclick="handleCellClick(8)"></div>
+            </div>
+
+            <!-- 结果气泡覆盖层 (z-20) -->
+            <!-- 1. 列气泡覆盖层 -->
+            <div class="bubble-overlay absolute inset-0 grid-cols-3">
+                <div class="relative h-full"><div id="sum-c0" class="hidden bubble pos-col"></div></div>
+                <div class="relative h-full"><div id="sum-c1" class="hidden bubble pos-col"></div></div>
+                <div class="relative h-full"><div id="sum-c2" class="hidden bubble pos-col"></div></div>
+            </div>
+
+            <!-- 2. 行气泡覆盖层 -->
+            <div class="bubble-overlay absolute inset-0 grid-rows-3">
+                <div class="relative w-full"><div id="sum-r0" class="hidden bubble pos-row"></div></div>
+                <div class="relative w-full"><div id="sum-r1" class="hidden bubble pos-row"></div></div>
+                <div class="relative w-full"><div id="sum-r2" class="hidden bubble pos-row"></div></div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- 胜利弹窗 -->
+    <div id="win-modal" class="modal-overlay hidden">
+        <div class="modal-content shadow-lg pop-in">
+            <div class="celebration" style="font-size: 4.5rem; margin-bottom: 1rem;">🏆</div>
+            <h2 style="font-size: 2.25rem; font-weight: 700; color: var(--emerald-600); margin: 0 0 0.5rem 0;">挑战成功！</h2>
+            <p style="color: var(--gray-600); margin-bottom: 2rem; font-size: 1.25rem;">你真是个数学小天才！</p>
+            <div class="flex justify-center">
+                <button onclick="closeWinModal()" class="btn-primary">
+                    再玩一次
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 游戏状态
+        let isSimpleMode = false; // 默认大数字
+        let selectedNumber = null; // 当前手持的数字 (模式1: 先选数字)
+        let selectedCellIndex = null; // 当前选中的空白格子 (模式2: 先选格子)
+        let boardState = Array(9).fill(null);
+        let hintTimer = null; 
+        
+        const baseNumbers = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+        
+        // DOM Elements
+        const numberBankEl = document.getElementById('number-bank');
+        const cells = document.querySelectorAll('.cell');
+        const instructionText = document.getElementById('instruction-text');
+        
+        function init() {
+            renderBank();
+            updateModeUI();
+            renderBoard(); 
+        }
+
+        function renderBank() {
+            numberBankEl.innerHTML = '';
+            baseNumbers.forEach(num => {
+                if (boardState.includes(num)) return; 
+
+                const val = isSimpleMode ? num : num + 150;
+                const btn = document.createElement('div');
+                
+                // 基础样式
+                btn.className = "number-card cursor-pointer select-none";
+                
+                // 颜色样式
+                if (num % 2 === 0) {
+                    btn.classList.add('card-even');
+                } else {
+                    btn.classList.add('card-odd');
+                }
+
+                if (selectedNumber === num) {
+                    btn.classList.add('selected');
+                }
+
+                btn.textContent = val;
+                btn.onclick = () => selectNumber(num);
+                numberBankEl.appendChild(btn);
+            });
+        }
+
+        function renderBoard() {
+            cells.forEach((cell, index) => {
+                const val = boardState[index];
+                
+                // 清除所有动态类
+                cell.className = 'cell cursor-pointer'; 
+                cell.textContent = '';
+                
+                if (val !== null) {
+                    const displayVal = isSimpleMode ? val : val + 150;
+                    cell.textContent = displayVal;
+                    
+                    cell.classList.add('cell-filled', 'shadow-md');
+                    
+                    if (val % 2 === 0) {
+                        cell.classList.add('text-blue-800');
+                    } else {
+                        cell.classList.add('text-orange-800');
+                    }
+                    
+                } else if (index === selectedCellIndex) {
+                    cell.classList.add('cell-waiting');
+                    
+                } else {
+                    cell.classList.add('cell-empty');
+                }
+            });
+            calculateSums();
+            renderBank();
+        }
+
+        function selectNumber(num) {
+            if (selectedCellIndex !== null) {
+                fillCell(selectedCellIndex, num);
+                selectedCellIndex = null;
+                return;
+            }
+
+            if (selectedNumber === num) {
+                selectedNumber = null; 
+            } else {
+                selectedNumber = num;
+                if(navigator.vibrate) navigator.vibrate(10);
+            }
+            renderBoard(); 
+        }
+
+        function handleCellClick(index) {
+            if (boardState[index] !== null) {
+                boardState[index] = null;
+                selectedCellIndex = null;
+                renderBoard();
+                if(navigator.vibrate) navigator.vibrate(20);
+                return;
+            }
+
+            if (selectedNumber !== null) {
+                fillCell(index, selectedNumber);
+                selectedNumber = null;
+                return;
+            }
+
+            if (selectedCellIndex === index) {
+                selectedCellIndex = null;
+            } else {
+                selectedCellIndex = index;
+                if(navigator.vibrate) navigator.vibrate(10);
+            }
+            renderBoard();
+        }
+
+        function fillCell(index, num) {
+            boardState[index] = num;
+            const cell = cells[index];
+            cell.classList.remove('pop-in');
+            void cell.offsetWidth;
+            cell.classList.add('pop-in');
+            renderBoard();
+            checkWin();
+            if(navigator.vibrate) navigator.vibrate(30);
+        }
+
+        function toggleMode() {
+            isSimpleMode = !isSimpleMode;
+            updateModeUI();
+            renderBoard();
+        }
+
+        function updateModeUI() {
+            if (isSimpleMode) {
+                document.body.style.backgroundColor = '#ECFDF5'; 
+            } else {
+                document.body.style.backgroundColor = '#EEF2FF'; 
+            }
+        }
+
+        function showHint() {
+            const centerCell = cells[4];
+            centerCell.style.backgroundColor = '#FDE68A';
+            
+            if(boardState[4] === null) {
+                // 移除边框样式以显示纯色背景 (通过内联样式覆盖或CSS)
+                centerCell.style.border = "4px solid #FDE68A";
+            }
+            
+            const targetNum = 4;
+            const displayNum = isSimpleMode ? 4 : 154;
+            
+            let hintMsg = "";
+            if (!boardState.includes(4)) {
+                hintMsg = `提示：把 ${displayNum} 放中间`;
+                const bankItems = numberBankEl.children;
+                for(let item of bankItems) {
+                    if (parseInt(item.textContent) === displayNum) {
+                        item.classList.add('celebration');
+                        setTimeout(() => item.classList.remove('celebration'), 1000);
+                    }
+                }
+            } else if (boardState[4] !== 4) {
+                hintMsg = `中间好像不对哦`;
+            } else {
+                hintMsg = `中间正确！`;
+            }
+
+            instructionText.textContent = hintMsg;
+            instructionText.classList.remove('opacity-0');
+            
+            if (hintTimer) clearTimeout(hintTimer);
+            hintTimer = setTimeout(() => {
+                instructionText.classList.add('opacity-0');
+            }, 3000);
+
+            setTimeout(() => {
+                if(boardState[4] === null) {
+                     centerCell.style.backgroundColor = '';
+                     centerCell.style.border = '';
+                } else {
+                    centerCell.style.backgroundColor = '';
+                }
+                renderBoard(); 
+            }, 2000);
+        }
+
+        function calculateSums() {
+            const target = isSimpleMode ? 12 : 462;
+            const grid = boardState;
+
+            const lines = [
+                { id: 'sum-r0', idx: [0, 1, 2] },
+                { id: 'sum-r1', idx: [3, 4, 5] },
+                { id: 'sum-r2', idx: [6, 7, 8] },
+                { id: 'sum-c0', idx: [0, 3, 6] },
+                { id: 'sum-c1', idx: [1, 4, 7] },
+                { id: 'sum-c2', idx: [2, 5, 8] }
+            ];
+
+            lines.forEach(line => {
+                const el = document.getElementById(line.id);
+                const values = line.idx.map(i => grid[i]);
+                
+                if (values.every(v => v !== null)) {
+                    let sum = values.reduce((a, b) => a + b, 0);
+                    if (!isSimpleMode) sum += (150 * 3);
+
+                    el.textContent = sum;
+                    el.classList.remove('hidden');
+                    
+                    // 清除之前的状态类
+                    el.classList.remove('bubble-correct', 'bubble-wrong');
+                    
+                    if (sum === target) {
+                        el.classList.add('bubble-correct', 'bubble-pop');
+                    } else {
+                        el.classList.add('bubble-wrong', 'bubble-pop');
+                    }
+                    
+                } else {
+                    el.classList.add('hidden');
+                }
+            });
+        }
+
+        function checkWin() {
+            if (boardState.includes(null)) return;
+
+            const target = 12; 
+            const lines = [
+                [0,1,2], [3,4,5], [6,7,8], 
+                [0,3,6], [1,4,7], [2,5,8], 
+                [0,4,8], [2,4,6]
+            ];
+
+            const isWin = lines.every(line => {
+                const sum = boardState[line[0]] + boardState[line[1]] + boardState[line[2]];
+                return sum === target;
+            });
+
+            if (isWin) {
+                setTimeout(() => {
+                    document.getElementById('win-modal').classList.remove('hidden');
+                    if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                }, 500);
+            }
+        }
+
+        function closeWinModal() {
+            document.getElementById('win-modal').classList.add('hidden');
+        }
+
+        function resetGame() {
+            boardState = Array(9).fill(null);
+            selectedNumber = null;
+            selectedCellIndex = null;
+            renderBoard();
+            document.getElementById('win-modal').classList.add('hidden');
+            if(navigator.vibrate) navigator.vibrate(10);
+        }
+        
+        init();
+    </script>
+</body>
+</html>
