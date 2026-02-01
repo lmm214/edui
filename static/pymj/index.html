@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>图形面积平移割补</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #f8f9fa;
+            touch-action: none;
+        }
+
+        #app {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .controls {
+            position: absolute;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            z-index: 10;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #FF6B35, #FF9F43);
+            color: white;
+            border: none;
+            padding: 15px 0;
+            width: 140px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(255, 107, 53, 0.4);
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+            user-select: none;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+            text-align: center;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+        }
+
+        .btn:disabled {
+            background: #e0e0e0;
+            color: #999;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        #resetBtn {
+            background: linear-gradient(135deg, #74706E, #A0A0A0);
+            box-shadow: 0 4px 15px rgba(116, 112, 110, 0.3);
+        }
+
+        #moveBtn {
+            background: linear-gradient(135deg, #42A5F5, #2196F3);
+            box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
+            display: none;
+            /* Default Hidden */
+        }
+
+        #moveBtn:active {
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+        }
+
+        .instruction {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: transparent;
+            padding: 10px 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            pointer-events: none;
+            text-align: center;
+            text-shadow: 0 2px 4px rgba(255, 255, 255, 0.8);
+            z-index: 20;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="app">
+        <div id="instruction" class="instruction">点击“开始裁剪”</div>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+            <button id="cropBtn" class="btn">开始裁剪</button>
+            <button id="moveBtn" class="btn">向右平移</button>
+            <button id="resetBtn" class="btn">重置</button>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const GRID_COLS = 10;
+        const GRID_ROWS = 6;
+        const MAX_GRID_SIZE = 80;
+
+        // Artistic
+        const COLORS = {
+            gridLine: '#4FC3F7',
+            gridBorder: '#0288D1',
+            shapeFill: '#FFE0B2',
+            shapeFillHighlight: '#FF9F43',
+            shapeStroke: '#000000',
+            ghostFill: '#E0E0E0',
+            ghostStroke: '#BDBDBD',
+            cutLine: '#000000',
+            dashedLine: '#000000'
+        };
+
+        // State
+        let GRID_SIZE = 60;
+        let gridOriginX = 0;
+        let gridOriginY = 0;
+
+        const state = {
+            mode: 'view',
+            isCut: false,
+            isAnimating: false,
+            dragStart: null,
+            dragCurrent: null,
+            cutGridX: 0, // Integer Grid Column X where cut happened
+            moveStep: 0,
+        };
+
+        const GEO = {
+            leftX: 1,
+            cutX: 3,
+            rightX: 9,
+            topY: 1,
+            height: 4,
+            radius: 2
+        };
+
+        // DOM
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const cropBtn = document.getElementById('cropBtn');
+        const moveBtn = document.getElementById('moveBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const instruction = document.getElementById('instruction');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const marginX = 220;
+            const marginY = 120;
+
+            const availableW = Math.max(300, canvas.width - marginX);
+            const availableH = Math.max(300, canvas.height - marginY);
+
+            const scaleW = availableW / GRID_COLS;
+            const scaleH = availableH / GRID_ROWS;
+
+            GRID_SIZE = Math.min(scaleW, scaleH);
+            if (GRID_SIZE > MAX_GRID_SIZE) GRID_SIZE = MAX_GRID_SIZE;
+
+            const gridW = GRID_COLS * GRID_SIZE;
+            const gridH = GRID_ROWS * GRID_SIZE;
+
+            gridOriginX = (canvas.width - marginX - gridW) / 2 + 20;
+            if (gridOriginX < 20) gridOriginX = 20;
+            gridOriginY = (canvas.height - gridH) / 2;
+
+            draw();
+        }
+
+        window.addEventListener('resize', resize);
+
+        function drawGrid() {
+            ctx.save();
+            ctx.translate(gridOriginX, gridOriginY);
+
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, GRID_COLS * GRID_SIZE, GRID_ROWS * GRID_SIZE);
+
+            ctx.strokeStyle = COLORS.gridLine;
+            ctx.lineWidth = 1;
+
+            ctx.beginPath();
+            for (let i = 1; i < GRID_COLS; i++) {
+                ctx.moveTo(i * GRID_SIZE, 0);
+                ctx.lineTo(i * GRID_SIZE, GRID_ROWS * GRID_SIZE);
+            }
+            for (let j = 1; j < GRID_ROWS; j++) {
+                ctx.moveTo(0, j * GRID_SIZE);
+                ctx.lineTo(GRID_COLS * GRID_SIZE, j * GRID_SIZE);
+            }
+            ctx.stroke();
+
+            ctx.strokeStyle = COLORS.gridBorder;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(0, 0, GRID_COLS * GRID_SIZE, GRID_ROWS * GRID_SIZE);
+
+            ctx.restore();
+        }
+
+        function getBreathingColor() {
+            const alpha = 0.6 + 0.4 * Math.sin(Date.now() / 300);
+            return `rgba(255, 159, 67, ${alpha})`;
+        }
+
+        function drawFullPath(ctx) {
+            const cxLeft = gridOriginX + GEO.cutX * GRID_SIZE;
+            const cy = gridOriginY + (GEO.topY + 2) * GRID_SIZE;
+            const r = 2 * GRID_SIZE;
+            const rightEdgeX = gridOriginX + GEO.rightX * GRID_SIZE;
+
+            ctx.beginPath();
+            ctx.moveTo(cxLeft, cy - r);
+            ctx.lineTo(rightEdgeX, cy - r);
+            ctx.arc(rightEdgeX, cy, r, -Math.PI / 2, Math.PI / 2, true);
+            ctx.lineTo(cxLeft, cy + r);
+            ctx.arc(cxLeft, cy, r, Math.PI / 2, -Math.PI / 2, false);
+            ctx.closePath();
+        }
+
+        function drawShape() {
+            const r = 2 * GRID_SIZE;
+            const cy = gridOriginY + (GEO.topY + 2) * GRID_SIZE;
+
+            if (!state.isCut) {
+                drawFullPath(ctx);
+                ctx.fillStyle = COLORS.shapeFill;
+                ctx.fill();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = COLORS.shapeStroke;
+                ctx.setLineDash([]);
+                ctx.stroke();
+            } else {
+                const cutXScreen = gridOriginX + state.cutGridX * GRID_SIZE;
+
+                // Layer 1: Ghost
+                if (state.moveStep > 0) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(0, 0, cutXScreen, canvas.height);
+                    ctx.clip();
+                    drawFullPath(ctx);
+                    ctx.fillStyle = COLORS.ghostFill;
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                // Layer 2: Static Right Piece
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(cutXScreen, 0, canvas.width, canvas.height); // Clip Right
+                ctx.clip();
+
+                drawFullPath(ctx);
+                ctx.fillStyle = COLORS.shapeFill;
+                ctx.fill();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = COLORS.shapeStroke;
+                ctx.setLineDash([]);
+                ctx.stroke();
+
+                // Draw Cut Line (Left Edge of Right Piece)
+                if (state.moveStep > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(cutXScreen, cy - r);
+                    ctx.lineTo(cutXScreen, cy + r);
+                    ctx.strokeStyle = COLORS.dashedLine;
+                    ctx.setLineDash([8, 8]);
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                // Layer 3: Moving Left Piece (Top)
+                ctx.save();
+                const movePx = state.moveStep * GRID_SIZE;
+                ctx.translate(movePx, 0);
+
+                ctx.beginPath();
+                ctx.rect(0, 0, cutXScreen, canvas.height); // Clip Left
+                ctx.clip();
+
+                drawFullPath(ctx);
+
+                if (state.moveStep < 6) {
+                    ctx.fillStyle = getBreathingColor();
+                } else {
+                    ctx.fillStyle = COLORS.shapeFill;
+                }
+                ctx.fill();
+
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = COLORS.shapeStroke;
+                ctx.setLineDash([]);
+                ctx.stroke();
+
+                ctx.beginPath();
+                const topY = gridOriginY + GEO.topY * GRID_SIZE;
+                const botY = topY + GEO.height * GRID_SIZE;
+                ctx.moveTo(cutXScreen, topY);
+                ctx.lineTo(cutXScreen, botY);
+                ctx.strokeStyle = COLORS.dashedLine;
+                ctx.setLineDash([8, 8]);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            if (state.mode === 'crop' && state.dragStart && state.dragCurrent) {
+                ctx.beginPath();
+                ctx.moveTo(state.dragStart.x, state.dragStart.y);
+                ctx.lineTo(state.dragCurrent.x, state.dragCurrent.y);
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([8, 8]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            drawShape();
+            if (state.isAnimating) requestAnimationFrame(draw);
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX = e.clientX;
+            let clientY = e.clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            }
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function handleStart(e) {
+            if (state.mode === 'crop') {
+                state.dragStart = getMousePos(e);
+                state.dragCurrent = state.dragStart;
+                draw();
+            }
+        }
+
+        function handleMove(e) {
+            if (state.mode === 'crop' && state.dragStart) {
+                state.dragCurrent = getMousePos(e);
+                draw();
+            }
+        }
+
+        function handleEnd(e) {
+            if (state.mode === 'crop' && state.dragStart) {
+                state.dragCurrent = getMousePos(e);
+                checkCut();
+                state.dragStart = null;
+                state.dragCurrent = null;
+                draw();
+            }
+        }
+
+        function checkCut() {
+            const p1 = state.dragStart;
+            const p2 = state.dragCurrent;
+            if (!p1 || !p2) return;
+
+            const avgX = (p1.x + p2.x) / 2;
+            let colFloat = (avgX - gridOriginX) / GRID_SIZE;
+            let colInt = Math.round(colFloat);
+
+            const dx = Math.abs(p1.x - p2.x);
+            const dy = Math.abs(p1.y - p2.y);
+
+            if (dx > dy * 0.8) {
+                instruction.textContent = "⚠️ 请垂直划开";
+                return;
+            }
+
+            // Accept ANY cut column.
+            state.isCut = true;
+            state.mode = 'move';
+            state.cutGridX = colInt;
+
+            cropBtn.style.display = 'none';
+            moveBtn.style.display = 'block';
+            instruction.textContent = "向右平移 0 格";
+
+            state.isAnimating = true;
+            draw();
+        }
+
+        cropBtn.addEventListener('click', () => {
+            if (state.isCut) return;
+            state.mode = 'crop';
+            instruction.textContent = "请垂直画线分割图形";
+            draw();
+        });
+
+        moveBtn.addEventListener('click', () => {
+            if (state.moveStep < 6) {
+                state.moveStep++;
+                instruction.textContent = `向右平移 ${state.moveStep} 格`;
+                if (state.moveStep === 6) {
+                    instruction.textContent = "🎉 拼补完成！";
+                    moveBtn.disabled = true;
+                    moveBtn.textContent = "完成";
+                    state.isAnimating = false;
+                }
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            state.isAnimating = false;
+            state.mode = 'view';
+            state.isCut = false;
+            state.cutGridX = 0;
+            state.moveStep = 0;
+            state.dragStart = null;
+            state.dragCurrent = null;
+
+            cropBtn.style.display = 'block';
+            cropBtn.disabled = false;
+            cropBtn.textContent = "开始裁剪";
+
+            moveBtn.style.display = 'none';
+            moveBtn.disabled = false;
+            moveBtn.textContent = "向右平移";
+
+            instruction.textContent = "点击“开始裁剪”";
+            setTimeout(draw, 50);
+        });
+
+        ['mousedown', 'touchstart'].forEach(e => canvas.addEventListener(e, (ev) => {
+            if (ev.type === 'touchstart') ev.preventDefault();
+            handleStart(ev);
+        }));
+        ['mousemove', 'touchmove'].forEach(e => window.addEventListener(e, (ev) => {
+            if (ev.type === 'touchmove') ev.preventDefault();
+            handleMove(ev);
+        }, { passive: false }));
+        ['mouseup', 'touchend'].forEach(e => window.addEventListener(e, handleEnd));
+
+        resize();
+        setTimeout(resize, 200);
+
+    </script>
+</body>
+
+</html>
