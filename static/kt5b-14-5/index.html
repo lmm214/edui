@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>下面的图形折叠后能围成长方体的有？</title>
+    <style>
+        :root {
+            --primary-color: #FF5600;
+            --bg-color: #F4F3EC;
+            --grid-color: #ccc;
+            --face-color: rgba(220, 220, 220, 0.7);
+            --border-color: #333;
+            --unit: 60px;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            /* 垂直居中 */
+            min-height: 100vh;
+            color: #333;
+            overflow-x: hidden;
+            box-sizing: border-box;
+            padding: 0 0 40px;
+        }
+
+        .header {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .question-text {
+            font-size: 1.6rem;
+            margin-bottom: 20px;
+        }
+
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            /* 竖屏默认纵向显示 */
+            align-items: center;
+            gap: 40px;
+            padding: 20px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        @media (min-width: 1024px) {
+            .main-container {
+                flex-direction: row;
+                /* 宽屏切换为横向 */
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                padding: 10px 20px 40px;
+                scroll-snap-type: x mandatory;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* 如果没有横向滚动条则水平居中的技巧 */
+            .main-container>.display-area:first-child {
+                margin-left: auto;
+            }
+
+            .main-container>.display-area:last-child {
+                margin-right: auto;
+            }
+
+            .display-area {
+                flex-shrink: 0;
+                /* 防止宽屏下被挤压 */
+                scroll-snap-align: center;
+                min-width: 320px;
+            }
+
+            /* 自定义横向滚动条样式 */
+            .main-container::-webkit-scrollbar {
+                height: 6px;
+            }
+
+            .main-container::-webkit-scrollbar-track {
+                background: #eee;
+                border-radius: 10px;
+            }
+
+            .main-container::-webkit-scrollbar-thumb {
+                background: var(--primary-color);
+                border-radius: 10px;
+            }
+        }
+
+        .display-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease;
+        }
+
+        /* 网格背景基础样式 */
+        .grid-container {
+            position: relative;
+            background-image:
+                linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
+                linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+            border: 1px solid var(--grid-color);
+            border-width: 0 1px 1px 0;
+            background-size: var(--unit) var(--unit);
+            perspective: 1200px;
+            margin-bottom: 20px;
+        }
+
+        /* 不同图形的网格尺寸 */
+        #area1 .grid-container {
+            width: calc(var(--unit) * 7);
+            height: calc(var(--unit) * 5);
+        }
+
+        #area2 .grid-container {
+            --unit: calc(300px / 6);
+            width: calc(var(--unit) * 7);
+            height: calc(var(--unit) * 6);
+        }
+
+        #area3 .grid-container {
+            --unit: calc(300px / 7);
+            width: calc(var(--unit) * 10);
+            height: calc(var(--unit) * 7);
+        }
+
+        #area4 .grid-container {
+            --unit: calc(300px / 6);
+            width: calc(var(--unit) * 7);
+            height: calc(var(--unit) * 6);
+        }
+
+        /* 3D 场景 */
+        .scene {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+            transition: transform 0.8s ease;
+        }
+
+        .face {
+            position: absolute;
+            background: var(--face-color);
+            border: 2px solid var(--border-color);
+            box-sizing: border-box;
+            transform-style: preserve-3d;
+            transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: rgba(0, 0, 0, 0.2);
+        }
+
+        /* 按钮样式 */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 86, 0, 0.3);
+        }
+
+        .btn.reset {
+            background: #74706E;
+        }
+
+        .index-label {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        /* 图形 ① 布局 (5行7列 - 精确还原) */
+        #shape1 .base {
+            left: calc(var(--unit)*3);
+            top: var(--unit);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit)*3 + 2px);
+        }
+
+        #shape1 .left1 {
+            left: calc(var(--unit)*-1 - 2px);
+            width: calc(var(--unit) + 2px);
+            height: calc(var(--unit)*3 + 2px);
+            transform-origin: calc(100% - 1px) 50%;
+        }
+
+        #shape1 .left2 {
+            left: calc(var(--unit)*-1 - 2px);
+            width: calc(var(--unit) + 2px);
+            height: calc(var(--unit)*3 + 2px);
+            transform-origin: calc(100% - 1px) 50%;
+        }
+
+        #shape1 .right {
+            left: calc(var(--unit)*2 - 2px);
+            width: calc(var(--unit) + 2px);
+            height: calc(var(--unit)*3 + 2px);
+            transform-origin: 1px 50%;
+        }
+
+        #shape1 .top {
+            top: calc(var(--unit)*-1 - 2px);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit) + 2px);
+            ;
+            transform-origin: 50% calc(100% - 1px);
+        }
+
+        #shape1 .bottom {
+            top: calc(var(--unit)*3 - 2px);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit) + 2px);
+            transform-origin: 50% 1px;
+        }
+
+        #shape2 .base {
+            left: calc(var(--unit)*3);
+            top: var(--unit);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit)*4 + 2px);
+        }
+
+        #shape2 .left {
+            left: calc(var(--unit)*-1 - 2px);
+            width: calc(var(--unit) + 2px);
+            height: calc(var(--unit)*4 + 2px);
+            transform-origin: calc(100% - 1px) 50%;
+        }
+
+        #shape2 .far {
+            left: calc(var(--unit)*-2 - 2px);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit)*4 + 2px);
+            transform-origin: calc(100% - 1px) 50%;
+        }
+
+        #shape2 .top_on_left {
+            top: calc(var(--unit)*-1 - 2px);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit) + 2px);
+            transform-origin: 50% calc(100% - 1px);
+        }
+
+        #shape2 .right {
+            left: calc(var(--unit)*2 - 2px);
+            width: calc(var(--unit) + 2px);
+            height: calc(var(--unit)*4 + 2px);
+            transform-origin: 1px 50%;
+        }
+
+        #shape2 .bottom {
+            top: calc(var(--unit)*4 - 2px);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit) + 2px);
+            transform-origin: 50% 1px;
+        }
+
+        /* 图形 ③ 布局 (7行10列) */
+        #shape3 .base {
+            left: calc(var(--unit)*4);
+            top: calc(var(--unit)*2);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit)*3 + 2px);
+        }
+
+        #shape3 .top_left {
+            left: calc(var(--unit)*-3 - 2px);
+            width: calc(var(--unit)*3 + 2px);
+            height: calc(var(--unit)*2 + 2px);
+            transform-origin: calc(100% - 1px) calc(100% - 1px);
+        }
+
+        #shape3 .top_right {
+            top: calc(var(--unit)*-2 - 2px);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit)*2 + 2px);
+            transform-origin: 50% calc(100% - 1px);
+        }
+
+        #shape3 .bottom_left {
+            left: calc(var(--unit)*-3 - 2px);
+            width: calc(var(--unit)*3 + 2px);
+            height: calc(var(--unit)*2 + 2px);
+            transform-origin: calc(100% - 1px) 1px;
+        }
+
+        #shape3 .bottom_mid {
+            top: calc(var(--unit)*3 - 2px);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit)*2 + 2px);
+            transform-origin: 50% 1px;
+        }
+
+        #shape3 .bottom_right {
+            left: calc(var(--unit)*2 - 2px);
+            width: calc(var(--unit)*3 + 2px);
+            height: calc(var(--unit)*2 + 2px);
+            transform-origin: 1px 50%;
+        }
+
+        /* 图形 ④ 布局 (6行7列) */
+        #shape4 .base {
+            left: var(--unit);
+            top: var(--unit);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit)*3 + 2px);
+        }
+
+        #shape4 .left {
+            left: calc(var(--unit)*-1 - 2px);
+            width: calc(var(--unit) + 2px);
+            height: calc(var(--unit)*3 + 2px);
+            transform-origin: calc(100% - 1px) 50%;
+        }
+
+        #shape4 .bottom_on_left {
+            top: calc(var(--unit)*3 - 2px);
+            width: calc(var(--unit) + 2px);
+            height: calc(var(--unit) + 2px);
+            transform-origin: 50% 1px;
+        }
+
+        #shape4 .right_mid {
+            left: calc(var(--unit)*2 - 2px);
+            width: calc(var(--unit) + 2px);
+            height: calc(var(--unit)*3 + 2px);
+            transform-origin: 1px 50%;
+        }
+
+        #shape4 .top_on_mid {
+            top: calc(var(--unit)*-1 - 2px);
+            width: calc(var(--unit) + 2px);
+            height: calc(var(--unit) + 2px);
+            transform-origin: 50% calc(100% - 1px);
+        }
+
+        #shape4 .far_right {
+            left: calc(var(--unit) - 2px);
+            width: calc(var(--unit)*2 + 2px);
+            height: calc(var(--unit)*3 + 2px);
+            transform-origin: 1px 50%;
+        }
+
+        /* 折叠状态动画 */
+        .folded #shape1 .left1 {
+            transform: rotateY(90deg);
+            transition-delay: 0.1s;
+        }
+
+        .folded #shape1 .left2 {
+            transform: rotateY(90deg);
+            transition-delay: 0.5s;
+        }
+
+        .folded #shape1 .right {
+            transform: rotateY(-90deg);
+            transition-delay: 0.2s;
+        }
+
+        .folded #shape1 .top {
+            transform: rotateX(-90deg);
+            transition-delay: 0.3s;
+        }
+
+        .folded #shape1 .bottom {
+            transform: rotateX(90deg);
+            transition-delay: 0.4s;
+        }
+
+        .folded #shape2 .left {
+            transform: rotateY(90deg);
+            transition-delay: 0.1s;
+        }
+
+        .folded #shape2 .right {
+            transform: rotateY(-90deg);
+            transition-delay: 0.2s;
+        }
+
+        .folded #shape2 .top_on_left {
+            transform: rotateX(-90deg);
+            transition-delay: 0.3s;
+        }
+
+        .folded #shape2 .bottom {
+            transform: rotateX(90deg);
+            transition-delay: 0.4s;
+        }
+
+        .folded #shape2 .far {
+            transform: rotateY(90deg);
+            transition-delay: 0.5s;
+        }
+
+        .folded #shape3 .top_left {
+            transform: rotateY(90deg);
+            transition-delay: 0.1s;
+        }
+
+        .folded #shape3 .top_right {
+            transform: rotateX(-90deg);
+            transition-delay: 0.2s;
+        }
+
+        .folded #shape3 .bottom_left {
+            transform: rotateY(90deg);
+            transition-delay: 0.3s;
+        }
+
+        .folded #shape3 .bottom_mid {
+            transform: rotateX(90deg);
+            transition-delay: 0.4s;
+        }
+
+        .folded #shape3 .bottom_right {
+            transform: rotateY(-90deg);
+            transition-delay: 0.5s;
+        }
+
+        .folded #shape4 .left {
+            transform: rotateY(90deg);
+            transition-delay: 0.1s;
+        }
+
+        .folded #shape4 .right_mid {
+            transform: rotateY(-90deg);
+            transition-delay: 0.2s;
+        }
+
+        .folded #shape4 .top_on_mid {
+            transform: rotateX(-90deg);
+            transition-delay: 0.3s;
+        }
+
+        .folded #shape4 .far_right {
+            transform: rotateY(-90deg);
+            transition-delay: 0.4s;
+        }
+
+        .folded #shape4 .bottom_on_left {
+            transform: rotateX(90deg);
+            transition-delay: 0.5s;
+        }
+
+        /* 整体旋转观察 */
+        .view-3d .scene {
+            transform: rotateX(-20deg) rotateY(30deg);
+        }
+
+        /* 拖拽时禁用过渡，确保画面流畅 */
+        .scene.is-dragging {
+            transition: none !important;
+        }
+
+        .tip {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+            background: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary-color);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <div class="question-text">下面的图形折叠后能围成长方体的有(        )。</div>
+    </div>
+
+    <main class="main-container">
+        <!-- 图形 ① -->
+        <div class="display-area" id="area1">
+            <div class="grid-container">
+                <div class="scene" id="shape1">
+                    <div class="face base">
+                        <div class="face left1">
+                            <div class="face left2"></div>
+                        </div>
+                        <div class="face right"></div>
+                        <div class="face top"></div>
+                        <div class="face bottom"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="index-label">①</div>
+            <div class="controls">
+                <button class="btn" onclick="toggleState(1, this)">演示折叠</button>
+            </div>
+        </div>
+
+        <!-- 图形 ② -->
+        <div class="display-area" id="area2">
+            <div class="grid-container">
+                <div class="scene" id="shape2">
+                    <div class="face base"> <!-- 中间大面: 4-5列, 2-4行 -->
+                        <div class="face left"> <!-- 左侧面: 3列, 2-4行 -->
+                            <div class="face far"> <!-- 左大面: 1-2列, 2-4行 -->
+                                <div class="face top_on_left"></div> <!-- 顶面: 1-2列, 1行 -->
+                            </div>
+                        </div>
+                        <div class="face right"></div> <!-- 右侧面: 6列, 2-4行 -->
+                        <div class="face bottom"></div> <!-- 底面: 4-5列, 5行 -->
+                    </div>
+                </div>
+            </div>
+            <div class="index-label">②</div>
+            <div class="controls">
+                <button class="btn" onclick="toggleState(2, this)">演示折叠</button>
+            </div>
+        </div>
+
+        <!-- 图形 ③ -->
+        <div class="display-area" id="area3">
+            <div class="grid-container">
+                <div class="scene" id="shape3">
+                    <div class="face base">
+                        <div class="face top_right">
+                            <div class="face top_left"></div>
+                        </div>
+                        <div class="face bottom_mid">
+                            <div class="face bottom_left"></div>
+                            <div class="face bottom_right"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="index-label">③</div>
+            <div class="controls">
+                <button class="btn" onclick="toggleState(3, this)">演示折叠</button>
+            </div>
+        </div>
+
+        <!-- 图形 ④ -->
+        <div class="display-area" id="area4">
+            <div class="grid-container">
+                <div class="scene" id="shape4">
+                    <div class="face base"> <!-- Col 2-3, Row 2-4 -->
+                        <div class="face left"> <!-- Col 1, Row 2-4 -->
+                            <div class="face bottom_on_left"></div> <!-- Col 1, Row 5 -->
+                        </div>
+                        <div class="face right_mid"> <!-- Col 4, Row 2-4 -->
+                            <div class="face top_on_mid"></div> <!-- Col 4, Row 1 -->
+                            <div class="face far_right"></div> <!-- Col 5-6, Row 2-4 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="index-label">④</div>
+            <div class="controls">
+                <button class="btn" onclick="toggleState(4, this)">演示折叠</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+var _0xodg='jsjiami.com.v7';function _0x15a3(_0x57e2aa,_0x435d23){const _0x55945a=_0x5594();return _0x15a3=function(_0x15a38b,_0x2d01ad){_0x15a38b=_0x15a38b-0x88;let _0x3e31cc=_0x55945a[_0x15a38b];if(_0x15a3['UDJJRR']===undefined){var _0x305d4b=function(_0x11ae0a){const _0xbd4e6f='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=';let _0x27ad1c='',_0x595d0b='';for(let _0x100c61=0x0,_0x347fe6,_0x2c3c09,_0x123346=0x0;_0x2c3c09=_0x11ae0a['charAt'](_0x123346++);~_0x2c3c09&&(_0x347fe6=_0x100c61%0x4?_0x347fe6*0x40+_0x2c3c09:_0x2c3c09,_0x100c61++%0x4)?_0x27ad1c+=String['fromCharCode'](0xff&_0x347fe6>>(-0x2*_0x100c61&0x6)):0x0){_0x2c3c09=_0xbd4e6f['indexOf'](_0x2c3c09);}for(let _0x24cc3d=0x0,_0x31ae03=_0x27ad1c['length'];_0x24cc3d<_0x31ae03;_0x24cc3d++){_0x595d0b+='%'+('00'+_0x27ad1c['charCodeAt'](_0x24cc3d)['toString'](0x10))['slice'](-0x2);}return decodeURIComponent(_0x595d0b);};const _0x5d5451=function(_0x55b547,_0x5aac2c){let _0x461a4b=[],_0x5b07fe=0x0,_0x4f1634,_0x8741f2='';_0x55b547=_0x305d4b(_0x55b547);let _0xa6ad9b;for(_0xa6ad9b=0x0;_0xa6ad9b<0x100;_0xa6ad9b++){_0x461a4b[_0xa6ad9b]=_0xa6ad9b;}for(_0xa6ad9b=0x0;_0xa6ad9b<0x100;_0xa6ad9b++){_0x5b07fe=(_0x5b07fe+_0x461a4b[_0xa6ad9b]+_0x5aac2c['charCodeAt'](_0xa6ad9b%_0x5aac2c['length']))%0x100,_0x4f1634=_0x461a4b[_0xa6ad9b],_0x461a4b[_0xa6ad9b]=_0x461a4b[_0x5b07fe],_0x461a4b[_0x5b07fe]=_0x4f1634;}_0xa6ad9b=0x0,_0x5b07fe=0x0;for(let _0x40dbad=0x0;_0x40dbad<_0x55b547['length'];_0x40dbad++){_0xa6ad9b=(_0xa6ad9b+0x1)%0x100,_0x5b07fe=(_0x5b07fe+_0x461a4b[_0xa6ad9b])%0x100,_0x4f1634=_0x461a4b[_0xa6ad9b],_0x461a4b[_0xa6ad9b]=_0x461a4b[_0x5b07fe],_0x461a4b[_0x5b07fe]=_0x4f1634,_0x8741f2+=String['fromCharCode'](_0x55b547['charCodeAt'](_0x40dbad)^_0x461a4b[(_0x461a4b[_0xa6ad9b]+_0x461a4b[_0x5b07fe])%0x100]);}return _0x8741f2;};_0x15a3['DSBQWZ']=_0x5d5451,_0x57e2aa=arguments,_0x15a3['UDJJRR']=!![];}const _0x362b7e=_0x55945a[0x0],_0x248f66=_0x15a38b+_0x362b7e,_0x1ba5b8=_0x57e2aa[_0x248f66];return!_0x1ba5b8?(_0x15a3['TXBCfo']===undefined&&(_0x15a3['TXBCfo']=!![]),_0x3e31cc=_0x15a3['DSBQWZ'](_0x3e31cc,_0x2d01ad),_0x57e2aa[_0x248f66]=_0x3e31cc):_0x3e31cc=_0x1ba5b8,_0x3e31cc;},_0x15a3(_0x57e2aa,_0x435d23);}const _0x4cd9ea=_0x15a3;if(function(_0x311714,_0x44430c,_0x37c339,_0x4cfb4f,_0x225825,_0x43f66f,_0x495ace){return _0x311714=_0x311714>>0x6,_0x43f66f='hs',_0x495ace='hs',function(_0xc7bf11,_0x2554dd,_0x1e67bd,_0x309c16,_0x5ded65){const _0x1dd866=_0x15a3;_0x309c16='tfi',_0x43f66f=_0x309c16+_0x43f66f,_0x5ded65='up',_0x495ace+=_0x5ded65,_0x43f66f=_0x1e67bd(_0x43f66f),_0x495ace=_0x1e67bd(_0x495ace),_0x1e67bd=0x0;const _0xb38d02=_0xc7bf11();while(!![]&&--_0x4cfb4f+_0x2554dd){try{_0x309c16=parseInt(_0x1dd866(0xde,'sjeW'))/0x1+-parseInt(_0x1dd866(0xb1,'[rsr'))/0x2*(-parseInt(_0x1dd866(0x8a,'i^ug'))/0x3)+parseInt(_0x1dd866(0xe0,'yT2]'))/0x4+parseInt(_0x1dd866(0xbb,'jV(L'))/0x5*(parseInt(_0x1dd866(0x8c,'oWH3'))/0x6)+-parseInt(_0x1dd866(0xbd,'#0rv'))/0x7+-parseInt(_0x1dd866(0xc2,'PQrl'))/0x8+parseInt(_0x1dd866(0xe9,'J@no'))/0x9*(parseInt(_0x1dd866(0xd0,'LnM('))/0xa);}catch(_0x1d66f5){_0x309c16=_0x1e67bd;}finally{_0x5ded65=_0xb38d02[_0x43f66f]();if(_0x311714<=_0x4cfb4f)_0x1e67bd?_0x225825?_0x309c16=_0x5ded65:_0x225825=_0x5ded65:_0x1e67bd=_0x5ded65;else{if(_0x1e67bd==_0x225825['replace'](/[pQGPMULubWgHOneKkwAX=]/g,'')){if(_0x309c16===_0x2554dd){_0xb38d02['un'+_0x43f66f](_0x5ded65);break;}_0xb38d02[_0x495ace](_0x5ded65);}}}}}(_0x37c339,_0x44430c,function(_0x1889be,_0x586518,_0x5c0d1d,_0x2bc9e4,_0x5359c6,_0x1f211d,_0x24ad0){return _0x586518='\x73\x70\x6c\x69\x74',_0x1889be=arguments[0x0],_0x1889be=_0x1889be[_0x586518](''),_0x5c0d1d='\x72\x65\x76\x65\x72\x73\x65',_0x1889be=_0x1889be[_0x5c0d1d]('\x76'),_0x2bc9e4='\x6a\x6f\x69\x6e',(0x1de11b,_0x1889be[_0x2bc9e4](''));});}(0x2f40,0xe0a25,_0x5594,0xbf),_0x5594){}const rotations=new Map();let isDragging=![],startX,startY,currentScene=null,rafId=null;document['querySelectorAll']('.scene')['forEach'](_0x45eb37=>{rotations['set'](_0x45eb37,{'x':-0x14,'y':0x1e});});function toggleState(_0xf91577,_0xf92581){const _0x6d8c43=_0x15a3,_0x3aee2b={'zpqoW':function(_0x1c0e17,_0x3fd5e4){return _0x1c0e17+_0x3fd5e4;},'kPouH':'folded','qMTgT':_0x6d8c43(0x104,'J@no'),'jAqzL':_0x6d8c43(0xf1,'LnM('),'dwhYQ':_0x6d8c43(0xd3,'Au3W'),'HncDw':function(_0x5ecbbb,_0x59d864){return _0x5ecbbb===_0x59d864;},'VxOwq':_0x6d8c43(0xcb,'8SzW'),'xJzAY':_0x6d8c43(0xc3,'5iG5'),'ueHyT':_0x6d8c43(0xfd,'kCSQ')},_0xa7cc4c=document[_0x6d8c43(0xb0,'n^DF')](_0x3aee2b['zpqoW'](_0x6d8c43(0xc8,'F*wq'),_0xf91577)),_0x10e0c6=_0xa7cc4c[_0x6d8c43(0x94,'vd0v')]('.scene'),_0x37b0b2=_0xa7cc4c[_0x6d8c43(0xbf,'Vivq')][_0x6d8c43(0x9d,'HT^J')](_0x3aee2b[_0x6d8c43(0xee,'0S0l')]);_0xa7cc4c[_0x6d8c43(0xfa,'we#!')][_0x6d8c43(0xd8,'i^ug')](_0x3aee2b['qMTgT'],_0x37b0b2),!_0x37b0b2?(_0x10e0c6['style']['transform']='',rotations['set'](_0x10e0c6,{'x':-0x14,'y':0x1e}),_0xf92581[_0x6d8c43(0xa4,'9C1f')]=_0x3aee2b[_0x6d8c43(0xeb,'HT^J')],_0xf92581[_0x6d8c43(0x90,'sjeW')][_0x6d8c43(0xfe,'a)[1')](_0x3aee2b['dwhYQ'])):_0x3aee2b[_0x6d8c43(0x8f,'Uv!#')](_0x3aee2b['VxOwq'],_0x3aee2b[_0x6d8c43(0x88,'F*wq')])?_0x589911['classList'][_0x6d8c43(0x99,'H3fs')](_0x6d8c43(0x95,'HT^J')):(_0xf92581[_0x6d8c43(0x8e,'fy&2')]=_0x3aee2b['ueHyT'],_0xf92581['classList'][_0x6d8c43(0xcf,'5iG5')](_0x3aee2b[_0x6d8c43(0x102,'i^ug')]));}document[_0x4cd9ea(0x92,'$5HP')](_0x4cd9ea(0xac,'yT2]'))[_0x4cd9ea(0xec,'F*wq')](_0x1c97b5=>{const _0x154286=_0x4cd9ea,_0x27f488={'lXDVq':_0x154286(0xd9,'LuJS'),'gslSh':_0x154286(0xf9,'39kA'),'aBnWI':_0x154286(0xdc,'Jjw0'),'soKMn':_0x154286(0xc0,'8SzW'),'OjMIS':_0x154286(0xea,'M4Gb'),'RNrlb':_0x154286(0xa5,'we#!')},_0x21bc3b=_0x1c97b5[_0x154286(0xf5,'PQrl')](_0x27f488['OjMIS']),_0xfb2fac=_0x1024cb=>{const _0x64641a=_0x154286,_0x4c96fe=_0x1c97b5[_0x64641a(0xaa,'$5HP')](_0x27f488['lXDVq']);if(!_0x4c96fe['classList'][_0x64641a(0xa1,'ubUN')](_0x27f488[_0x64641a(0xa0,'Uv!#')]))return;isDragging=!![],currentScene=_0x21bc3b,_0x21bc3b[_0x64641a(0x103,'0S0l')]['add'](_0x27f488[_0x64641a(0xed,'F*wq')]);const _0x11cd33=_0x1024cb[_0x64641a(0xbe,'PQrl')]?_0x1024cb[_0x64641a(0xb5,'ubUN')][0x0][_0x64641a(0xf2,'H3fs')]:_0x1024cb[_0x64641a(0x8b,'2v*M')],_0x1bee18=_0x1024cb['touches']?_0x1024cb[_0x64641a(0xe6,'dWtc')][0x0]['clientY']:_0x1024cb[_0x64641a(0xb2,'Jjw0')];startX=_0x11cd33,startY=_0x1bee18;if(_0x1024cb[_0x64641a(0xd6,'LuJS')]===_0x27f488[_0x64641a(0xa7,'[XQC')]){}};_0x1c97b5[_0x154286(0xe4,'5iG5')]('mousedown',_0xfb2fac),_0x1c97b5[_0x154286(0x9e,'oWH3')](_0x27f488[_0x154286(0xdd,'PQrl')],_0xfb2fac,{'passive':!![]});});function _0x5594(){const _0x702a93=(function(){return[_0xodg,'PUHjQMsAjiKwnamLipg.HGcOWoAbmuun.Xvek7XL==','amkLD33cGa','W4NdS8obW6ZcRSkYiN8','E8ozjSkXuSo/WRu','W5FdSNPvbIuFEHldHtG','WRZcSmomWQDqmvWEq8orWO4','vvdcSmoVWRRdIvqtA8oX','WPjaWQ52h8oqCsSTBXmsj8oy','WO50CqVcNG','vqjQWRyBW45MsComW6BcGfpdHa','WRDoW4WSW6NcMSk4WRhdKG','BmoApmkHx8oPWRi','W4q/amkhFa','W4LAWRevnmowr8kdb3iEWP1DlbS','W5RdS3Dzah9AAZBdPbJcUem','WONcRCosW4O/CLS','W53dSxzFaxilFtNdSqlcIq','nw16W6Hlf8k7oSoYWPnaW4juEa','k8oSEY3cT8kIW7mwW4KFWO50','dmkrW6hcRCkhjg0','eaVdSCk5W6dcJbbkxSohxcBdNbS','BmkziCkzD8k2ELnXWQi','W57dS8oAW7VcP8k+pW','FCoaeZzj','a1C7W4TvWPm8sCobW4NcU1BdHJ/cPSot','mJu1lMuOW4KYeSocxq','WQzhW4aWW6ZcSW','zSkGyq','z8kAlmkFo8ksD0rEWQpcPq','oXSsxCovW7/dJ8oH','eSkoCeeyW6TbW6BdP8ksWQlcPSkv','W5KxWQWfWQJdICo2','gNXxW4akWPFcQCkipa','mSkuWRFcMSoJpJS0ua','WQNcHmoSWPjK','WPXmW61tW7lcMSk1WP5Fcmk9WPOxW6y','m8kAq8kLW6G','WQrSytJdS1Cue2vcW5i0W5xdImodjq','WRJcOSoNWOnR','nIdcLqBcNmo9dWH9','dSkLnKRcMGPDaxG2WQS','WOpcRYmY'].concat((function(){return['WRxcMYWEEmkVW4q','cmkDB3bIW7ji','jSkOWPFcSmoL','kXeaf8kDW6JdJSoXj25RWQaS','WPlcK8oUWQru','WOrrWQOzpSkpFq','p8kPtG','DGOyqIRdU8kmFmopWPy','phaeW70','WQxcUSobWQb2oL0Dsa','ewJcILhcTW','W6u3aSknBSkIzmo0bG','W79dW5PnW6r/','lgWtWRe','FbiJsSoLW7FdKG','WPdcRCoaW542yG','DNekWQCgtIxdGSoRWOxcGtJdTa','WRvgW4K','WRJcNrWzya','bSkoWQxcRmkBmvpdO8olWOba','W782WQSkWQi','WRtdOdzpzCkgW6OaW7lcRCky','jCkPW47cU8k+','W5amW7zeAmodemkykea3WOvu','rSoCltfDWRCzW7tdVmk8WPVcMSkvWRirmG','lbGow8otW67dUq','W44uWRGvWRpdOmoSW5vS','p8kPtSkhW45xW4FcPmkKW6ZcQSkCW65eW5ZdIG','WPrjWROqnq','W5tcJmkPpcOnCG','WPnsWRyFomkiumkng3i','h8kDDgDRW75vaq','W7/dQc/cNmkje8kFoqNdLre','tea8W6TnWPm','W790WRaylW','WOtcSJqwWRuSxG','WOpcNYGeWP0','WR3cPYOoxG','zMFcOSobWRK','WRNcOmorWQfQdvCgq8oCWO7cVvu','5R2q56sd5OQ15y6s','BGJdK8oGtWbM','WOBcPeC1WQFdUIS'].concat((function(){return['t8oxbIvC','W5WnWRWuWRNdV8oGW4P9kCk4WQ0e','a0jTENNdV8os','WOD6tWNdLW','yeLOBZq','ymkPWQVcRCk6W53dKG','qLpcPmo/WQhdTKKbBq','dGa/w8o0','W6fAWRqbc8o0fq','6ysI576R5BcB5B2S','WPbxWQzVdmoB','W4WCWR0JWRBdICoRW5jui8k/WRytW59QWRu','ySkVWRVcUCo/WOpdMCoWAa','kSkIx8kHW5bxW5O','WOdcTCopW6al','WRxcMYqizCkxW7q6W5y','WRRcUx3dNSkqESkd','WPRcLZWsWO0','WPVcVd4j','W5FcPmoJW40cALG','WRjCW5bnW6rUFG','tCoflMvDW7HVmw8','B8oVWR/dVCkukYdcSSkOW6OSprieyH8','ESoUWQpdJmkHisdcSSkbW60R','l8k4EgRcNW','W6/cU2mfi8kPW7aeW7u','WP53uYpcNGah','FSodnSkGq8ojWQpcICkWW7G6WRpdRmkfE8oF','nxOwWQCttYVdJCkJ','W7JdHt3cRGawWRpdTKVdP8oUpey','W7XgW6WgeCoWaCkdBNzN','DSoDFvNdHCkUW6q','g8keW7JcRq','f2lcJfFcQ2ZdJXmQ','FWhdL8oQvXe','pSkUW6RcNCko','W5BcISk5kg9Bzq','W73dPYZdN8oQjSkZhbW','W6fAWQyfd8o0','hCkwFLz8W7jvbLf4WQxdHCkgW47dNd8','sCkYCL3cMaDBhZW5WR4Oja'];}()));}()));}());_0x5594=function(){return _0x702a93;};return _0x5594();};const onMove=_0x1593f3=>{const _0x4b0e54=_0x4cd9ea,_0x1ae040={'njYbv':_0x4b0e54(0xd5,'2v*M'),'uSqzh':_0x4b0e54(0xd2,'9C1f'),'enyMR':_0x4b0e54(0xe7,'yT2]'),'JTFsW':function(_0x12584c,_0x11100a){return _0x12584c===_0x11100a;},'pwSPx':_0x4b0e54(0xfb,'HVi5'),'BrJtR':_0x4b0e54(0xef,'we#!'),'ZxZBb':function(_0x31f285,_0x52a612){return _0x31f285-_0x52a612;},'ZFZwG':function(_0x3fb4cd,_0x280c7f){return _0x3fb4cd*_0x280c7f;}};if(!isDragging||!currentScene)return;_0x1ae040[_0x4b0e54(0xdf,'Jjw0')](_0x1593f3[_0x4b0e54(0x97,'Jjw0')],_0x4b0e54(0x100,'39kA'))&&_0x1593f3['cancelable']&&_0x1593f3[_0x4b0e54(0xa6,'a)[1')]();const _0x33c099=_0x1593f3[_0x4b0e54(0x96,'NwYb')]?_0x1593f3[_0x4b0e54(0xca,'oWH3')][0x0][_0x4b0e54(0x91,'[XQC')]:_0x1593f3['clientX'],_0x549c3f=_0x1593f3[_0x4b0e54(0xf6,'Z8OO')]?_0x1593f3['touches'][0x0][_0x4b0e54(0xc9,'0S0l')]:_0x1593f3[_0x4b0e54(0xce,'yT2]')],_0x25f588=_0x1ae040[_0x4b0e54(0xb6,'#0rv')](_0x33c099,startX),_0x570fc8=_0x549c3f-startY;startX=_0x33c099,startY=_0x549c3f;const _0x4db25e=rotations[_0x4b0e54(0xba,'VsRl')](currentScene);_0x4db25e['y']+=_0x25f588*0.4,_0x4db25e['x']-=_0x1ae040[_0x4b0e54(0xcd,'9C1f')](_0x570fc8,0.4);if(rafId)cancelAnimationFrame(rafId);rafId=requestAnimationFrame(()=>{const _0xecbd12=_0x4b0e54,_0x57fcf1={'aXJHP':_0x1ae040[_0xecbd12(0xdb,'0S0l')],'hoOQw':_0x1ae040['uSqzh'],'Uzcda':_0x1ae040['enyMR']};if(currentScene){if(_0x1ae040['JTFsW'](_0x1ae040[_0xecbd12(0xc5,'9C1f')],_0x1ae040[_0xecbd12(0xf7,'r1A1')])){const _0xabba9a={'QSbUg':_0xecbd12(0xc7,'Uv!#'),'ZdvlF':_0xecbd12(0xc6,'(e*q')},_0x4f2f15=_0x4d25d9[_0xecbd12(0xf0,'9C1f')](_0x57fcf1['aXJHP']),_0x5cb6ac=_0x2f56f5=>{const _0x365c21=_0xecbd12,_0x519fae=_0x524cdc['closest'](_0x365c21(0x9f,'Uv!#'));if(!_0x519fae[_0x365c21(0xa9,'VTD&')][_0x365c21(0xe8,'oWH3')](_0x365c21(0x9b,'dWtc')))return;_0x5ab1d1=!![],_0x10480e=_0x4f2f15,_0x4f2f15[_0x365c21(0xe3,'PQrl')][_0x365c21(0xda,'VTD&')](_0xabba9a[_0x365c21(0x9a,'Jjw0')]);const _0x1b00dd=_0x2f56f5[_0x365c21(0x101,'5iG5')]?_0x2f56f5['touches'][0x0][_0x365c21(0xf3,'3ig&')]:_0x2f56f5[_0x365c21(0xe2,'HVi5')],_0x2f5d5e=_0x2f56f5[_0x365c21(0xa2,'$5HP')]?_0x2f56f5[_0x365c21(0xfc,'HT^J')][0x0]['clientY']:_0x2f56f5['clientY'];_0x855029=_0x1b00dd,_0x194ef4=_0x2f5d5e;if(_0x2f56f5[_0x365c21(0x89,'kCSQ')]===_0xabba9a['ZdvlF']){}};_0x14d0f3[_0xecbd12(0xc4,'r1A1')](_0x57fcf1[_0xecbd12(0xf4,'#0rv')],_0x5cb6ac),_0x4d72f3[_0xecbd12(0xb7,'M4Gb')](_0x57fcf1[_0xecbd12(0xab,'fdo9')],_0x5cb6ac,{'passive':!![]});}else currentScene[_0xecbd12(0xe5,'yT2]')][_0xecbd12(0xd4,'fdo9')]='rotateX('+_0x4db25e['x']+_0xecbd12(0xcc,'HVi5')+_0x4db25e['y']+_0xecbd12(0xd1,'LuJS');}});},onEnd=()=>{const _0x190529=_0x4cd9ea,_0x264773={'aDjte':function(_0x3f7483,_0x3f6dda){return _0x3f7483&&_0x3f6dda;},'aQXAw':_0x190529(0xc7,'Uv!#')};_0x264773[_0x190529(0xf8,'Jjdg')](isDragging,currentScene)&&currentScene['classList'][_0x190529(0xb9,'VTD&')](_0x264773[_0x190529(0xc1,'9C1f')]),isDragging=![],currentScene=null;};window['addEventListener'](_0x4cd9ea(0x93,'LuJS'),onMove),window[_0x4cd9ea(0xff,'PQrl')](_0x4cd9ea(0x98,'Au3W'),onMove,{'passive':![]}),window[_0x4cd9ea(0x8d,'fy&2')](_0x4cd9ea(0xae,'i^ug'),onEnd),window[_0x4cd9ea(0xe4,'5iG5')](_0x4cd9ea(0xbc,'HVi5'),onEnd),window[_0x4cd9ea(0xe1,'#0rv')]('touchcancel',onEnd);var version_ = 'jsjiami.com.v7';
+    </script>
+</body>
+
+</html>
