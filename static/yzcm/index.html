@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圆柱侧面展开图</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #f4f7f9;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            user-select: none;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        .panel {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 16px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+            backdrop-filter: blur(10px);
+            pointer-events: auto;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            z-index: 10;
+        }
+
+        .left-panel {
+            left: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            flex-direction: column;
+        }
+
+        .right-panel {
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            flex-direction: column;
+        }
+
+        .bottom-panel {
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+        }
+
+        button {
+            border: none;
+            background: #f0f4f8;
+            color: #4a5568;
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+            outline: none;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+            width: 100%;
+        }
+
+        button:hover {
+            background: #e2e8f0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        button:active {
+            transform: translateY(0px);
+        }
+
+        button.active {
+            background: #7dc2b3;
+            color: white;
+            box-shadow: 0 4px 15px rgba(125, 194, 179, 0.4);
+        }
+
+        .slider-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            width: 450px;
+            font-size: 14px;
+            color: #4a5568;
+            font-weight: bold;
+        }
+
+        input[type=range] {
+            flex: 1;
+            cursor: pointer;
+            accent-color: #7dc2b3;
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 3px;
+            appearance: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #7dc2b3;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="canvas-container"></div>
+
+    <div class="panel left-panel">
+        <button id="btn-shape1" class="active">① 标准长方形</button>
+        <button id="btn-shape2">② 曲边图形</button>
+        <button id="btn-shape3">③ 平行四边形</button>
+    </div>
+
+    <div class="panel bottom-panel slider-wrapper">
+        <span>展开 (平面)</span>
+        <input type="range" id="progress-slider" min="0" max="200" value="0">
+        <span>收拢 (立体)</span>
+    </div>
+
+    <div class="panel right-panel">
+        <button id="btn-step0">1. 完全展开</button>
+        <button id="btn-step1">2. 卷曲侧面</button>
+        <button id="btn-step2">3. 收拢底面</button>
+    </div>
+
+    <script src="three.js"></script>
+    <script src="oc.js"></script>
+    <script>
+        // -------------------------------------------------------------
+        // 参数配置
+        // -------------------------------------------------------------
+        const R = 1.0;                 // 圆柱底面半径
+        const H = 3.5;                 // 圆柱高度
+        const W = 2 * Math.PI * R;     // 圆柱展开宽度
+
+        const segX = 128;              // 侧面细分数 X
+        const segY = 32;               // 侧面细分数 Y
+
+        // 当前和目标形状参数
+        let paramA = 0, targetA = 0;   // 曲线的弯曲度 (对应图2)
+        let paramK = 0, targetK = 0;   // 平行四边形的倾斜度 (对应图3)
+
+        // 动画进度控制 0(展开) -> 1(卷曲) -> 2(合盖)
+        let currentProgress = 0;
+        let targetProgress = 0;
+        let autoAnimate = false;
+
+        // 统一颜色色调 (与课本插图相近的青绿色)
+        const COLOR_FILL = 0x7bc6b4;
+        const COLOR_EDGE = 0x000000;
+
+        // -------------------------------------------------------------
+        // 场景初始化
+        // -------------------------------------------------------------
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+
+        // 相机配置
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 2, 16);
+
+        // 渲染器配置
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = false;
+        container.appendChild(renderer.domElement);
+
+        // 控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 5;
+        controls.maxDistance = 30;
+        controls.target.set(0, 0, 0);
+
+        // 灯光配置
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85); // 柔和的环境光
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        dirLight.position.set(10, 15, 10);
+        scene.add(dirLight);
+
+        // -------------------------------------------------------------
+        // 创建几何体：侧面展开面
+        // -------------------------------------------------------------
+        const materialFill = new THREE.MeshStandardMaterial({
+            color: COLOR_FILL,
+            side: THREE.DoubleSide,
+            roughness: 0.5,
+            metalness: 0.1,
+            transparent: true,
+            opacity: 1.0
+        });
+        const materialLine = new THREE.LineBasicMaterial({ color: COLOR_EDGE, linewidth: 8 });
+
+        const geoPlane = new THREE.PlaneGeometry(1, 1, segX, segY);
+        const meshPlane = new THREE.Mesh(geoPlane, materialFill);
+        scene.add(meshPlane);
+
+        // 创建侧面边界线
+        function createEdgeLine(pointsCount) {
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pointsCount * 3), 3));
+            return new THREE.Line(geo, materialLine);
+        }
+
+        const ptsTop = [], ptsBot = [], ptsLeft = [], ptsRight = [];
+        for (let i = 0; i <= segX; i++) { ptsTop.push({ s: -0.5 + i / segX, p: 0.5 }); }
+        for (let i = 0; i <= segX; i++) { ptsBot.push({ s: -0.5 + i / segX, p: -0.5 }); }
+        for (let i = 0; i <= segY; i++) { ptsLeft.push({ s: -0.5, p: 0.5 - i / segY }); }
+        for (let i = 0; i <= segY; i++) { ptsRight.push({ s: 0.5, p: 0.5 - i / segY }); }
+
+        const edgesArr = [
+            { pts: ptsTop, line: createEdgeLine(ptsTop.length) },
+            { pts: ptsBot, line: createEdgeLine(ptsBot.length) },
+            { pts: ptsLeft, line: createEdgeLine(ptsLeft.length) },
+            { pts: ptsRight, line: createEdgeLine(ptsRight.length) }
+        ];
+        edgesArr.forEach(edge => scene.add(edge.line));
+
+        // -------------------------------------------------------------
+        // 创建几何体：上下底面 (盖子)
+        // -------------------------------------------------------------
+        const circleGeo = new THREE.CircleGeometry(R, 64);
+        const circleEdgesGeo = new THREE.EdgesGeometry(circleGeo);
+
+        // 顶面
+        const topGroup = new THREE.Group();
+        const topFoldGroup = new THREE.Group();
+        const topMesh = new THREE.Mesh(circleGeo, materialFill);
+        const topOutline = new THREE.LineSegments(circleEdgesGeo, materialLine);
+        topMesh.add(topOutline);
+
+        topMesh.position.set(0, R, 0);       // 定位到接触边缘上方
+        topFoldGroup.add(topMesh);
+        topGroup.add(topFoldGroup);
+        scene.add(topGroup);
+
+        // 底面
+        const botGroup = new THREE.Group();
+        const botFoldGroup = new THREE.Group();
+        const botMesh = new THREE.Mesh(circleGeo, materialFill);
+        const botOutline = new THREE.LineSegments(circleEdgesGeo, materialLine);
+        botMesh.add(botOutline);
+
+        botMesh.position.set(0, -R, 0);      // 定位到接触边缘下方
+        botFoldGroup.add(botMesh);
+        botGroup.add(botFoldGroup);
+        scene.add(botGroup);
+
+        // -------------------------------------------------------------
+        // 数学辅助函数，处理微小角度误差
+        // -------------------------------------------------------------
+        function calcPx(u, r) {
+            const theta = u / r;
+            if (Math.abs(theta) < 0.005) return u;
+            return r * Math.sin(theta);
+        }
+        function calcPz(u, r) {
+            const theta = u / r;
+            if (Math.abs(theta) < 0.005) return (u * u) / (2 * r);
+            return r * (1 - Math.cos(theta));
+        }
+
+        // -------------------------------------------------------------
+        // 动画更新循环
+        // -------------------------------------------------------------
+        const slider = document.getElementById('progress-slider');
+
+        function updateScene() {
+            // 平滑插值进度
+            if (autoAnimate) {
+                currentProgress += (targetProgress - currentProgress) * 0.08;
+                if (Math.abs(targetProgress - currentProgress) < 0.001) {
+                    currentProgress = targetProgress;
+                    autoAnimate = false;
+                }
+                slider.value = currentProgress * 100;
+            } else {
+                currentProgress = parseFloat(slider.value) / 100;
+            }
+
+            // 平滑插值形状参数
+            paramA += (targetA - paramA) * 0.1;
+            paramK += (targetK - paramK) * 0.1;
+
+            // 分段进度计算
+            let t = Math.max(0.0001, Math.min(1.0, currentProgress)); // 卷曲程度
+            let r = R / t;                                            // 当前曲率半径
+            let lidAngle = Math.max(0, Math.min(1.0, currentProgress - 1)); // 合盖程度
+
+            // 合拢后圆柱有一定的透明度 (未合拢时1.0，完全合盖时过度为 0.65)
+            materialFill.opacity = 1.0 - (lidAngle * 0.1);
+
+            // 1. 更新主平面网格 -----------------------------------------
+            const positions = geoPlane.attributes.position.array;
+            let idx = 0;
+            for (let y = 0; y <= segY; y++) {
+                const p = 0.5 - (y / segY);
+                for (let x = 0; x <= segX; x++) {
+                    const s = -0.5 + (x / segX);
+                    // 形状偏移算法
+                    const offset = paramA * Math.cos(p * Math.PI) + paramK * p;
+                    const u = s * W + offset;
+
+                    positions[idx++] = calcPx(u, r);
+                    positions[idx++] = p * H;
+                    positions[idx++] = calcPz(u, r);
+                }
+            }
+            geoPlane.attributes.position.needsUpdate = true;
+            geoPlane.computeVertexNormals(); // 重算光照法线
+
+            // 2. 更新边界线 ---------------------------------------------
+            edgesArr.forEach(edge => {
+                const pos = edge.line.geometry.attributes.position.array;
+                for (let i = 0; i < edge.pts.length; i++) {
+                    const pt = edge.pts[i];
+                    const offset = paramA * Math.cos(pt.p * Math.PI) + paramK * pt.p;
+                    const u = pt.s * W + offset;
+
+                    pos[i * 3] = calcPx(u, r);
+                    pos[i * 3 + 1] = pt.p * H;
+                    pos[i * 3 + 2] = calcPz(u, r);
+                }
+                edge.line.geometry.attributes.position.needsUpdate = true;
+            });
+
+            // 3. 更新上下底面盖子位姿 ------------------------------------
+            // 顶面锚点
+            const topU = paramA * Math.cos(0.5 * Math.PI) + paramK * 0.5;
+            topGroup.position.set(calcPx(topU, r), H / 2, calcPz(topU, r));
+            topGroup.rotation.y = -topU / r;
+            topFoldGroup.rotation.x = lidAngle * (Math.PI / 2); // 0 到 90度
+
+            // 底面锚点
+            const botU = paramA * Math.cos(-0.5 * Math.PI) - paramK * 0.5;
+            botGroup.position.set(calcPx(botU, r), -H / 2, calcPz(botU, r));
+            botGroup.rotation.y = -botU / r;
+            botFoldGroup.rotation.x = lidAngle * (-Math.PI / 2); // 0 到 -90度
+
+            // 设置视图中心随动（为了体验更好，让模型整体居中）
+            // 当卷起来时，中心往z轴正向偏移了R
+            let centerZOffset = (currentProgress > 1 ? 1 : currentProgress) * R;
+            controls.target.set(0, 0, centerZOffset);
+
+            controls.update();
+            renderer.render(scene, camera);
+            requestAnimationFrame(updateScene);
+        }
+        updateScene();
+
+        // -------------------------------------------------------------
+        // 绑定UI交互事件
+        // -------------------------------------------------------------
+        const btnsShape = [
+            document.getElementById('btn-shape1'),
+            document.getElementById('btn-shape2'),
+            document.getElementById('btn-shape3')
+        ];
+
+        function setActiveShape(index) {
+            btnsShape.forEach((btn, i) => {
+                if (i === index) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+            if (index === 0) { targetA = 0; targetK = 0; }
+            if (index === 1) { targetA = 1.6; targetK = 0; }  // 图2参数
+            if (index === 2) { targetA = 0; targetK = 2.8; }  // 图3参数
+        }
+
+        btnsShape[0].addEventListener('click', () => setActiveShape(0));
+        btnsShape[1].addEventListener('click', () => setActiveShape(1));
+        btnsShape[2].addEventListener('click', () => setActiveShape(2));
+
+        document.getElementById('btn-step0').addEventListener('click', () => { targetProgress = 0; autoAnimate = true; });
+        document.getElementById('btn-step1').addEventListener('click', () => { targetProgress = 1; autoAnimate = true; });
+        document.getElementById('btn-step2').addEventListener('click', () => { targetProgress = 2; autoAnimate = true; });
+
+        slider.addEventListener('input', () => {
+            autoAnimate = false;
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+
+</html>
