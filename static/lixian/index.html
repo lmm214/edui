@@ -3,433 +3,634 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HTML 离线化打包工具</title>
+    <title>HTML 离线打包工具</title>
     <!-- 引入 JSZip 用于打包 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .drop-zone--over { border-color: #3b82f6; background-color: #eff6ff; }
+        /* CSS Reset */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f9fafb;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2.5rem 1rem;
+        }
+
+        /* 布局与卡片 */
+        .container {
+            max-width: 48rem;
+            width: 100%;
+            background-color: #ffffff;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 2rem;
+        }
+
+        .header-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .badge {
+            font-size: 0.875rem;
+            font-weight: 400;
+            color: #2563eb;
+            background-color: #dbeafe;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            margin-left: 0.25rem;
+            vertical-align: middle;
+        }
+
+        .header-desc {
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+        }
+
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+
+        /* 表单输入与按钮 */
+        .input-group {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .input {
+            flex: 1;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+            border-color: transparent; /* 为了配合 boxShadow 效果 */
+        }
+
+        .btn {
+            background-color: #2563eb;
+            color: #ffffff;
+            padding: 0.5rem 1.5rem;
+            border-radius: 0.5rem;
+            border: none;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            transition: background-color 0.2s, transform 0.1s;
+            font-weight: 500;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .btn:hover:not(:disabled) {
+            background-color: #1d4ed8;
+        }
+
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .note {
+            font-size: 0.75rem;
+            color: #9ca3af;
+            margin-top: 0.5rem;
+        }
+
+        /* 分割线 */
+        .divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+
+        .divider-line {
+            border-top: 1px solid #e5e7eb;
+            flex: 1;
+        }
+
+        .divider-text {
+            padding: 0 1rem;
+            color: #9ca3af;
+            font-size: 0.875rem;
+        }
+
+        /* 拖拽上传区 */
+        .drop-zone {
+            border: 2px dashed #d1d5db;
+            border-radius: 0.5rem;
+            padding: 2.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .drop-zone:hover, .drop-zone.drop-zone--over {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+
+        .drop-zone-icon {
+            margin: 0 auto 1rem;
+            height: 3rem;
+            width: 3rem;
+            color: #9ca3af;
+        }
+
+        .drop-zone-text {
+            color: #4b5563;
+            font-weight: 500;
+        }
+
+        /* 日志区域 */
+        .log-wrapper {
+            margin-top: 2rem;
+            background-color: #111827;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            height: 16rem;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #374151;
+        }
+
+        .log-title {
+            color: #d1d5db;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .log-container {
+            flex: 1;
+            overflow-y: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.75rem;
+            padding-right: 0.5rem;
+        }
+        
+        /* 滚动条定制 */
+        .log-container::-webkit-scrollbar { width: 6px; }
+        .log-container::-webkit-scrollbar-track { background: #1f2937; }
+        .log-container::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+
+        .log-item { margin-bottom: 0.375rem; }
+        .log-time { opacity: 0.5; }
+
+        /* 日志颜色 */
+        .text-info { color: #d1d5db; }
+        .text-success { color: #4ade80; }
+        .text-error { color: #f87171; }
+        .text-warn { color: #facc15; }
+
+        /* 状态呼吸灯指示 */
+        .status-badge {
+            display: flex;
+            height: 0.75rem;
+            width: 0.75rem;
+            position: relative;
+        }
+
+        @keyframes ping {
+            75%, 100% { transform: scale(2); opacity: 0; }
+        }
+
+        .status-ping {
+            animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+            position: absolute;
+            height: 100%;
+            width: 100%;
+            border-radius: 50%;
+            background-color: #4ade80;
+            opacity: 0.75;
+        }
+
+        .status-dot {
+            position: relative;
+            border-radius: 50%;
+            height: 0.75rem;
+            width: 0.75rem;
+            background-color: #22c55e;
+        }
+
+        /* 免责声明 */
+        .disclaimer {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background-color: #fefce8;
+            border: 1px solid #fef08a;
+            border-radius: 0.5rem;
+        }
+
+        .disclaimer-title {
+            font-size: 0.875rem;
+            font-weight: 700;
+            color: #854d0e;
+            margin-bottom: 0.25rem;
+        }
+
+        .disclaimer-text {
+            font-size: 0.75rem;
+            color: #a16207;
+            line-height: 1.625;
+        }
+
+        /* 辅助样式 */
+        .hidden { display: none !important; }
+
+        .loading-icon {
+            height: 1.25rem;
+            width: 1.25rem;
+            margin-right: 0.5rem;
+            color: white;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
         .loading-spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .custom-scroll::-webkit-scrollbar { width: 6px; }
-        .custom-scroll::-webkit-scrollbar-track { background: #1f2937; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen flex flex-col items-center py-12 px-4">
+<body>
 
-    <div class="max-w-2xl w-full bg-white rounded-xl shadow-lg p-8">
-        <h1 class="text-2xl font-bold text-gray-800 mb-2">HTML 离线打包工具</h1>
-        
-        <!-- 免责声明 -->
-        <div class="mb-6 p-3 bg-orange-50 border border-orange-200 rounded-md flex items-start">
-            <svg class="w-4 h-4 text-orange-500 mr-2 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-            <p class="text-xs text-orange-700 leading-relaxed text-justify">
-                <strong>免责声明：</strong> 本工具仅供前端技术研究与学习交流使用。
-                <br>请尊重原创版权，严禁用于非法抓取、复制或分发受版权保护的内容。
-                <br>使用者需自行承担因不当使用本工具而产生的一切法律后果。
-            </p>
-        </div>
+    <div class="container">
+        <h1 class="header-title">HTML 离线打包工具 <span class="badge">去冗余增强版</span></h1>
+        <p class="header-desc">解析 HTML 文件/网页链接，自动过滤平台注入的监控、标记、CDN 等冗余代码，并离线打包所需资源。</p>
 
-        <!-- 上传区域 -->
-        <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer transition-all hover:border-blue-400 group relative">
-            <div class="flex flex-col items-center z-10 relative">
-                <svg class="w-10 h-10 text-gray-400 mb-3 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                <p class="text-gray-500 text-sm">拖拽 HTML 文件 或 点击上传</p>
-                <input type="file" id="file-input" accept=".html,.htm,.txt" class="hidden">
-            </div>
-        </div>
-
-        <!-- 分割线 -->
-        <div class="relative flex py-5 items-center">
-            <div class="flex-grow border-t border-gray-200"></div>
-            <span class="flex-shrink-0 mx-4 text-gray-400 text-xs">或者粘贴在线链接</span>
-            <div class="flex-grow border-t border-gray-200"></div>
-        </div>
-
-        <!-- 在线链接输入 -->
-        <div class="flex gap-2">
-            <input type="text" id="url-input" placeholder="https://..." class="flex-1 border border-gray-300 rounded-md px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
-            <button id="url-btn" class="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap">
-                智能解析
-            </button>
-        </div>
-
-        <!-- 动作面板 -->
-        <div id="actions-panel" class="hidden mt-6 space-y-4">
-            <div class="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100">
-                <div class="flex items-center overflow-hidden mr-4">
-                    <svg class="w-5 h-5 text-blue-600 flex-shrink-0 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    <span id="file-info" class="text-blue-700 font-medium truncate text-sm"></span>
-                </div>
-                <button id="process-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-md text-sm font-semibold transition-colors shadow-sm whitespace-nowrap">
-                    开始处理
+        <!-- 方式一：在线链接解析 -->
+        <div class="section">
+            <label class="label">方式一：在线提取 (输入目标 HTML 链接)</label>
+            <div class="input-group">
+                <input type="url" id="url-input" placeholder="例如: https://musk-online.fbcontent.cn/.../xxx.html" class="input">
+                <button id="fetch-btn" class="btn">
+                    在线解析
                 </button>
             </div>
+            <p class="note">注：如果目标网站存在严格的跨域限制(CORS)，在线解析可能会失败，请使用下方本地文件方式。</p>
         </div>
 
-        <!-- 日志区域 -->
-        <div class="mt-8">
-            <div class="flex justify-between items-end mb-2">
-                <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">处理日志</h3>
-                <span id="status-badge" class="hidden text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">运行中</span>
+        <div class="divider">
+            <div class="divider-line"></div>
+            <span class="divider-text">或者</span>
+            <div class="divider-line"></div>
+        </div>
+
+        <!-- 方式二：本地拖拽上传 -->
+        <div>
+            <label class="label">方式二：本地解析 (选择已下载的 HTML 文件)</label>
+            <div id="drop-zone" class="drop-zone">
+                <svg class="drop-zone-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                <p class="drop-zone-text">点击此处选择 或 将 HTML 文件拖拽到这里</p>
+                <input type="file" id="file-input" accept=".html" class="hidden">
             </div>
-            <div id="log-container" class="custom-scroll bg-gray-900 text-green-400 font-mono text-xs p-4 h-64 overflow-y-auto rounded-lg shadow-inner">
-                <div class="text-gray-500 italic">系统就绪，等待任务...</div>
+        </div>
+
+        <!-- 日志显示区 -->
+        <div class="log-wrapper">
+            <div class="log-header">
+                <span class="log-title">处理日志 (Console)</span>
+                <span id="status-badge" class="status-badge hidden">
+                    <span class="status-ping"></span>
+                    <span class="status-dot"></span>
+                </span>
             </div>
+            <div id="log-container" class="log-container"></div>
+        </div>
+
+        <!-- 免责声明 -->
+        <div class="disclaimer">
+            <h3 class="disclaimer-title">⚠️ 免责声明</h3>
+            <p class="disclaimer-text">
+                本工具仅供技术学习与交流使用。工具采用纯本地浏览器端处理，不会收集、上传您的任何文件或链接数据。
+                解析生成的代码版权归原网页作者或平台所有，请勿将本工具获取的内容用于商业用途或任何非法途径。因使用本工具带来的任何版权纠纷及法律责任，由使用者自行承担。
+            </p>
         </div>
     </div>
 
     <script>
-        // --- UI 元素 ---
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
         const urlInput = document.getElementById('url-input');
-        const urlBtn = document.getElementById('url-btn');
-        const actionsPanel = document.getElementById('actions-panel');
-        const fileInfo = document.getElementById('file-info');
-        const processBtn = document.getElementById('process-btn');
+        const fetchBtn = document.getElementById('fetch-btn');
         const logContainer = document.getElementById('log-container');
         const statusBadge = document.getElementById('status-badge');
 
-        let rawHtml = '';
-        let originalFileName = 'index.html';
-
-        // --- 核心配置 ---
-        const mimeMap = {
-            'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
-            'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/x-icon': 'ico',
-            'text/css': 'css', 
-            'application/javascript': 'js', 'text/javascript': 'js', 'application/x-javascript': 'js',
-            'application/json': 'json',
-            'audio/mpeg': 'mp3', 'audio/wav': 'wav',
-            'video/mp4': 'mp4', 'video/webm': 'webm',
-            'model/gltf-binary': 'glb', 'model/gltf+json': 'gltf', 'application/octet-stream': 'bin'
-        };
-
-        const PROXY_GATEWAYS = [
-            { name: 'CorsProxy', gen: url => `https://corsproxy.io/?${encodeURIComponent(url)}` },
-            { name: 'Cors.sh', gen: url => `https://proxy.cors.sh/${url}`, headers: { 'x-cors-api-key': 'temp_f01dbb4b7a3e83e6956a1f271e698ee7' } },
-            { name: 'CodeTabs', gen: url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` },
-            { name: 'ThingProxy', gen: url => `https://thingproxy.freeboard.io/fetch/${url}` }
-        ];
-
-        // --- 工具函数 ---
+        // --- UI 日志 ---
         function addLog(msg, type = 'info') {
-            if (logContainer.querySelector('.italic')) logContainer.innerHTML = '';
+            const colors = { info: 'text-info', success: 'text-success', error: 'text-error', warn: 'text-warn' };
             const div = document.createElement('div');
-            const color = type === 'error' ? 'text-red-400' : (type === 'success' ? 'text-blue-400' : (type === 'warn' ? 'text-yellow-400' : 'text-green-400'));
-            div.className = `mb-1 break-all ${color}`;
-            div.textContent = `[${new Date().toLocaleTimeString().split(' ')[0]}] ${msg}`;
+            div.className = `log-item ${colors[type] || colors.info}`;
+            div.innerHTML = `<span class="log-time">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
             logContainer.appendChild(div);
             logContainer.scrollTop = logContainer.scrollHeight;
         }
 
-        async function fetchSmart(targetUrl, responseType = 'text') {
-            let lastError = null;
-            for (const gateway of PROXY_GATEWAYS) {
-                try {
-                    const proxyUrl = gateway.gen(targetUrl);
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000); 
-                    
-                    const res = await fetch(proxyUrl, { 
-                        signal: controller.signal, 
-                        headers: gateway.headers || {} 
-                    });
-                    clearTimeout(timeoutId);
+        // --- 核心功能：清理冗余代码 ---
+        function cleanJunkCode(doc) {
+            let removeCount = 0;
+            const removeNode = (node) => {
+                if (node && node.parentNode) {
+                    node.parentNode.removeChild(node);
+                    removeCount++;
+                }
+            };
 
-                    if (res.ok) return responseType === 'blob' ? await res.blob() : await res.text();
-                } catch (e) {
-                    lastError = e;
-                    continue;
+            // 1. 移除固定的无用标签
+            const selectorsToRemove = [
+                'span[data-build-marker]', 'meta[name="deployment-id"]', 'meta[name="build-id"]',
+                'meta[name="cache-control"]', 'meta[name="feature-flag"]', 'meta[name="analytics-config"]',
+                'style[data-module]', 'style[data-build]', 'script[type="application/json"][data-config]',
+                'script[type="application/ld+json"]', 'template[id^="metadata-"]',
+                'link[rel="preconnect"][href*="api.analytics.com"]', 'link[rel="dns-prefetch"]',
+                'b[data-checkpoint]', 'i[data-flag]', 'div[data-tracking-id]'
+            ];
+            selectorsToRemove.forEach(selector => doc.querySelectorAll(selector).forEach(removeNode));
+
+            // 2. 移除监控及特征内联脚本
+            doc.querySelectorAll('script:not([src])').forEach(script => {
+                const content = script.innerHTML;
+                if (content.includes('Feature flag:') || content.includes('Performance budget:') ||
+                    content.includes('TODO: migrate to WebSocket v2') || content.includes('var _bm_') || content.includes('var _ck_')) {
+                    removeNode(script);
+                }
+            });
+
+            // 3. 移除冗余样式
+            doc.querySelectorAll('style').forEach(style => {
+                const content = style.innerHTML;
+                if (content.includes('/* chunk:') || content.includes('@media(max-width:0px)')) {
+                    removeNode(style);
+                }
+            });
+
+            // 4. 移除追踪标签
+            doc.querySelectorAll('noscript').forEach(ns => {
+                if (ns.innerHTML.includes('/t.gif')) removeNode(ns);
+            });
+
+            // 5. 移除系统编译注释
+            const treeWalker = doc.createTreeWalker(doc, NodeFilter.SHOW_COMMENT, null, false);
+            const commentsToRemove = [];
+            let currentNode;
+            while ((currentNode = treeWalker.nextNode())) {
+                const text = currentNode.nodeValue.trim();
+                if (/^(Security|Feature Flag|WCAG|Build|CDN|Analytics|Performance|CMS Sync)/.test(text)) {
+                    commentsToRemove.push(currentNode);
                 }
             }
-            throw new Error(`资源下载失败: ${targetUrl.substring(0,30)}...`);
+            commentsToRemove.forEach(removeNode);
+
+            addLog(`>>> 已成功过滤冗余节点与注释，共剔除 ${removeCount} 处垃圾代码。`, 'success');
         }
 
-        // --- UI 交互 ---
-        dropZone.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => handleFile(e.target.files[0]);
-        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drop-zone--over'); };
-        dropZone.ondragleave = () => dropZone.classList.remove('drop-zone--over');
-        dropZone.ondrop = (e) => {
+        // --- 打包核心逻辑 ---
+        async function processHtmlContent(htmlContent, baseFileName, baseUrl = '') {
+            statusBadge.classList.remove('hidden');
+            try {
+                const parser = new DOMParser();
+                let doc = parser.parseFromString(htmlContent, 'text/html');
+                
+                // 标记是否属于特定平台 (以 musk 开头的域名或带有特征 iframe)
+                let isMuskPlatform = baseUrl.includes('musk') || !!doc.querySelector('iframe.content-iframe[srcdoc]');
+
+                // --- 针对特定平台的外层嵌套进行智能穿透 ---
+                const contentIframe = doc.querySelector('iframe.content-iframe[srcdoc]');
+                if (contentIframe) {
+                    addLog('检测到平台外层包装容器 (iframe.content-iframe)，正在提取内部真实网页内容...', 'warn');
+                    const srcdocHtml = contentIframe.getAttribute('srcdoc');
+                    if (srcdocHtml) {
+                        doc = parser.parseFromString(srcdocHtml, 'text/html');
+                    } else {
+                        addLog('警告：未能成功读取 srcdoc 内容，将继续处理原文件。', 'error');
+                    }
+                }
+
+                const pageTitle = doc.title || 'Extracted_App';
+                let successCount = 0;
+
+                addLog('开始解析 HTML 结构并执行智能清理...', 'info');
+                cleanJunkCode(doc);
+
+                // 提取外部资源
+                const resources = [];
+                doc.querySelectorAll('img[src], link[rel="stylesheet"][href], script[src]').forEach(el => {
+                    const attr = el.tagName === 'LINK' ? 'href' : 'src';
+                    let url = el.getAttribute(attr);
+                    
+                    if (!url || url.startsWith('data:')) return;
+
+                    // 处理相对路径 (如果提供了基础 URL)
+                    if (baseUrl && !url.startsWith('http') && !url.startsWith('//')) {
+                        try { url = new URL(url, baseUrl).href; } catch(e) {}
+                    } else if (url.startsWith('//')) {
+                        url = 'https:' + url;
+                    }
+
+                    if (url.startsWith('http')) {
+                        resources.push({ el, attr, url, tag: el.tagName });
+                    }
+                });
+
+                let finalHtml = "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+                
+                // 如果是 musk 平台或穿透了 iframe，在删除大量垃圾代码后会遗留大量的空行，在此进行正则清理
+                if (isMuskPlatform) {
+                    finalHtml = finalHtml.replace(/^\s*[\r\n]/gm, '');
+                }
+
+                if (resources.length === 0) {
+                    addLog('未检测到需要下载的外链资源，生成纯净版单文件...', 'info');
+                    const blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
+                    downloadFile(blob, baseFileName.replace('.html', '_Cleaned.html'));
+                    addLog('🎉 纯净版单文件下载成功！', 'success');
+                } else {
+                    addLog(`发现 ${resources.length} 个外链资源，准备下载并打包为 ZIP...`, 'info');
+                    const zip = new JSZip();
+                    const rootFolder = zip.folder(pageTitle);
+                    const assetsFolder = rootFolder.folder('assets');
+
+                    for (let i = 0; i < resources.length; i++) {
+                        const res = resources[i];
+                        try {
+                            let response;
+                            let usedProxy = false;
+                            
+                            // 1. 尝试直接拉取，若遇跨域在浏览器端会报错进入 catch
+                            try {
+                                response = await fetch(res.url);
+                                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                            } catch (directError) {
+                                // 2. 直连失败，降级使用 CORS 代理拉取 (使用 raw 接口获取二进制流)
+                                usedProxy = true;
+                                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(res.url)}`;
+                                response = await fetch(proxyUrl);
+                                if (!response.ok) throw new Error(`Proxy HTTP ${response.status}`);
+                            }
+
+                            const blob = await response.blob();
+
+                            let ext = res.url.split('.').pop().split(/[\?#]/)[0];
+                            if (!ext || ext.length > 5) {
+                                if (res.tag === 'LINK') ext = 'css';
+                                else if (res.tag === 'SCRIPT') ext = 'js';
+                                else ext = 'png';
+                            }
+                            const filename = `asset_${i}_${Date.now()}.${ext}`;
+                            assetsFolder.file(filename, blob);
+
+                            res.el.setAttribute(res.attr, `assets/${filename}`);
+                            successCount++;
+                            addLog(`[${i + 1}/${resources.length}] 下载成功${usedProxy ? ' (代理)' : ''}: ${filename}`, 'info');
+                        } catch (e) {
+                            addLog(`[${i + 1}/${resources.length}] 资源跳过(直连与代理均失败): ${res.url}`, 'warn');
+                        }
+                    }
+
+                    let updatedHtml = "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+                    
+                    // 同样地，为打包模式的 HTML 文件去除遗留空白行
+                    if (isMuskPlatform) {
+                        updatedHtml = updatedHtml.replace(/^\s*[\r\n]/gm, '');
+                    }
+                    
+                    rootFolder.file('index.html', updatedHtml);
+
+                    addLog('正在压缩生成本地安装包...', 'info');
+                    const content = await zip.generateAsync({ type: "blob" });
+                    downloadFile(content, `${pageTitle}_Offline.zip`);
+                    addLog(`🎉 打包完成！共处理 ${successCount} 个资源`, 'success');
+                }
+            } catch (err) {
+                addLog(`处理过程发生错误: ${err.message}`, 'error');
+            } finally {
+                statusBadge.classList.add('hidden');
+                setUIState(false);
+            }
+        }
+
+        function downloadFile(blob, filename) {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            a.click();
+        }
+
+        function setUIState(isProcessing) {
+            fetchBtn.disabled = isProcessing;
+            fetchBtn.innerHTML = isProcessing 
+                ? '<svg class="loading-spin loading-icon" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity="0.25"></circle><path fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" opacity="0.75"></path></svg> 处理中...'
+                : '在线解析';
+        }
+
+        // === 交互事件注册 ===
+
+        // 方式一：在线抓取
+        fetchBtn.addEventListener('click', async () => {
+            const url = urlInput.value.trim();
+            if (!url) return addLog('请输入有效的目标网页链接', 'error');
+            
+            logContainer.innerHTML = '';
+            setUIState(true);
+            addLog(`开始尝试直接获取在线内容: ${url}`, 'info');
+
+            try {
+                let htmlContent = '';
+                
+                try {
+                    // 1. 先尝试直接 fetch (目标网站若允许跨域)
+                    const directResponse = await fetch(url);
+                    if (!directResponse.ok) throw new Error(`HTTP ${directResponse.status}`);
+                    htmlContent = await directResponse.text();
+                    addLog('直连获取成功！', 'success');
+                } catch (directErr) {
+                    addLog(`直连受限或失败，尝试通过代理获取...`, 'warn');
+                    // 2. 使用 AllOrigins 免费代理绕过浏览器 CORS 限制获取 HTML
+                    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                    const response = await fetch(proxyUrl);
+                    if (!response.ok) throw new Error('网络请求失败');
+                    
+                    const data = await response.json();
+                    if (data.contents) {
+                        htmlContent = data.contents;
+                        addLog('代理获取成功！', 'success');
+                    } else {
+                        throw new Error('代理返回数据为空');
+                    }
+                }
+
+                let fileName = url.split('/').pop().split('?')[0] || 'index.html';
+                if (!fileName.endsWith('.html')) fileName += '.html';
+                
+                // 传入原始 URL 作为 baseUrl 以便还原相对路径图片/CSS
+                await processHtmlContent(htmlContent, fileName, url);
+                
+            } catch (e) {
+                addLog(`在线获取失败: ${e.message}`, 'error');
+                setUIState(false);
+            }
+        });
+
+        // 方式二：本地拖拽上传
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drop-zone--over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drop-zone--over'));
+        dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('drop-zone--over');
-            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-        };
+            if (e.dataTransfer.files.length > 0) handleLocalFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleLocalFile(e.target.files[0]);
+        });
 
-        urlBtn.onclick = () => handleUrl(urlInput.value.trim());
-
-        function handleFile(file) {
-            if (!file) return;
-            originalFileName = file.name;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                rawHtml = e.target.result;
-                fileInfo.textContent = `本地文件: ${file.name}`;
-                actionsPanel.classList.remove('hidden');
-                addLog(`已加载: ${file.name}`, 'success');
-            };
-            reader.readAsText(file);
-        }
-
-        async function handleUrl(url) {
-            if (!url.startsWith('http')) return alert('请输入完整 URL');
-            urlBtn.disabled = true;
-            urlBtn.textContent = '解析中...';
+        async function handleLocalFile(file) {
+            if (!file.name.endsWith('.html')) {
+                addLog('仅支持处理 .html 格式的文件', 'error');
+                return;
+            }
             logContainer.innerHTML = '';
+            setUIState(true);
+            addLog(`成功载入本地文件: ${file.name}`, 'success');
             
-            try {
-                addLog(`正在连接: ${url}`);
-                
-                let htmlText = '';
-                
-                // --- 修改：优先直连 (Direct Fetch) ---
-                try {
-                    // 尝试不使用任何代理直接访问
-                    const res = await fetch(url);
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    htmlText = await res.text();
-                    addLog('直连访问成功', 'success');
-                } catch (e) {
-                    addLog(`直连失败(可能跨域)，切换代理线路...`, 'warn');
-                    // 如果直连失败，回退到智能代理获取 HTML
-                    htmlText = await fetchSmart(url, 'text');
-                }
-                
-                let finalContent = htmlText;
-                let detectedName = 'online_project.html';
-
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(htmlText, 'text/html');
-
-                if (url.includes('musk-online.fbcontent.cn')) {
-                    addLog('识别为 Musk 文档，提取中...');
-                    const iframe = doc.querySelector('iframe.content-iframe');
-                    if (iframe && iframe.getAttribute('srcdoc')) {
-                        const ta = document.createElement('textarea');
-                        ta.innerHTML = iframe.getAttribute('srcdoc');
-                        finalContent = ta.value;
-                    }
-                } else if (url.includes('html2web.com')) {
-                    addLog('识别为 HTML2Web，提取中...');
-                    const iframe = doc.querySelector('iframe#projectFrame');
-                    if (iframe) {
-                        let src = iframe.getAttribute('src');
-                        if (src.startsWith('//')) src = 'https:' + src;
-                        else if (!src.startsWith('http')) src = new URL(src, url).href;
-                        // 内部项目源码通常也需要代理，除非也是同源
-                        try {
-                            const res = await fetch(src);
-                            if(!res.ok) throw new Error('Direct failed');
-                            finalContent = await res.text();
-                        } catch(e) {
-                             finalContent = await fetchSmart(src, 'text');
-                        }
-                    }
-                }
-
-                const titleMatch = finalContent.match(/<title>(.*?)<\/title>/i);
-                if (titleMatch && titleMatch[1]) detectedName = titleMatch[1].trim().replace(/[\\/:*?"<>|]/g, '_') + '.html';
-
-                rawHtml = finalContent;
-                originalFileName = detectedName;
-                fileInfo.textContent = `在线解析: ${detectedName}`;
-                actionsPanel.classList.remove('hidden');
-                addLog('解析成功，准备打包', 'success');
-            } catch (e) {
-                addLog(`错误: ${e.message}`, 'error');
-            } finally {
-                urlBtn.disabled = false;
-                urlBtn.textContent = '智能解析';
-            }
+            const content = await file.text();
+            // 本地文件无 baseUrl
+            await processHtmlContent(content, file.name, ''); 
         }
-
-        // --- 核心打包逻辑 (智能判断版) ---
-        processBtn.onclick = async () => {
-            processBtn.disabled = true;
-            processBtn.textContent = '正在处理...';
-            statusBadge.classList.remove('hidden');
-
-            const zip = new JSZip();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(rawHtml, 'text/html');
-            
-            let pageTitle = doc.querySelector('title')?.innerText?.trim() || 'Offline_Project';
-            pageTitle = pageTitle.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_');
-            const rootFolder = zip.folder(pageTitle);
-            const assetsFolder = rootFolder.folder("assets");
-
-            const processedUrls = new Map(); // url -> uniquePath
-            let successCount = 0;
-
-            // 下载并保存
-            const downloadAndSave = async (url, folderType) => {
-                if (!url || !url.startsWith('http')) return null;
-                if (url.startsWith('//')) url = 'https:' + url;
-                if (processedUrls.has(url)) return processedUrls.get(url);
-
-                try {
-                    let fileName = '';
-                    try { fileName = new URL(url).pathname.split('/').pop(); } catch(e) { fileName = 'resource'; }
-                    fileName = fileName.split(/[?#]/)[0];
-                    if (!fileName) fileName = `res_${Math.random().toString(36).slice(2,7)}`;
-
-                    addLog(`下载: ${fileName}`, 'info');
-                    // 资源下载强制使用代理 (fetchSmart)
-                    let blob = await fetchSmart(url, 'blob');
-                    
-                    if (!fileName.includes('.')) {
-                        const ext = mimeMap[blob.type] || 'dat';
-                        fileName += `.${ext}`;
-                    }
-                    fileName = fileName.replace(/[<>:"/\\|?*]/g, '_');
-
-                    const basePath = `${folderType}/${fileName}`;
-                    let uniquePath = basePath;
-                    let counter = 1;
-                    while (zip.file(`${pageTitle}/assets/${uniquePath}`)) {
-                        uniquePath = `${folderType}/${fileName.replace(/(\.[^.]+)$/, `_${counter}$1`)}`;
-                        counter++;
-                    }
-
-                    processedUrls.set(url, uniquePath);
-
-                    // 外部 CSS 需深度解析，并且使用相对路径 "../"
-                    if (folderType === 'css' || fileName.endsWith('.css')) {
-                        let textContent = await blob.text();
-                        let processedText = await processCssContent(textContent, '../'); 
-                        blob = new Blob([processedText], { type: blob.type });
-                        assetsFolder.file(uniquePath, blob);
-                    } else {
-                        assetsFolder.file(uniquePath, blob);
-                    }
-
-                    successCount++;
-                    return uniquePath;
-                } catch (e) {
-                    addLog(`失败: ${url} (${e.message})`, 'warn');
-                    return null;
-                }
-            };
-
-            // 处理器：CSS
-            const processCssContent = async (cssText, pathPrefix) => {
-                const regex = /url\(\s*(?:["']?)(http[s]?:\/\/|(?:\/\/))([^"'\)]+)(?:["']?)\s*\)/gi;
-                const matches = [...cssText.matchAll(regex)];
-                
-                let newCss = cssText;
-                for (const match of matches) {
-                    const fullUrl = (match[1].startsWith('//') ? 'https:' : match[1]) + match[2];
-                    const uniquePath = await downloadAndSave(fullUrl, 'images');
-                    if (uniquePath) {
-                        const finalPath = `${pathPrefix}${uniquePath}`;
-                        newCss = newCss.replace(match[0], `url("${finalPath}")`);
-                    }
-                }
-                return newCss;
-            };
-
-            // 处理器：内联 JavaScript
-            const processJsContent = async (jsCode) => {
-                const jsAssetRegex = /(["'`])(https?:\/\/[^"']+\.(?:png|jpg|jpeg|gif|webp|svg|ico|mp3|mp4|webm|wav|json|glb|gltf|bin|css))(?:\?[^"']*)?\1/gi;
-                const matches = [...jsCode.matchAll(jsAssetRegex)];
-                let newJs = jsCode;
-                for (const match of matches) {
-                    const fullUrl = match[2];
-                    const uniquePath = await downloadAndSave(fullUrl, type = 'misc'); // 简化 type 推断
-                    if (uniquePath) {
-                        const finalPath = `./assets/${uniquePath}`; 
-                        const fullMatchStr = match[0]; 
-                        const newStr = fullMatchStr.replace(fullUrl, finalPath);
-                        newJs = newJs.replace(fullMatchStr, newStr);
-                    }
-                }
-                return newJs;
-            };
-
-            // --- 扫描 HTML ---
-            addLog('=== 阶段 1: 扫描 HTML 标签 ===', 'info');
-            
-            const selectors = [
-                { tag: 'img', attr: 'src', folder: 'images' },
-                { tag: 'img', attr: 'data-src', folder: 'images' },
-                { tag: 'link[rel="stylesheet"]', attr: 'href', folder: 'css' },
-                { tag: 'link[rel*="icon"]', attr: 'href', folder: 'icons' },
-                { tag: 'script[src]', attr: 'src', folder: 'js' }, 
-                { tag: 'video', attr: 'src', folder: 'media' },
-                { tag: 'video', attr: 'poster', folder: 'images' },
-                { tag: 'audio', attr: 'src', folder: 'media' },
-                { tag: 'source', attr: 'src', folder: 'media' }
-            ];
-
-            for (const item of selectors) {
-                const elements = doc.querySelectorAll(item.tag);
-                for (const el of elements) {
-                    const url = el.getAttribute(item.attr);
-                    if (url) {
-                        const uniquePath = await downloadAndSave(url, item.folder);
-                        if (uniquePath) {
-                            el.setAttribute(item.attr, `./assets/${uniquePath}`);
-                        }
-                    }
-                }
-            }
-
-            // 2. 内联 CSS
-            addLog('=== 阶段 2: 扫描内联 CSS ===', 'info');
-            const styles = doc.querySelectorAll('style');
-            for (const s of styles) {
-                s.textContent = await processCssContent(s.textContent, './assets/');
-            }
-            const inlineStyles = doc.querySelectorAll('*[style]');
-            for (const el of inlineStyles) {
-                const newStyle = await processCssContent(el.getAttribute('style'), './assets/');
-                el.setAttribute('style', newStyle);
-            }
-
-            // 3. 内联 JS
-            addLog('=== 阶段 3: 扫描内联 JS ===', 'info');
-            const scripts = doc.querySelectorAll('script:not([src])');
-            for (const s of scripts) {
-                if (s.textContent.includes('http')) {
-                    s.textContent = await processJsContent(s.textContent);
-                }
-            }
-
-            // --- 智能输出结果 ---
-            const finalHtml = "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
-
-            if (successCount === 0) {
-                // 如果没有外链资源，直接下载 HTML 文件
-                addLog('未检测到需要下载的资源，生成单文件...', 'success');
-                const blob = new Blob([finalHtml], { type: 'text/html' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = originalFileName;
-                a.click();
-                addLog('单文件下载已触发！', 'success');
-            } else {
-                // 否则，生成 ZIP 包
-                addLog('=== 生成压缩包 ===', 'info');
-                rootFolder.file(originalFileName, finalHtml);
-                try {
-                    const content = await zip.generateAsync({ type: "blob" });
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(content);
-                    a.download = `${pageTitle}_Packed.zip`;
-                    a.click();
-                    addLog(`打包完成！共处理 ${successCount} 个资源`, 'success');
-                } catch (e) {
-                    addLog(`打包失败: ${e.message}`, 'error');
-                }
-            }
-
-            processBtn.disabled = false;
-            processBtn.textContent = '开始处理';
-            statusBadge.classList.add('hidden');
-        };
     </script>
 </body>
 </html>

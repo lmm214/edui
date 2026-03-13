@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+</head><body>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>平行四边形旋转形成立体图形</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f8f9fa;
+            font-family: -apple-system, sans-serif;
+            /* 防止移动端长按选中或拖拽时页面滚动 */
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        /* 操作按钮样式 */
+        #action-btn {
+            position: absolute;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            background: #ffffff;
+            color: #0984e3;
+            border: 2px solid #0984e3;
+            padding: 15px 25px;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(9, 132, 227, 0.2);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            width: 140px;
+            text-align: center;
+            /* 提升移动端点击体验 */
+            -webkit-tap-highlight-color: transparent;
+        }
+        #action-btn:hover {
+            background: #0984e3;
+            color: #ffffff;
+            transform: translateY(-50%) scale(1.05);
+            box-shadow: 0 12px 28px rgba(9, 132, 227, 0.3);
+        }
+        #action-btn:active {
+            transform: translateY(-50%) scale(0.95);
+        }
+        /* 窄屏/移动端自适应 */
+        @media (max-width: 768px) {
+            #action-btn {
+                right: 50%;
+                top: auto;
+                bottom: 50px;
+                transform: translateX(50%);
+            }
+            #action-btn:hover {
+                transform: translateX(50%) scale(1.05);
+            }
+            #action-btn:active {
+                transform: translateX(50%) scale(0.95);
+            }
+        }
+    </style>
+    <button id="action-btn">开始旋转</button>
+    <script src="three.js"></script>
+    <script src="oc.js"></script>
+    <script>
+        // 简化逻辑，移除对外部 Line2 库的依赖，改用标准 LineSegments 以确保兼容性
+        let scene, camera, renderer, controls;
+        let movingPlane, latheGroup;
+        let isRotating = false;
+        let currentPhi = 0;
+        let planeEdgeMat; // 保存平面粗线条材质
+        let latheEdgeMats = []; // 保存旋转体粗线条材质
+        const ROTATION_SPEED = 0.025;
+        // 【参数已修正】根据参考图调整平行四边形比例
+        const width = 3.0;    // 水平宽度
+        const height = 2.6;   // 绕着旋转轴的线段长度（大幅加长）
+        const skewY = 1.2;    // 斜边的倾斜度
+        // 动态计算相机的Z轴距离，适配窄屏手机
+        function getCameraZ() {
+            return window.innerWidth < 768 ? 24 : 18;
+        }
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf8f9fa);
+            camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(width/2, 0, getCameraZ()); 
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 优化移动端性能
+            renderer.shadowMap.enabled = true; 
+            document.body.appendChild(renderer.domElement);
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.target.set(width/2, 0, 0); 
+            // 限制缩放距离，防止穿模
+            controls.minDistance = 5;
+            controls.maxDistance = 50;
+            // 光照
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const mainLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            mainLight.position.set(5, 10, 8);
+            mainLight.castShadow = true;
+            scene.add(mainLight);
+            // 旋转轴 (稍微加粗，与新的粗边框匹配)
+            const axis = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.03, 0.03, 10, 16),
+                new THREE.MeshBasicMaterial({ color: 0x2d3436 })
+            );
+            scene.add(axis);
+            // 初始面片
+            const shape = new THREE.Shape();
+            shape.moveTo(0, -height/2);
+            shape.lineTo(width, -height/2 + skewY);
+            shape.lineTo(width, height/2 + skewY);
+            shape.lineTo(0, height/2);
+            shape.closePath();
+            const pGeo = new THREE.ShapeGeometry(shape);
+            const pMat = new THREE.MeshStandardMaterial({ 
+                color: 0x3498db, 
+                side: THREE.DoubleSide,
+                roughness: 0.3,
+                metalness: 0.1,
+                polygonOffset: true,
+                polygonOffsetFactor: -1,
+                polygonOffsetUnits: -1
+            });
+            movingPlane = new THREE.Mesh(pGeo, pMat);
+            movingPlane.rotation.y = 0; 
+            movingPlane.castShadow = true;
+            // 使用标准 LineSegments 确保渲染成功
+            const pEdgesGeo = new THREE.EdgesGeometry(pGeo);
+            const pEdgesMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+            const pEdges = new THREE.LineSegments(pEdgesGeo, pEdgesMat);
+            movingPlane.add(pEdges);
+            scene.add(movingPlane);
+            // 旋转体容器
+            latheGroup = new THREE.Group();
+            scene.add(latheGroup);
+            updateLathe(0.0001);
+            window.addEventListener('resize', onWindowResize);
+            // 绑定交互按钮
+            const actionBtn = document.getElementById('action-btn');
+            actionBtn.addEventListener('click', () => {
+                if (currentPhi === 0 && !isRotating) {
+                    isRotating = true;
+                    actionBtn.innerText = "重置状态";
+                    actionBtn.style.borderColor = "#e17055";
+                    actionBtn.style.color = window.matchMedia("(hover: hover)").matches && actionBtn.matches(':hover') ? "#fff" : "#e17055";
+                    actionBtn.onmouseover = () => { actionBtn.style.background = "#e17055"; actionBtn.style.color = "#fff"; };
+                    actionBtn.onmouseout = () => { actionBtn.style.background = "#fff"; actionBtn.style.color = "#e17055"; };
+                } else {
+                    reset();
+                    actionBtn.innerText = "开始旋转";
+                    actionBtn.style.borderColor = "#0984e3";
+                    actionBtn.style.color = window.matchMedia("(hover: hover)").matches && actionBtn.matches(':hover') ? "#fff" : "#0984e3";
+                    actionBtn.onmouseover = () => { actionBtn.style.background = "#0984e3"; actionBtn.style.color = "#fff"; };
+                    actionBtn.onmouseout = () => { actionBtn.style.background = "#fff"; actionBtn.style.color = "#0984e3"; };
+                }
+            });
+            animate();
+        }
+        function updateLathe(phi) {
+            latheEdgeMats = []; // 清空之前的线条材质
+            while(latheGroup.children.length > 0){ 
+                latheGroup.remove(latheGroup.children[0]); 
+            }
+            const sidePoints = [
+                new THREE.Vector2(width, -height/2 + skewY),
+                new THREE.Vector2(width, height/2 + skewY)
+            ];
+            createPart(sidePoints, phi, 0x3498db, 0.4); 
+            const bottomPoints = [
+                new THREE.Vector2(0, -height/2),
+                new THREE.Vector2(width, -height/2 + skewY)
+            ];
+            createPart(bottomPoints, phi, 0x2980b9, 0.6); 
+            const topPoints = [
+                new THREE.Vector2(0, height/2),
+                new THREE.Vector2(width, height/2 + skewY)
+            ];
+            createPart(topPoints, phi, 0x74b9ff, 0.6); 
+        }
+        function createPart(points, phi, color, opacity) {
+            const LATHE_OFFSET = Math.PI / 2;
+            const geometry = new THREE.LatheGeometry(points, 128, LATHE_OFFSET, phi);
+            const material = new THREE.MeshStandardMaterial({
+                color: color,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: opacity,
+                roughness: 0.4,
+                metalness: 0.1
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            // 使用标准 LineSegments 渲染网格线
+            const edgesGeo = new THREE.EdgesGeometry(geometry, 25);
+            const edgesMat = new THREE.LineBasicMaterial({ 
+                color: 0x000000, 
+                transparent: true, 
+                opacity: 0.4 
+            });
+            const line = new THREE.LineSegments(edgesGeo, edgesMat);
+            latheGroup.add(mesh);
+            latheGroup.add(line);
+        }
+        function reset() {
+            currentPhi = 0;
+            isRotating = false;
+            movingPlane.rotation.y = 0;
+            updateLathe(0.0001);
+            camera.position.set(width/2, 0, getCameraZ());
+            controls.target.set(width/2, 0, 0);
+        }
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            // 响应式调整相机远近
+            if(!isRotating && currentPhi === 0) {
+                 camera.position.set(width/2, 0, getCameraZ());
+            }
+        }
+        function animate() {
+            requestAnimationFrame(animate);
+            if (isRotating && currentPhi < Math.PI * 2) {
+                currentPhi += ROTATION_SPEED;
+                if (currentPhi > Math.PI * 2) currentPhi = Math.PI * 2;
+                movingPlane.rotation.y = currentPhi;
+                updateLathe(currentPhi);
+                if (currentPhi >= Math.PI * 2) {
+                    isRotating = false;
+                }
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        window.onload = init;
+    </script>
+</body></html>
