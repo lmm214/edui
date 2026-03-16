@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>探索圆柱与圆锥的体积关系</title>
+    <style>
+        /* ================= 1. 基础架构与极简设定 ================= */
+        :root {
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --text-main: #ffffff;
+            --text-muted: #888888;
+            --accent-blue: #00e5ff;
+            --accent-red: #ff4757;
+            --accent-green: #2ed573;
+            --shape-border: #bbbbbb;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            /* 防止误触选中文本 */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html,
+        body {
+            width: 100vw;
+            height: 100vh;
+            background-image: linear-gradient(to right, #868f96 0%, #596164 100%);
+            color: var(--text-main);
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            overflow: hidden;
+            /* 绝对禁止滚动条 */
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ================= 2. 布局区块 ================= */
+        header {
+            text-align: center;
+            padding: 2vh 0;
+            font-size: clamp(1.5rem, 3vw, 2.5rem);
+            font-weight: bold;
+            letter-spacing: 2px;
+            flex-shrink: 0;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            position: relative;
+            justify-content: center;
+            padding: 1vw 5vw;
+        }
+
+
+        /* ================= 3. 图形与互动区 ================= */
+        .height-guide-container {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 25vw;
+            max-width: 250px;
+            aspect-ratio: 280 / 320;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .height-line {
+            position: absolute;
+            width: 100vw;
+            left: 50%;
+            transform: translateX(-50%);
+            border-top: 2px dashed rgba(255, 255, 255, 0.5);
+        }
+
+        .height-line.top {
+            top: 6.25%;
+        }
+
+        .height-line.bottom {
+            top: 93.75%;
+        }
+
+        .stage {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+            width: 100%;
+            max-width: 1000px;
+            height: 50vh;
+            position: relative;
+        }
+
+        .shape-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 25vw;
+            max-width: 250px;
+            transition: transform 1s ease-in-out;
+        }
+
+
+
+        .shape-label {
+            font-size: clamp(1.2rem, 2vw, 1.8rem);
+            margin-bottom: 15px;
+            font-weight: bold;
+            width: 25vw;
+            max-width: 250px;
+        }
+
+        .shape-label span {
+            color: var(--text-main);
+            font-size: 0.8em;
+            display: block;
+            margin-top: 5px;
+        }
+
+        /* 3D 容器包裹器 */
+        .cone,
+        .cylinder {
+            width: 100%;
+            position: relative;
+            z-index: 5;
+        }
+
+        .shape-svg {
+            width: 100%;
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+            overflow: visible;
+        }
+
+        /* 倾倒动画类 */
+        .cone {
+            transform-origin: 71.4% 6.25%;
+            /* 以圆锥右上唇为中心进行倾倒倒水 */
+            transition: transform 0.8s ease-in-out;
+            z-index: 6;
+            /* 保证倾倒或者重叠时在上层 */
+        }
+
+        .cone.pouring {
+            /* 移动并旋转倾倒到圆柱上方 */
+            transform: translate(calc(100% + 5vw), -10%) rotate(105deg);
+        }
+
+        /* 溢出动画警告 */
+        .spill-warning {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--accent-red);
+            font-size: 2rem;
+            font-weight: bold;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .spill-warning.active {
+            animation: spillDrop 1s ease-in forwards;
+        }
+
+        @keyframes spillDrop {
+            0% {
+                opacity: 1;
+                top: -20px;
+            }
+
+            50% {
+                opacity: 1;
+                top: 50%;
+            }
+
+            100% {
+                opacity: 0;
+                top: 110%;
+            }
+        }
+
+        /* ================= 4. 控制区与按钮（大而精） ================= */
+        .controls {
+            flex-shrink: 0;
+            padding: 3vh 0 5vh 0;
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+        }
+
+        button {
+            padding: 1rem 3rem;
+            font-size: clamp(1.2rem, 2vw, 1.8rem);
+            font-weight: bold;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            outline: none;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: #000;
+            box-shadow: 0 5px 20px rgba(0, 229, 255, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-main);
+            border: 2px solid #555;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .stage {
+                height: 40vh;
+            }
+
+            .ruler::after {
+                right: -35px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        探索圆锥与圆柱的体积关系
+    </header>
+
+    <div class="main-content">
+        <!-- 核心互动区 -->
+        <div class="stage">
+            <!-- 等高标记线容器，匹配图形实际高度 -->
+            <div class="height-guide-container">
+                <div class="height-line top"></div>
+                <div class="height-line bottom"></div>
+            </div>
+
+            <!-- 左侧：圆锥 -->
+            <div class="shape-wrapper">
+                <div class="cone" id="cone">
+                    <!-- 3D 圆锥 SVG (伪3D透视) -->
+                    <svg viewBox="0 0 280 320" class="shape-svg" id="cone-svg">
+                        <style>
+                            .cone-water {
+                                transform-origin: 110px 300px;
+                                /* 从底部尖端向上缩放 */
+                                transform: scale(var(--cone-fill, 0));
+                                transition: transform 0.4s ease-in-out, opacity 0.2s;
+                            }
+                        </style>
+                        <!-- 容器：后半部开口边缘 (虚线表示在后方) -->
+                        <path d="M 20 20 A 90 15 0 0 1 200 20" fill="none" stroke="var(--shape-border)" stroke-width="2"
+                            stroke-dasharray="4 4" />
+                        <!-- 容器：主体倒三角 -->
+                        <path d="M 20 20 L 110 300 L 200 20" fill="rgba(255,255,255,0.05)" stroke="var(--shape-border)"
+                            stroke-width="2" />
+                        <!-- 容器：前半部开口边缘 -->
+                        <path d="M 20 20 A 90 15 0 0 0 200 20" fill="none" stroke="var(--shape-border)"
+                            stroke-width="2" />
+
+                        <!-- 圆锥内的水 -->
+                        <g class="cone-water">
+                            <!-- 水的主体 -->
+                            <path d="M 20 20 L 110 300 L 200 20 Z" fill="var(--accent-blue)" opacity="0.85" />
+                            <!-- 水的顶面 (椭圆以展现立体感) -->
+                            <ellipse cx="110" cy="20" rx="90" ry="15" fill="#80f2ff" />
+                        </g>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- 右侧：圆柱 -->
+            <div class="shape-wrapper">
+                <div class="cylinder" id="cylinder">
+                    <!-- 3D 圆柱 SVG -->
+                    <svg viewBox="0 0 280 320" class="shape-svg" id="cyl-svg">
+                        <style>
+                            .cyl-water-body {
+                                transform-origin: 110px 300px;
+                                transform: scaleY(var(--cyl-fill, 0));
+                                transition: transform 0.8s ease-in-out;
+                            }
+
+                            .cyl-water-top {
+                                transform-origin: 110px 300px;
+                                transform: translateY(calc(-280px * var(--cyl-fill, 0)));
+                                transition: transform 0.8s ease-in-out;
+                            }
+                        </style>
+                        <!-- 容器：底部后半部边缘 -->
+                        <path d="M 20 300 A 90 15 0 0 1 200 300" fill="none" stroke="var(--shape-border)"
+                            stroke-width="2" stroke-dasharray="4 4" />
+                        <!-- 容器：玻璃管壁 -->
+                        <rect x="20" y="20" width="180" height="280" fill="rgba(255,255,255,0.05)" />
+                        <!-- 左右轮廓线 -->
+                        <line x1="20" y1="20" x2="20" y2="300" stroke="var(--shape-border)" stroke-width="2" />
+                        <line x1="200" y1="20" x2="200" y2="300" stroke="var(--shape-border)" stroke-width="2" />
+
+                        <!-- 圆柱内的水 -->
+                        <g style="opacity: var(--water-opacity, 0); transition: opacity 0.3s;">
+                            <!-- 水底部 -->
+                            <path d="M 20 300 A 90 15 0 0 0 200 300" fill="var(--accent-blue)" opacity="0.85" />
+                            <!-- 水柱主体 -->
+                            <rect x="20" y="20" width="180" height="280" fill="var(--accent-blue)" opacity="0.85"
+                                class="cyl-water-body" />
+                            <!-- 水柱顶面 -->
+                            <ellipse cx="110" cy="300" rx="90" ry="15" fill="#80f2ff" class="cyl-water-top" />
+                        </g>
+
+                        <!-- 立体透视刻度线 (贴合椭圆弧度) -->
+                        <!-- 1/3 (y = 300 - 280*(1/3) = 206.67) -->
+                        <path d="M 20 206.67 A 90 15 0 0 0 200 206.67" fill="none" stroke="rgba(255,255,255,0.4)"
+                            stroke-width="2" stroke-dasharray="3 3" />
+                        <text x="210" y="211" fill="var(--text-muted)" font-size="14" font-weight="bold">1/3</text>
+
+                        <!-- 2/3 (y = 300 - 280*(2/3) = 113.33) -->
+                        <path d="M 20 113.33 A 90 15 0 0 0 200 113.33" fill="none" stroke="rgba(255,255,255,0.4)"
+                            stroke-width="2" stroke-dasharray="3 3" />
+                        <text x="210" y="118" fill="var(--text-muted)" font-size="14" font-weight="bold">2/3</text>
+
+                        <!-- 满 / 顶端 (y = 20) -->
+                        <path d="M 20 20 A 90 15 0 0 0 200 20" fill="none" stroke="rgba(255,255,255,0.4)"
+                            stroke-width="2" stroke-dasharray="3 3" />
+                        <text x="210" y="25" fill="var(--shape-border)" font-size="14" font-weight="bold">满</text>
+
+                        <!-- 容器：底部前半部边缘 -->
+                        <path d="M 20 300 A 90 15 0 0 0 200 300" fill="none" stroke="var(--shape-border)"
+                            stroke-width="2" />
+                        <!-- 容器：顶部大开口 -->
+                        <ellipse cx="110" cy="20" rx="90" ry="15" fill="none" stroke="var(--shape-border)"
+                            stroke-width="2" />
+                    </svg>
+
+                    <div class="spill-warning" id="spill-warning">⚠️ 水溢出了！</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部操作区 -->
+    <div class="controls">
+        <button id="btn-pour" class="btn-primary">💧 装满圆锥并倒入</button>
+        <button id="btn-compare" class="btn-secondary">📏 等底等高对比</button>
+        <button id="btn-reset" class="btn-secondary">🔄 清空重新实验</button>
+    </div>
+
+    <script>
+        /**
+         * 状态持久化与核心逻辑管理
+         * 遵循“小而精”及“可逆操作/容错”准则
+         */
+        const AppState = {
+            pourCount: 0,
+            isAnimating: false,
+            STORAGE_KEY: 'VolumeCourseware_State',
+
+            init() {
+                // 状态持久化：读取上次实验数据
+                const saved = localStorage.getItem(this.STORAGE_KEY);
+                if (saved) {
+                    this.pourCount = parseInt(saved, 10);
+                }
+                this.updateUI(false);
+                this.bindEvents();
+            },
+
+            save() {
+                localStorage.setItem(this.STORAGE_KEY, this.pourCount);
+            },
+
+            bindEvents() {
+                const btnPour = document.getElementById('btn-pour');
+                const btnReset = document.getElementById('btn-reset');
+                const btnCompare = document.getElementById('btn-compare');
+
+                // 多端事件兼容：使用统一的处理函数防误触
+                const handlePour = (e) => {
+                    e.preventDefault(); // 防止移动端穿透触发 click
+                    this.executePourSequence();
+                };
+
+                const handleReset = (e) => {
+                    e.preventDefault();
+                    this.resetExperiment();
+                };
+
+                const handleCompare = (e) => {
+                    e.preventDefault();
+                    this.executeCompareSequence();
+                };
+
+                // 同时绑定 click 和 touchstart (支持PC与大屏白板触摸)
+                btnPour.addEventListener('click', handlePour);
+                btnPour.addEventListener('touchstart', handlePour, { passive: false });
+
+                btnReset.addEventListener('click', handleReset);
+                btnReset.addEventListener('touchstart', handleReset, { passive: false });
+
+                btnCompare.addEventListener('click', handleCompare);
+                btnCompare.addEventListener('touchstart', handleCompare, { passive: false });
+
+                // 外设支持：监听键盘空格/回车倒水，Esc重置，C键比对
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                        this.executePourSequence();
+                    } else if (e.key === 'Escape') {
+                        this.resetExperiment();
+                    } else if (e.key === 'c' || e.key === 'C') {
+                        this.executeCompareSequence();
+                    }
+                });
+            },
+
+            // 核心动画序列（使用 async/await 确保逻辑严密不冲突）
+            async executePourSequence() {
+                if (this.isAnimating) return;
+                this.isAnimating = true;
+                this.toggleButtons(false);
+
+                const cone = document.getElementById('cone');
+                const spillWarning = document.getElementById('spill-warning');
+
+                // 1. 圆锥注水 (通过 CSS 变量控制立体缩放)
+                cone.style.setProperty('--cone-fill', '1');
+                await this.sleep(500);
+
+                // 2. 移动并倾倒圆锥 (由于圆锥是倒置的，我们需要沿着顶部的唇边翻转)
+                cone.classList.add('pouring');
+                await this.sleep(600); // 等待移动到位
+
+                // 3. 水流转移：圆锥空，圆柱涨
+                cone.style.setProperty('--cone-fill', '0');
+                this.pourCount++;
+                this.save();
+                this.updateUI(true); // 动态更新圆柱水位
+
+                // 4. 容错与非完美探索：如果超过3次，触发溢出动画
+                if (this.pourCount > 3) {
+                    spillWarning.classList.remove('active');
+                    void spillWarning.offsetWidth; // 触发重绘
+                    spillWarning.classList.add('active');
+                }
+
+                await this.sleep(800); // 倾倒停留时间
+
+                // 5. 圆锥归位
+                cone.classList.remove('pouring');
+                await this.sleep(600);
+
+                this.isAnimating = false;
+                this.toggleButtons(true);
+            },
+
+            // 等高对比动画序列
+            async executeCompareSequence() {
+                if (this.isAnimating) return;
+                this.isAnimating = true;
+                this.toggleButtons(false);
+
+                const stage = document.querySelector('.stage');
+                const wrappers = document.querySelectorAll('.shape-wrapper');
+                if (wrappers.length < 2) return;
+
+                const coneWrapper = wrappers[0];
+                const cylWrapper = wrappers[1];
+
+                // 计算屏幕中心与各自元素中心的距离 (动态应对各种宽度)
+                const stageRect = stage.getBoundingClientRect();
+                const stageCenter = stageRect.left + stageRect.width / 2;
+
+                const coneRect = coneWrapper.getBoundingClientRect();
+                const coneCenter = coneRect.left + coneRect.width / 2;
+
+                const cylRect = cylWrapper.getBoundingClientRect();
+                const cylCenter = cylRect.left + cylRect.width / 2;
+
+                // 使用行内样式应用精准的平移值
+                coneWrapper.style.transform = `translateX(${stageCenter - coneCenter}px)`;
+                cylWrapper.style.transform = `translateX(${stageCenter - cylCenter}px)`;
+
+                // 添加对比状态类，触发等高线等其他表现
+                stage.classList.add('comparing');
+
+                // 停顿两秒钟让用户确认
+                await this.sleep(2000);
+
+                // 移除行内样式，利用 CSS 原本的 transform transition 自动复原
+                coneWrapper.style.transform = '';
+                cylWrapper.style.transform = '';
+
+                // 移除状态类
+                stage.classList.remove('comparing');
+
+                // 等待复原动画结束
+                await this.sleep(1000);
+
+                this.isAnimating = false;
+                this.toggleButtons(true);
+            },
+
+            resetExperiment() {
+                if (this.isAnimating) return;
+                this.pourCount = 0;
+                this.save();
+                this.updateUI(true);
+            },
+
+            // 视觉与数据同步更新
+            updateUI(animate) {
+                const cylinder = document.getElementById('cylinder');
+
+                // 计算水位比例 (最高 1.0 即 100%)
+                const fillRatio = Math.min(this.pourCount / 3, 1);
+
+                // 更新 CSS 变量驱动 3D 动画
+                cylinder.style.setProperty('--cyl-fill', fillRatio);
+                cylinder.style.setProperty('--water-opacity', this.pourCount === 0 ? '0' : '1'); // 彻底清空时隐藏模型
+            },
+
+            toggleButtons(enabled) {
+                document.getElementById('btn-pour').disabled = !enabled;
+                document.getElementById('btn-reset').disabled = !enabled;
+                document.getElementById('btn-compare').disabled = !enabled;
+            },
+
+            sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        };
+
+        // 页面加载完毕后初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            AppState.init();
+        });
+    </script>
+</body>
+
+</html>
