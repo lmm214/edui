@@ -1,0 +1,241 @@
+<html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>体积单位进率推导</title>
+    <script src="three.js"></script>
+    <script src="oc.js"></script>
+    <style>
+        body { margin: 0; 
+            background-image: radial-gradient(73% 147%, #EADFDF 59%, #ECE2DF 100%), radial-gradient(91% 146%, rgba(255, 255, 255, 0.50) 47%, rgba(0, 0, 0, 0.50) 100%);
+            background-blend-mode: screen; font-family: 'PingFang SC', sans-serif; overflow: hidden; }
+        #container { width: 100vw; height: 100vh; }
+        .controls {
+            position: absolute;
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 100;
+        }
+        .btn {
+            padding: 10px 16px;
+            background: #f1f5f9; /* 更淡的背景 */
+            color: #475569;
+            border: 1px solid #94a3b8; /* 加深边框颜色 */
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            min-width: 80px;
+        }
+        .btn:hover:not(:disabled) { background: #e2e8f0; transform: translateY(-2px); border-color: #64748b; }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div class="controls">
+        <button id="btn0" class="btn">一个</button>
+        <button id="btn1" class="btn">一行</button>
+        <button id="btn2" class="btn">一层</button>
+        <button id="btn3" class="btn">一竖条</button>
+        <button id="btn4" class="btn">全铺满</button>
+        <button id="reset" class="btn" style="background: #64748b; color: white; border-color: #475569;">重置</button>
+    </div>
+    <script>
+        // 3D 场景初始化
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(18, 14, 22);
+        const renderer = new THREE.WebGLRenderer({ antialias: true,
+        alpha: true, // 允许透明背景，以显示#main-view的CSS渐变背景
+        preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('container').appendChild(renderer.domElement);
+        const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+        orbitControls.enableDamping = true;
+        // 光照
+        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        dirLight.position.set(10, 20, 15);
+        scene.add(dirLight);
+        // 大正方体框架 (10x10x10)
+        const frameSize = 10;
+        const frameGeo = new THREE.BoxGeometry(frameSize, frameSize, frameSize);
+        const edges = new THREE.EdgesGeometry(frameGeo);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x475569, transparent: false, opacity: 1.0 }));
+        scene.add(line);
+        // 小正方体管理
+        const cubes = [];
+        const cubeGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
+        // 每一层使用不同的颜色
+        const layerColors = [
+            0x3b82f6, // 蓝色
+            0x10b981, // 绿色
+            0xf59e0b, // 橙色
+            0xef4444, // 红色
+            0x8b5cf6, // 紫色
+            0xec4899, // 粉色
+            0x06b6d4, // 青色
+            0xf97316, // 橘红
+            0x84cc16, // 莱姆绿
+            0x6366f1  // 靛蓝
+        ];
+        // 预创建材质以提高性能
+        const layerMaterials = layerColors.map(color => new THREE.MeshPhongMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.85
+        }));
+        const cubeEdgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+        // 动画管理
+        const animations = [];
+        let currentStep = 0;
+        let isAnimating = false;
+        function addCube(x, y, z, step, delay = 0) {
+            // 检查是否已经存在该位置的立方体，避免重复添加
+            const exists = cubes.some(c => c.userData.gridPos.x === x && c.userData.gridPos.y === y && c.userData.gridPos.z === z);
+            if (exists) return;
+            const material = layerMaterials[Math.floor(y) % layerMaterials.length];
+            const mesh = new THREE.Mesh(cubeGeo, material);
+            const edgeGeo = new THREE.EdgesGeometry(cubeGeo);
+            const edgeLine = new THREE.LineSegments(edgeGeo, cubeEdgeMat);
+            mesh.add(edgeLine);
+            mesh.position.set(x - 4.5, y - 4.5, z - 4.5);
+            mesh.scale.set(0, 0, 0);
+            mesh.userData.step = step;
+            mesh.userData.gridPos = {x, y, z};
+            scene.add(mesh);
+            cubes.push(mesh);
+            const startTime = performance.now() + delay;
+            animations.push({
+                mesh: mesh,
+                startTime: startTime,
+                duration: 300,
+                update: function(now) {
+                    if (now < this.startTime) return false;
+                    const t = (now - this.startTime) / this.duration;
+                    if (t >= 1) {
+                        this.mesh.scale.set(1, 1, 1);
+                        return true;
+                    }
+                    this.mesh.scale.set(t, t, t);
+                    return false;
+                }
+            });
+        }
+        const btns = [0, 1, 2, 3, 4].map(i => document.getElementById(`btn${i}`));
+        async function goToStep(targetStep) {
+            if (isAnimating || targetStep === currentStep) return;
+            isAnimating = true;
+            if (targetStep > currentStep) {
+                // 前进：按序执行缺失的步骤
+                for (let s = currentStep + 1; s <= targetStep; s++) {
+                    await runStepLogic(s);
+                }
+            } else {
+                // 后退：即时移除多余步骤的立方体
+                for (let i = cubes.length - 1; i >= 0; i--) {
+                    if (cubes[i].userData.step > targetStep) {
+                        scene.remove(cubes[i]);
+                        cubes.splice(i, 1);
+                    }
+                }
+                // 清除还在等待播放的动画
+                for (let i = animations.length - 1; i >= 0; i--) {
+                    if (animations[i].mesh.userData.step > targetStep) {
+                        animations.splice(i, 1);
+                    }
+                }
+            }
+            currentStep = targetStep;
+            updateButtonStyles();
+            isAnimating = false;
+        }
+        function runStepLogic(step) {
+            return new Promise((resolve) => {
+                let delayBase = 0;
+                if (step === 1) {
+                    // 一个
+                    addCube(0, 0, 0, 1, 0);
+                    delayBase = 300;
+                } else if (step === 2) {
+                    // 一行 (补全剩下的 9 个)
+                    for (let i = 1; i < 10; i++) addCube(i, 0, 0, 2, (i-1) * 50);
+                    delayBase = 9 * 50;
+                } else if (step === 3) {
+                    // 一层 (补全剩下的 90 个)
+                    for (let z = 1; z < 10; z++) {
+                        for (let x = 0; x < 10; x++) addCube(x, 0, z, 3, (z * 10 + x) * 10);
+                    }
+                    delayBase = 100 * 10;
+                } else if (step === 4) {
+                    // 一竖条 (补全剩下的 9 个)
+                    for (let y = 1; y < 10; y++) addCube(0, y, 0, 4, (y-1) * 80);
+                    delayBase = 9 * 80;
+                } else if (step === 5) {
+                    // 全铺满
+                    let count = 0;
+                    for (let y = 1; y < 10; y++) {
+                        for (let z = 0; z < 10; z++) {
+                            for (let x = 0; x < 10; x++) {
+                                if (x === 0 && z === 0) continue;
+                                addCube(x, y, z, 5, count * 2);
+                                count++;
+                            }
+                        }
+                    }
+                    delayBase = count * 2;
+                }
+                setTimeout(resolve, delayBase + 300);
+            });
+        }
+        function updateButtonStyles() {
+            btns.forEach((btn, idx) => {
+                const stepNum = idx + 1;
+                if (stepNum === currentStep) {
+                    btn.style.background = '#10b981'; // 当前状态：绿色
+                    btn.style.color = 'white';
+                    btn.style.borderColor = '#059669';
+                    btn.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.3)';
+                } else {
+                    btn.style.background = '#f1f5f9'; // 默认状态：淡灰色
+                    btn.style.color = '#475569';
+                    btn.style.borderColor = '#94a3b8';
+                    btn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.05)';
+                }
+            });
+        }
+        btns[0].onclick = () => goToStep(1);
+        btns[1].onclick = () => goToStep(2);
+        btns[2].onclick = () => goToStep(3);
+        btns[3].onclick = () => goToStep(4);
+        btns[4].onclick = () => goToStep(5);
+        document.getElementById('reset').onclick = () => {
+            if (isAnimating) return;
+            goToStep(0);
+        };
+        function animate() {
+            requestAnimationFrame(animate);
+            // 更新动画
+            const now = performance.now();
+            for (let i = animations.length - 1; i >= 0; i--) {
+                if (animations[i].update(now)) {
+                    animations.splice(i, 1);
+                }
+            }
+            orbitControls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+        window.onresize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+    </script>
+</body></html>
