@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极简3D切割演示</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #2b2b31;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: white;
+        }
+
+
+        #ui-container {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: rgba(30, 30, 35, 0.6);
+            padding: 16px 24px;
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+
+        .btn-row {
+            display: flex;
+            gap: 16px;
+        }
+
+
+        button {
+            padding: 8px 20px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+            outline: none;
+        }
+
+
+        button:hover {
+            background: rgba(255, 255, 255, 1);
+            color: #1a1a1e;
+            border-color: rgba(255, 255, 255, 1);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(255, 255, 255, 0.2);
+        }
+
+
+        button:active {
+            transform: scale(0.95) translateY(0);
+        }
+
+
+        #btnToggle {
+            background: rgba(129, 216, 208, 0.1);
+            color: #81D8D0;
+            border-color: rgba(129, 216, 208, 0.3);
+            width: 100%;
+        }
+
+        #btnToggle:hover {
+            background: #81D8D0;
+            color: #1a1a1e;
+            border-color: #81D8D0;
+            box-shadow: 0 4px 12px rgba(129, 216, 208, 0.3);
+        }
+
+
+        button.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            background: rgba(255, 255, 255, 0.05) !important;
+            color: rgba(255, 255, 255, 0.3) !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+
+        /* 新增：作者署名样式 */
+        #author-credit {
+            position: absolute;
+            bottom: 15px;
+            right: 20px;
+            z-index: 90;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
+            /* 半透明，不喧宾夺主 */
+            letter-spacing: 1px;
+            pointer-events: none;
+            /* 防止遮挡鼠标点击事件 */
+            user-select: none;
+            /* 防止文本被选中 */
+        }
+    </style>
+    <script src="three.js" nonce="NDI3OTY0MTY5OCwxNDg3MDI2OTcx"></script>
+    <script src="oc.js" nonce="NDI3OTY0MTY5OCwxNDg3MDI2OTcx"></script>
+    <script src="gsap.min.js" nonce="NDI3OTY0MTY5OCwxNDg3MDI2OTcx"></script>
+</head>
+
+<body>
+
+
+    <div id="ui-container">
+        <div class="btn-row">
+            <button id="btnReset" onclick="resetCut()" class="disabled">复原</button>
+            <button id="btnCut1" onclick="cutOnce()">切一刀</button>
+            <button id="btnCut2" onclick="cutTwice()">切两刀</button>
+        </div>
+        <button id="btnToggle" onclick="toggleShape()">切换为：圆柱体</button>
+    </div>
+
+
+    <div id="author-credit">杭州市天长观潮小学 王旭程</div>
+
+
+    <script nonce="NDI3OTY0MTY5OCwxNDg3MDI2OTcx">
+        // 1. 初始化
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(4, 5, 13);
+
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        // 必须开启局部剪裁，圆柱体的圆形刀片才能生效
+        renderer.localClippingEnabled = true;
+        document.body.appendChild(renderer.domElement);
+
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+
+        // 2. 核心材质定义
+        const colorTiffany = 0x81D8D0;
+        const colorOrange = 0xf58220;
+
+
+        const matInvisible = new THREE.MeshBasicMaterial({ visible: false });
+        const matTiffanyBase = new THREE.MeshBasicMaterial({ color: colorTiffany });
+        const matWhiteEdges = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+
+        const cutMatP1R = matTiffanyBase.clone();
+        const cutMatP2L = matTiffanyBase.clone();
+        const cutMatP2R = matTiffanyBase.clone();
+        const cutMatP3L = matTiffanyBase.clone();
+
+
+        // 3. 构建实体加粗白色边框线框
+
+        // 3.1 长方体边框
+        function createThickEdgesBox(w, h, d, thickness = 0.05) {
+            const group = new THREE.Group();
+            const radius = thickness / 2;
+            function addEdge(x, y, z, length, rotX, rotZ) {
+                const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, length, 8), matWhiteEdges);
+                mesh.position.set(x, y, z); if (rotX) mesh.rotation.x = rotX; if (rotZ) mesh.rotation.z = rotZ;
+                group.add(mesh);
+            }
+            const hw = w / 2, hh = h / 2, hd = d / 2;
+            addEdge(-hw, 0, -hd, h, 0, 0); addEdge(hw, 0, -hd, h, 0, 0); addEdge(-hw, 0, hd, h, 0, 0); addEdge(hw, 0, hd, h, 0, 0);
+            addEdge(0, hh, -hd, w, 0, Math.PI / 2); addEdge(0, -hh, -hd, w, 0, Math.PI / 2); addEdge(0, hh, hd, w, 0, Math.PI / 2); addEdge(0, -hh, hd, w, 0, Math.PI / 2);
+            addEdge(-hw, hh, 0, d, Math.PI / 2, 0); addEdge(hw, hh, 0, d, Math.PI / 2, 0); addEdge(-hw, -hh, 0, d, Math.PI / 2, 0); addEdge(hw, -hh, 0, d, Math.PI / 2, 0);
+            return group;
+        }
+
+
+        // 3.2 圆柱体边框 (极简轮廓：仅保留两端圆环)
+        function createThickEdgesCyl(length, radius = 1.5, thickness = 0.05) {
+            const group = new THREE.Group();
+            const radiusEdge = thickness / 2;
+            const ringGeo = new THREE.TorusGeometry(radius, radiusEdge, 16, 48);
+            const ringL = new THREE.Mesh(ringGeo, matWhiteEdges); ringL.rotation.y = Math.PI / 2; ringL.position.x = -length / 2;
+            const ringR = new THREE.Mesh(ringGeo, matWhiteEdges); ringR.rotation.y = Math.PI / 2; ringR.position.x = length / 2;
+            group.add(ringL); group.add(ringR);
+            return group;
+        }
+
+
+        // 4. 构建双轨实体网格
+        function createDualPartMesh(length, boxMats, cylMats, xPos) {
+            const group = new THREE.Group();
+            group.position.set(xPos, 1.5, 0);
+            // Box
+            const box = new THREE.Mesh(new THREE.BoxGeometry(length, 3, 3), boxMats);
+            box.name = "box"; group.add(box);
+            // Cylinder (躺平)
+            const cylGeo = new THREE.CylinderGeometry(1.5, 1.5, length, 48);
+            cylGeo.rotateZ(Math.PI / 2);
+            const cyl = new THREE.Mesh(cylGeo, cylMats);
+            cyl.name = "cyl"; group.add(cyl);
+            scene.add(group);
+            return { group, box, cyl };
+        }
+
+
+        const p1 = createDualPartMesh(2,
+            [cutMatP1R, matTiffanyBase, matTiffanyBase, matTiffanyBase, matTiffanyBase, matTiffanyBase],
+            [matTiffanyBase, matTiffanyBase, cutMatP1R], -1);
+        const p2 = createDualPartMesh(2,
+            [cutMatP2R, cutMatP2L, matTiffanyBase, matTiffanyBase, matTiffanyBase, matTiffanyBase],
+            [matTiffanyBase, cutMatP2L, cutMatP2R], 1);
+        const p3 = createDualPartMesh(2,
+            [matTiffanyBase, cutMatP3L, matTiffanyBase, matTiffanyBase, matTiffanyBase, matTiffanyBase],
+            [matTiffanyBase, cutMatP3L, matTiffanyBase], 3);
+
+
+        // 5. 构建双轨实体加粗边框系统
+        function createDualThickEdges(length, offsetX = 0) {
+            const group = new THREE.Group();
+            if (offsetX) group.position.x = offsetX;
+            const boxE = createThickEdgesBox(length, 3, 3); boxE.name = "boxE"; group.add(boxE);
+            const cylE = createThickEdgesCyl(length); cylE.name = "cylE"; group.add(cylE);
+            return { group, boxE, cylE };
+        }
+
+
+        const edgesFull = createDualThickEdges(6); edgesFull.group.position.set(1, 1.5, 0); scene.add(edgesFull.group);
+        const edgesP1 = createDualThickEdges(2); edgesP1.group.visible = false; p1.group.add(edgesP1.group);
+        const edgesP2P3 = createDualThickEdges(4, 1); edgesP2P3.group.visible = false; p2.group.add(edgesP2P3.group);
+        const edgesP2 = createDualThickEdges(2); edgesP2.group.visible = false; p2.group.add(edgesP2.group);
+        const edgesP3 = createDualThickEdges(2); edgesP3.group.visible = false; p3.group.add(edgesP3.group);
+
+
+        // 6. 下切刀片系统 (方形 & 圆形)
+        const matKnife = new THREE.MeshBasicMaterial({ color: colorOrange, side: THREE.DoubleSide });
+
+
+        // 长方体刀片 (方形薄片)
+        const slabBoxGeo = new THREE.BoxGeometry(0.01, 3.1, 3.1);
+        slabBoxGeo.translate(0, -1.55, 0); // 枢轴在顶端
+        const cuttingSlabBox1 = new THREE.Mesh(slabBoxGeo, matKnife); cuttingSlabBox1.visible = false; cuttingSlabBox1.scale.y = 0; scene.add(cuttingSlabBox1);
+        const cuttingSlabBox2 = new THREE.Mesh(slabBoxGeo, matKnife); cuttingSlabBox2.visible = false; cuttingSlabBox2.scale.y = 0; scene.add(cuttingSlabBox2);
+
+
+        // 圆柱体刀片 (圆形薄片，使用剪裁平面从上往下揭露)
+        const clipPlane1 = new THREE.Plane(new THREE.Vector3(0, 1, 0), -3.05); // 法线向上，初始常量遮挡所有
+        const clipPlane2 = new THREE.Plane(new THREE.Vector3(0, 1, 0), -3.05);
+
+        const matKnifeCyl1 = new THREE.MeshBasicMaterial({ color: colorOrange, side: THREE.DoubleSide, clippingPlanes: [clipPlane1] });
+        const matKnifeCyl2 = new THREE.MeshBasicMaterial({ color: colorOrange, side: THREE.DoubleSide, clippingPlanes: [clipPlane2] });
+
+
+        const slabCylGeo = new THREE.CylinderGeometry(1.505, 1.505, 0.01, 64);
+        slabCylGeo.rotateZ(Math.PI / 2); // 竖立为圆盘
+
+
+        // 圆形刀片固定在切割面的正中央
+        const cuttingSlabCyl1 = new THREE.Mesh(slabCylGeo, matKnifeCyl1);
+        cuttingSlabCyl1.position.set(0, 1.5, 0); cuttingSlabCyl1.visible = false; scene.add(cuttingSlabCyl1);
+
+        const cuttingSlabCyl2 = new THREE.Mesh(slabCylGeo, matKnifeCyl2);
+        cuttingSlabCyl2.position.set(2.5, 1.5, 0); cuttingSlabCyl2.visible = false; scene.add(cuttingSlabCyl2);
+
+
+
+
+        // 7. 状态与动画控制
+        let currentShape = 'cuboid';
+        let currentStatus = 'reset';
+        let isAnimating = false;
+        const buttons = [document.getElementById('btnReset'), document.getElementById('btnCut1'), document.getElementById('btnCut2'), document.getElementById('btnToggle')];
+
+        function updateButtons() {
+            buttons[0].classList.toggle('disabled', currentStatus === 'reset' || isAnimating);
+            buttons[1].classList.toggle('disabled', currentStatus !== 'reset' || isAnimating);
+            buttons[2].classList.toggle('disabled', currentStatus === 'cutTwice' || isAnimating);
+            buttons[3].classList.toggle('disabled', isAnimating);
+        }
+
+
+        // 切换形状显示
+        function applyShapeVisibility() {
+            const isBox = currentShape === 'cuboid';
+            p1.box.visible = isBox; p1.cyl.visible = !isBox;
+            p2.box.visible = isBox; p2.cyl.visible = !isBox;
+            p3.box.visible = isBox; p3.cyl.visible = !isBox;
+
+            edgesFull.boxE.visible = isBox; edgesFull.cylE.visible = !isBox;
+            edgesP1.boxE.visible = isBox; edgesP1.cylE.visible = !isBox;
+            edgesP2P3.boxE.visible = isBox; edgesP2P3.cylE.visible = !isBox;
+            edgesP2.boxE.visible = isBox; edgesP2.cylE.visible = !isBox;
+            edgesP3.boxE.visible = isBox; edgesP3.cylE.visible = !isBox;
+        }
+        applyShapeVisibility();
+
+
+        window.toggleShape = function () {
+            if (isAnimating) return;
+            if (currentStatus !== 'reset') {
+                window.resetCut();
+                setTimeout(() => {
+                    currentShape = currentShape === 'cuboid' ? 'cylinder' : 'cuboid';
+                    document.getElementById('btnToggle').innerText = `切换为：${currentShape === 'cuboid' ? '圆柱体' : '长方体'}`;
+                    applyShapeVisibility();
+                }, 900);
+                return;
+            }
+            currentShape = currentShape === 'cuboid' ? 'cylinder' : 'cuboid';
+            document.getElementById('btnToggle').innerText = `切换为：${currentShape === 'cuboid' ? '圆柱体' : '长方体'}`;
+            applyShapeVisibility();
+        };
+
+
+        // --- 核心动画逻辑 ---
+
+
+        window.resetCut = function () {
+            if (isAnimating || currentStatus === 'reset') return;
+            isAnimating = true; updateButtons();
+
+
+            // 重置所有刀片
+            cuttingSlabBox1.visible = false; cuttingSlabBox1.scale.y = 0;
+            cuttingSlabBox2.visible = false; cuttingSlabBox2.scale.y = 0;
+            cuttingSlabCyl1.visible = false; clipPlane1.constant = -3.05;
+            cuttingSlabCyl2.visible = false; clipPlane2.constant = -3.05;
+
+
+            gsap.to([p1.group.position, p2.group.position, p3.group.position], {
+                x: (i) => i === 0 ? -1 : (i === 1 ? 1 : 3),
+                duration: 0.8, ease: "power2.inOut",
+                onStart: () => {
+                    edgesP1.group.visible = false; edgesP2P3.group.visible = false;
+                    edgesP2.group.visible = false; edgesP3.group.visible = false;
+                    gsap.to([cutMatP1R.color, cutMatP2L.color, cutMatP2R.color, cutMatP3L.color], {
+                        r: new THREE.Color(colorTiffany).r, g: new THREE.Color(colorTiffany).g, b: new THREE.Color(colorTiffany).b,
+                        duration: 0.1
+                    });
+                },
+                onComplete: () => {
+                    edgesFull.group.visible = true;
+                    currentStatus = 'reset'; isAnimating = false; updateButtons();
+                }
+            });
+        };
+
+
+        function _cutOncePromise() {
+            return new Promise(resolve => {
+                isAnimating = true; updateButtons();
+                const isBox = currentShape === 'cuboid';
+
+                if (isBox) {
+                    // 长方体刀片：生长动画
+                    cuttingSlabBox1.position.set(0, 3.05, 0);
+                    cuttingSlabBox1.scale.y = 0; cuttingSlabBox1.visible = true;
+                    gsap.to(cuttingSlabBox1.scale, { y: 1.0, duration: 0.4, ease: "linear", onComplete: finalizeCut1 });
+                } else {
+                    // 圆柱体刀片：使用剪裁平面“揭露”动画，完美模拟从上往下切圆盘
+                    cuttingSlabCyl1.visible = true;
+                    clipPlane1.constant = -3.05; // 遮挡全部
+                    gsap.to(clipPlane1, { constant: 0.05, duration: 0.4, ease: "linear", onComplete: finalizeCut1 }); // 移动剪裁面到最底
+                }
+
+
+                function finalizeCut1() {
+                    cuttingSlabBox1.visible = false; cuttingSlabBox1.scale.y = 0;
+                    cuttingSlabCyl1.visible = false;
+
+
+                    edgesFull.group.visible = false;
+                    edgesP1.group.visible = true; edgesP2P3.group.visible = true;
+
+                    gsap.to([cutMatP1R.color, cutMatP2L.color], {
+                        r: new THREE.Color(colorOrange).r, g: new THREE.Color(colorOrange).g, b: new THREE.Color(colorOrange).b,
+                        duration: 0.1
+                    });
+
+
+                    gsap.to([p1.group.position, p2.group.position, p3.group.position], {
+                        x: (i) => i === 0 ? -2.5 : (i === 1 ? 1.5 : 3.5),
+                        duration: 0.8, ease: "power2.inOut",
+                        onComplete: () => { currentStatus = 'cutOnce'; isAnimating = false; resolve(); }
+                    });
+                }
+            });
+        }
+
+
+        function _cutTwicePromise() {
+            return new Promise(resolve => {
+                isAnimating = true; updateButtons();
+                const isBox = currentShape === 'cuboid';
+
+
+                if (isBox) {
+                    cuttingSlabBox2.position.set(2.5, 3.05, 0);
+                    cuttingSlabBox2.scale.y = 0; cuttingSlabBox2.visible = true;
+                    gsap.to(cuttingSlabBox2.scale, { y: 1.0, duration: 0.4, ease: "linear", onComplete: finalizeCut2 });
+                } else {
+                    cuttingSlabCyl2.position.set(2.5, 1.5, 0);
+                    cuttingSlabCyl2.visible = true;
+                    clipPlane2.constant = -3.05;
+                    gsap.to(clipPlane2, { constant: 0.05, duration: 0.4, ease: "linear", onComplete: finalizeCut2 });
+                }
+
+
+                function finalizeCut2() {
+                    cuttingSlabBox2.visible = false; cuttingSlabBox2.scale.y = 0;
+                    cuttingSlabCyl2.visible = false;
+
+
+                    edgesP2P3.group.visible = false;
+                    edgesP2.group.visible = true; edgesP3.group.visible = true;
+
+                    gsap.to([cutMatP2R.color, cutMatP3L.color], {
+                        r: new THREE.Color(colorOrange).r, g: new THREE.Color(colorOrange).g, b: new THREE.Color(colorOrange).b,
+                        duration: 0.1
+                    });
+
+
+                    gsap.to([p1.group.position, p2.group.position, p3.group.position], {
+                        x: (i) => i === 0 ? -3.5 : (i === 1 ? 0.5 : 4.5),
+                        duration: 0.8, ease: "power2.inOut",
+                        onComplete: () => { currentStatus = 'cutTwice'; isAnimating = false; resolve(); }
+                    });
+                }
+            });
+        }
+
+
+        window.cutOnce = function () { if (!isAnimating && currentStatus === 'reset') _cutOncePromise().then(updateButtons); };
+        window.cutTwice = function () {
+            if (isAnimating) return;
+            if (currentStatus === 'reset') _cutOncePromise().then(() => _cutTwicePromise().then(updateButtons));
+            else if (currentStatus === 'cutOnce') _cutTwicePromise().then(updateButtons);
+        };
+
+
+        // 8. 渲染循环
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>

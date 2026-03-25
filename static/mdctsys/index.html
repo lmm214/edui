@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>面动成体-创客实验室</title>
+    <style>
+        /* ================= 极简统一 UI 变量 ================= */
+        :root {
+            --tiffany: #0ABAB5;
+            --tiffany-dark: #099A95;
+            --bg-color: #f5f5f7;
+            --text-main: #1d1d1f;
+            --text-muted: #86868b;
+            --panel-bg: rgba(255, 255, 255, 0.85);
+            --grid-color: rgba(0, 0, 0, 0.25);
+        }
+
+
+        /* ================= 基础重置 ================= */
+        * { box-sizing: border-box; touch-action: none; user-select: none; }
+        body { margin: 0; overflow: hidden; font-family: -apple-system, 'PingFang SC', sans-serif; background-color: var(--bg-color); color: var(--text-main); }
+        
+        /* ================= 视图与动态背景 ================= */
+        #editor-view, #render-view { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; }
+        #render-view { z-index: 2; display: none; background: #ffffff; }
+        #editor-view { z-index: 1; } 
+        
+        .bg-dot {
+            background-image: radial-gradient(circle at 0 0, var(--grid-color) 3px, transparent 3px);
+            background-size: 40px 40px; background-position: 50vw 50vh;
+        }
+        .bg-grid {
+            background-image: linear-gradient(var(--grid-color) 1px, transparent 1px), linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+            background-size: 40px 40px; background-position: calc(50vw - 0.5px) calc(50vh - 0.5px);
+        }
+
+
+        #axis-line {
+            position: absolute; top: 0; left: 50%; width: 2px; height: 100%;
+            background: rgba(0, 0, 0, 0.1); border-left: 2px dashed rgba(10, 186, 181, 0.6);
+            transform: translateX(-50%); z-index: 1; pointer-events: none;
+        }
+
+
+        /* ================= 顶部信息与控件 ================= */
+        /* 知识产权水印 */
+        .watermark {
+            position: absolute; top: 24px; left: 24px; z-index: 10;
+            font-size: 15px; font-weight: 600; color: var(--text-muted);
+            text-shadow: 1px 1px 0 rgba(255,255,255,0.8);
+            pointer-events: none; letter-spacing: 1px;
+            background: rgba(255,255,255,0.5); padding: 6px 16px; border-radius: 12px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.4);
+        }
+
+
+        .top-bar {
+            position: absolute; top: 24px; left: 50%; transform: translateX(-50%); z-index: 10;
+            background: var(--panel-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            padding: 12px 32px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.4);
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08); font-size: 16px; font-weight: 600; letter-spacing: 0.5px;
+        }
+
+
+        .env-toggle {
+            position: absolute; top: 24px; right: 24px; z-index: 10;
+            background: var(--panel-bg); backdrop-filter: blur(20px);
+            padding: 4px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.4);
+            display: flex; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .env-btn {
+            padding: 8px 16px; border: none; background: transparent; border-radius: 12px;
+            font-size: 14px; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: all 0.2s;
+        }
+        .env-btn.active { background: #ffffff; color: var(--tiffany); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+
+
+        /* 3D 放大缩小控制栏 */
+        .zoom-controls {
+            position: absolute; top: 24px; right: 24px; z-index: 10;
+            background: var(--panel-bg); backdrop-filter: blur(20px);
+            padding: 6px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.4);
+            display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .zoom-btn {
+            width: 40px; height: 40px; border: none; background: #ffffff; border-radius: 12px;
+            font-size: 24px; font-weight: bold; color: var(--tiffany); cursor: pointer; transition: all 0.2s;
+            display: flex; justify-content: center; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .zoom-btn:hover { background: var(--tiffany); color: #ffffff; transform: scale(1.05); }
+        .zoom-btn:active { transform: scale(0.95); }
+
+
+        /* ================= 底部面板 ================= */
+        .bottom-container {
+            position: absolute; bottom: 30px; left: 0; width: 100%;
+            display: flex; justify-content: center; gap: 24px; z-index: 10; pointer-events: none;
+        }
+        .panel {
+            background: var(--panel-bg); backdrop-filter: blur(20px);
+            padding: 16px 20px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.6);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1); display: flex; gap: 12px; pointer-events: auto; align-items: center;
+        }
+        .panel-title {
+            position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+            background: #ffffff; padding: 4px 16px; border-radius: 12px; font-size: 13px; font-weight: 600;
+            color: var(--text-muted); border: 1px solid rgba(0,0,0,0.08); white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        
+        .btn {
+            height: 48px; width: 48px; border: none; border-radius: 14px; background: rgba(255,255,255,0.8);
+            cursor: pointer; display: flex; justify-content: center; align-items: center; 
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); color: var(--text-main);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.04);
+        }
+        .btn:hover { background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); color: var(--tiffany); }
+        .btn svg { width: 24px; height: 24px; fill: currentColor; pointer-events: none; }
+        
+        .btn-action { width: auto; padding: 0 20px; font-size: 15px; font-weight: 600; }
+        .btn-3d { background: var(--tiffany); color: white; box-shadow: 0 4px 16px rgba(10, 186, 181, 0.4); padding: 0 28px; font-size: 16px;}
+        .btn-3d:hover { background: var(--tiffany-dark); color: white; }
+
+
+        .btn-export { background: #f1f5f9; color: var(--text-main); }
+        .btn-export:hover { background: #e2e8f0; color: var(--text-main); }
+
+
+        .color-picker-wrapper { position: relative; overflow: hidden; width: 48px; height: 48px; border-radius: 14px; cursor: pointer; border: 1px solid rgba(0,0,0,0.05); transition: all 0.3s; background: white;}
+        .color-picker-wrapper:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .color-picker-wrapper input[type="color"] { position: absolute; top: -10px; left: -10px; width: 68px; height: 68px; cursor: pointer; border: none; padding: 0; }
+        .color-picker-wrapper::after { content: '🎨'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; font-size: 20px; }
+
+
+        input[type=range] { -webkit-appearance: none; width: 180px; background: transparent; margin: 0 12px; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 28px; width: 28px; border-radius: 50%;
+            background: var(--tiffany); cursor: pointer; margin-top: -11px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2); border: 3px solid white; transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: rgba(0,0,0,0.15); border-radius: 3px; }
+        input[type=range]:focus { outline: none; }
+
+
+        /* ================= 2D SVG 画布 ================= */
+        #svg-canvas { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2; }
+        polygon, path { stroke-width: 2; stroke-linejoin: round; cursor: move; transition: opacity 0.2s; }
+        polygon:hover, path:hover { opacity: 0.8; }
+        .handle { fill: white; stroke: var(--text-main); stroke-width: 2.5; cursor: pointer; r: 6.5; transition: all 0.2s;}
+        .handle:hover { r: 10; fill: var(--tiffany); stroke: var(--tiffany); }
+    </style>
+    <script src="three.js" nonce="Mzg5NTE0NTg3OSw2MDI4NDMyNDc="></script>
+    <script src="oc.js" nonce="Mzg5NTE0NTg3OSw2MDI4NDMyNDc="></script>
+    <script src="STLExporter.js" nonce="Mzg5NTE0NTg3OSw2MDI4NDMyNDc="></script>
+</head>
+<body>
+
+
+    <div class="watermark">© 杭州市天长观潮小学 王旭程 研发</div>
+
+
+    <div class="top-bar" id="status-text">拖拽图形，拉动顶点，发挥创意拼接你的专属图案</div>
+
+
+    <div class="env-toggle" id="env-controls">
+        <button class="env-btn active" onclick="setBg('dot', this)">点子图</button>
+        <button class="env-btn" onclick="setBg('grid', this)">方格图</button>
+    </div>
+
+
+    <div class="zoom-controls" id="zoom-panel" style="display: none;">
+        <button class="zoom-btn" onclick="zoomIn()" title="放大模型">＋</button>
+        <button class="zoom-btn" onclick="zoomOut()" title="缩小模型">－</button>
+    </div>
+
+
+    <div id="editor-view" class="bg-dot">
+        <div id="axis-line"></div>
+        <svg id="svg-canvas"></svg>
+    </div>
+
+
+    <div id="render-view"></div>
+
+
+    <div class="bottom-container" id="ui-panel">
+        <div class="panel" id="toolbox-panel" style="position: relative;">
+            <div class="panel-title">🧰 图形工具箱</div>
+            <button class="btn" onclick="addShape('rect')" title="矩形"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></svg></button>
+            <button class="btn" onclick="addShape('triangle')" title="直角三角形"><svg viewBox="0 0 24 24"><polygon points="5,19 19,19 5,5"/></svg></button>
+            <button class="btn" onclick="addShape('trapezoid')" title="梯形"><svg viewBox="0 0 24 24"><polygon points="4,18 20,18 16,6 8,6"/></svg></button>
+            <button class="btn" onclick="addShape('semicircle')" title="半圆"><svg viewBox="0 0 24 24"><path d="M 12,4 A 8,8 0 0,0 12,20 Z"/></svg></button>
+            <button class="btn" onclick="addShape('quarter')" title="扇形"><svg viewBox="0 0 24 24"><path d="M 6,18 L 6,6 A 12,12 0 0,1 18,18 Z"/></svg></button>
+            <div style="width: 1px; height: 24px; background: rgba(0,0,0,0.1); margin: 0 4px;"></div>
+            <div class="color-picker-wrapper" title="更改选中图形颜色"><input type="color" id="shape-color-picker" value="#0ABAB5"></div>
+        </div>
+
+
+        <div class="panel" style="position: relative;">
+            <div class="panel-title">🌀 旋转变身器</div>
+            
+            <div id="action-buttons-2d" style="display: flex; gap: 8px;">
+                <button class="btn btn-action" onclick="deleteSelected()">删除</button>
+                <button class="btn btn-action" onclick="clearAll()">清空</button>
+            </div>
+
+
+            <div id="action-slider-3d" style="display: none; align-items: center;">
+                <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">0°</span>
+                <input type="range" id="progress-slider" min="0.01" max="6.28318" step="0.01" value="0.01">
+                <span style="font-size: 13px; font-weight: 600; color: var(--text-muted);">360°</span>
+            </div>
+
+
+            <div id="export-buttons" style="display: none; gap: 8px; margin-left: 8px; border-left: 1px solid rgba(0,0,0,0.1); padding-left: 16px;">
+                <button class="btn btn-action btn-export" onclick="exportJPG()" title="保存当前视角的截图">📷 存图</button>
+                <button class="btn btn-action btn-export" onclick="exportSTL()" title="导出STL文件供3D打印机使用">🖨️ 打印</button>
+            </div>
+
+
+            <button class="btn btn-action btn-3d" id="btn-transform" onclick="toggle3DMode()" style="margin-left: 8px;">3D 变身</button>
+        </div>
+    </div>
+
+
+    <script nonce="Mzg5NTE0NTg3OSw2MDI4NDMyNDc=">
+        const GRID_SIZE = 40; 
+        const svgCanvas = document.getElementById('svg-canvas');
+        let shapes = []; 
+        let selectedShapeId = null;
+        let shapeIdCounter = 0;
+        let dragInfo = null; 
+        const TIFFANY_BLUE = '#0ABAB5';
+
+
+        function setBg(type, btnElement) {
+            document.querySelectorAll('.env-btn').forEach(b => b.classList.remove('active'));
+            btnElement.classList.add('active');
+            const editor = document.getElementById('editor-view');
+            editor.className = '';
+            editor.classList.add('bg-' + type);
+        }
+
+
+        function snapX(x) { return Math.round((x - window.innerWidth / 2) / GRID_SIZE) * GRID_SIZE + window.innerWidth / 2; }
+        function snapY(y) { return Math.round((y - window.innerHeight / 2) / GRID_SIZE) * GRID_SIZE + window.innerHeight / 2; }
+
+
+        // 提升至 32 段，保证球面无瑕滚圆
+        function createArcPoints(cx, cy, r, startAngle, endAngle, steps = 32) {
+            let pts = [];
+            for(let i=0; i<=steps; i++) {
+                let theta = startAngle + (endAngle - startAngle) * (i / steps);
+                pts.push({ x: cx + r * Math.cos(theta), y: cy + r * Math.sin(theta) });
+            }
+            return pts;
+        }
+
+
+        const templates = {
+            rect: [{x:0, y:0}, {x:80, y:0}, {x:80, y:120}, {x:0, y:120}],
+            triangle: [{x:0, y:0}, {x:80, y:120}, {x:0, y:120}],
+            trapezoid: [{x:40, y:0}, {x:80, y:0}, {x:80, y:120}, {x:0, y:120}],
+            semicircle: createArcPoints(0, 80, 80, -Math.PI/2, Math.PI/2).concat([{x:0, y:0}]),
+            quarter: createArcPoints(0, 120, 120, -Math.PI/2, 0).concat([{x:0, y:120}, {x:0, y:0}])
+        };
+
+
+        const colorPicker = document.getElementById('shape-color-picker');
+        colorPicker.addEventListener('input', (e) => {
+            if (selectedShapeId) {
+                const shape = shapes.find(s => s.id === selectedShapeId);
+                if (shape) { shape.color = e.target.value; renderSVG(); }
+            }
+        });
+
+
+        function addShape(type) {
+            const startX = snapX(window.innerWidth / 2 + 40); 
+            const startY = snapY(window.innerHeight / 2 - 40);
+            const newShape = {
+                id: 'shape_' + (shapeIdCounter++),
+                type: type,
+                color: TIFFANY_BLUE,
+                points: templates[type].map(p => ({ x: startX + p.x, y: startY + p.y }))
+            };
+            shapes.push(newShape);
+            selectedShapeId = newShape.id;
+            colorPicker.value = TIFFANY_BLUE; 
+            renderSVG();
+        }
+
+
+        function renderSVG() {
+            svgCanvas.innerHTML = ''; 
+            shapes.forEach(shape => {
+                const isCurved = shape.type === 'semicircle' || shape.type === 'quarter';
+                const elType = isCurved ? 'path' : 'polygon';
+                const el = document.createElementNS('http://www.w3.org/2000/svg', elType);
+                
+                if (isCurved) {
+                    let d = `M ${shape.points[0].x},${shape.points[0].y}`;
+                    for(let i=1; i<shape.points.length; i++) d += ` L ${shape.points[i].x},${shape.points[i].y}`;
+                    d += ' Z';
+                    el.setAttribute('d', d);
+                } else {
+                    const pointsStr = shape.points.map(p => `${p.x},${p.y}`).join(' ');
+                    el.setAttribute('points', pointsStr);
+                }
+
+
+                el.setAttribute('fill', shape.color);
+                el.setAttribute('fill-opacity', shape.id === selectedShapeId ? '0.85' : '0.4');
+                el.setAttribute('stroke', shape.color);
+                el.addEventListener('pointerdown', (e) => startDrag(e, 'shape', shape.id));
+                svgCanvas.appendChild(el);
+            });
+
+
+            const selectedShape = shapes.find(s => s.id === selectedShapeId);
+            if (selectedShape) {
+                colorPicker.value = selectedShape.color;
+                const ctrlPoints = selectedShape.points.map((p, idx) => ({p, idx}));
+
+
+                ctrlPoints.forEach((cp) => {
+                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    circle.setAttribute('cx', cp.p.x); circle.setAttribute('cy', cp.p.y);
+                    circle.setAttribute('class', 'handle');
+                    circle.addEventListener('pointerdown', (e) => startDrag(e, 'vertex', selectedShape.id, cp.idx));
+                    svgCanvas.appendChild(circle);
+                });
+            }
+        }
+
+
+        function startDrag(e, type, shapeId, vertexIndex = -1) {
+            e.preventDefault(); e.stopPropagation();
+            selectedShapeId = shapeId; renderSVG(); 
+            const shape = shapes.find(s => s.id === shapeId);
+            dragInfo = { type, shapeId, vertexIndex, startX: e.clientX, startY: e.clientY, initialPoints: JSON.parse(JSON.stringify(shape.points)) };
+            window.addEventListener('pointermove', onDrag);
+            window.addEventListener('pointerup', endDrag);
+        }
+
+
+        function onDrag(e) {
+            if (!dragInfo) return;
+            const shape = shapes.find(s => s.id === dragInfo.shapeId);
+            if (dragInfo.type === 'vertex') {
+                shape.points[dragInfo.vertexIndex].x = snapX(e.clientX);
+                shape.points[dragInfo.vertexIndex].y = snapY(e.clientY);
+            } else if (dragInfo.type === 'shape') {
+                const dx = e.clientX - dragInfo.startX; 
+                const dy = e.clientY - dragInfo.startY;
+                const snapDx = snapX(dragInfo.initialPoints[0].x + dx) - dragInfo.initialPoints[0].x;
+                const snapDy = snapY(dragInfo.initialPoints[0].y + dy) - dragInfo.initialPoints[0].y;
+                shape.points = dragInfo.initialPoints.map(p => ({ x: p.x + snapDx, y: p.y + snapDy }));
+            }
+            renderSVG();
+        }
+
+
+        function endDrag() { dragInfo = null; window.removeEventListener('pointermove', onDrag); window.removeEventListener('pointerup', endDrag); }
+
+
+        svgCanvas.addEventListener('pointerdown', (e) => { if (e.target === svgCanvas) { selectedShapeId = null; renderSVG(); } });
+        function deleteSelected() { if(selectedShapeId) { shapes = shapes.filter(s => s.id !== selectedShapeId); selectedShapeId = null; renderSVG(); } }
+        function clearAll() { shapes = []; selectedShapeId = null; renderSVG(); }
+
+
+        // ================= 3D 系统 =================
+        let scene, camera, renderer, controls;
+        let is3DMode = false;
+        let animationRequestId;
+        let solids = []; 
+
+
+        function init3D() {
+            const container = document.getElementById('render-view');
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.set(0, 300, 800); 
+
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.target.set(0, 0, 0); controls.enablePan = false;
+
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.85)); 
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            dirLight.position.set(200, 400, 300); scene.add(dirLight);
+            const backLight = new THREE.DirectionalLight(0xffffff, 0.2);
+            backLight.position.set(-200, -200, -300); scene.add(backLight);
+            
+            const axisMat = new THREE.LineDashedMaterial({ color: 0x000000, dashSize: 10, gapSize: 10, opacity: 0.15, transparent: true });
+            const axisGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -600, 0), new THREE.Vector3(0, 600, 0)]);
+            const axisLine = new THREE.Line(axisGeo, axisMat);
+            axisLine.computeLineDistances(); scene.add(axisLine);
+
+
+            window.addEventListener('resize', () => {
+                if(camera && renderer) {
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                }
+            });
+        }
+
+
+        // 大屏极简放大缩小逻辑
+        window.zoomIn = function() {
+            if (camera && controls) {
+                camera.position.multiplyScalar(0.85); // 放大 15%
+                controls.update();
+                if (!isAutoAnimating) renderer.render(scene, camera);
+            }
+        };
+
+
+        window.zoomOut = function() {
+            if (camera && controls) {
+                camera.position.multiplyScalar(1.15); // 缩小 15%
+                controls.update();
+                if (!isAutoAnimating) renderer.render(scene, camera);
+            }
+        };
+
+
+        let currentAngle = 0; let targetAngle = 0; let isAutoAnimating = false;
+
+
+        function toggle3DMode() {
+            if (shapes.length === 0) { alert("请先在工具箱中添加图形！"); return; }
+
+
+            const btn = document.getElementById('btn-transform');
+            const editorView = document.getElementById('editor-view');
+            const renderView = document.getElementById('render-view');
+            const statusText = document.getElementById('status-text');
+            const envControls = document.getElementById('env-controls');
+            const zoomPanel = document.getElementById('zoom-panel');
+            const toolboxPanel = document.getElementById('toolbox-panel');
+            const btns2D = document.getElementById('action-buttons-2d');
+            const slider3D = document.getElementById('action-slider-3d');
+            const exportBtns = document.getElementById('export-buttons');
+            const slider = document.getElementById('progress-slider');
+
+
+            is3DMode = !is3DMode;
+
+
+            if (is3DMode) {
+                editorView.style.display = 'none';
+                renderView.style.display = 'block';
+                btn.innerHTML = "↩ 返回设计";
+                btn.style.background = "#ffffff"; btn.style.color = "var(--text-main)";
+                statusText.innerHTML = "拖拽屏幕全方位观察，满意后可导出图片或3D打印文件！";
+                
+                btns2D.style.display = 'none';
+                envControls.style.display = 'none'; 
+                slider3D.style.display = 'flex';
+                exportBtns.style.display = 'flex'; 
+                zoomPanel.style.display = 'flex'; // 唤出大屏放大缩小组件
+                toolboxPanel.style.pointerEvents = 'none'; toolboxPanel.style.opacity = '0.3';
+                
+                if(!scene) init3D();
+                build3DGeometry(); 
+                
+                currentAngle = 0.01; targetAngle = Math.PI * 2; slider.value = 0.01;
+                updateLatheMeshes(0.01); 
+                
+                isAutoAnimating = true; animate3D();
+
+
+            } else {
+                editorView.style.display = 'block';
+                renderView.style.display = 'none';
+                btn.innerHTML = "3D 变身";
+                btn.style.background = "var(--tiffany)"; btn.style.color = "#ffffff";
+                statusText.innerHTML = "拖拽图形，拉动顶点，发挥创意拼接你的专属图案";
+                
+                btns2D.style.display = 'flex';
+                envControls.style.display = 'flex';
+                slider3D.style.display = 'none';
+                exportBtns.style.display = 'none'; 
+                zoomPanel.style.display = 'none'; // 隐藏大屏放大缩小组件
+                toolboxPanel.style.pointerEvents = 'auto'; toolboxPanel.style.opacity = '1';
+
+
+                cancelAnimationFrame(animationRequestId);
+            }
+        }
+
+
+        function build3DGeometry() {
+            solids.forEach(obj => {
+                if (obj.mesh) { obj.mesh.geometry.dispose(); scene.remove(obj.mesh); }
+                if (obj.flatMesh) { obj.flatMesh.children.forEach(c => c.geometry.dispose()); scene.remove(obj.flatMesh); }
+            });
+            solids = [];
+            const axisX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+
+
+            shapes.forEach(shape => {
+                let basePoints = [];
+                let shape2D = new THREE.Shape();
+                
+                shape.points.forEach((p, index) => {
+                    let x = Math.abs(p.x - axisX); 
+                    if (x < 1) x = 0.01; 
+                    let y = -(p.y - centerY); 
+                    basePoints.push(new THREE.Vector2(x, y));
+                    
+                    if(index === 0) shape2D.moveTo(x, y);
+                    else shape2D.lineTo(x, y);
+                });
+                basePoints.push(basePoints[0].clone());
+
+
+                // 智能识别锐角打断法线平滑，彻底修复圆柱上下底面外凸的光影错觉
+                let lathePoints = [];
+                for (let i = 0; i < basePoints.length; i++) {
+                    lathePoints.push(basePoints[i]);
+                    if (i < basePoints.length - 1) {
+                        let p1 = basePoints[i];
+                        let p2 = basePoints[i + 1];
+                        let p0 = i === 0 ? basePoints[basePoints.length - 2] : basePoints[i - 1];
+                        if (p0.distanceTo(p1) > 0.01 && p1.distanceTo(p2) > 0.01) {
+                            let d1 = new THREE.Vector2().subVectors(p1, p0).normalize();
+                            let d2 = new THREE.Vector2().subVectors(p2, p1).normalize();
+                            if (d1.dot(d2) < 0.95) { 
+                                lathePoints.push(basePoints[i].clone());
+                            }
+                        }
+                    }
+                }
+
+
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: shape.color, side: THREE.DoubleSide, 
+                    roughness: 0.5, metalness: 0.1,
+                    emissive: shape.color, emissiveIntensity: 0.15,
+                    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
+                });
+
+
+                const flatGeo = new THREE.ShapeGeometry(shape2D);
+
+
+                solids.push({ basePoints: basePoints, lathePoints: lathePoints, flatGeo: flatGeo, material: material, mesh: null, flatMesh: null });
+            });
+        }
+
+
+        function updateLatheMeshes(angle) {
+            solids.forEach(solid => {
+                if (solid.mesh) { solid.mesh.geometry.dispose(); solid.mesh.children.forEach(c => c.geometry.dispose()); scene.remove(solid.mesh); }
+                if (solid.flatMesh) { solid.flatMesh.children.forEach(c => c.geometry.dispose()); scene.remove(solid.flatMesh); }
+                
+                const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x1d1d1f, transparent:true, opacity:0.35 });
+
+
+                if (angle >= Math.PI * 2 - 0.01) {
+                    // 全闭合状态
+                    const geometry = new THREE.LatheGeometry(solid.lathePoints, 64, 0, Math.PI * 2);
+                    solid.mesh = new THREE.Mesh(geometry, solid.material);
+                    
+                    // 边缘检测阈值调至 30 度，完美抹除半圆形平滑过渡的黑线
+                    const edgeGeo = new THREE.LatheGeometry(solid.basePoints, 64, 0, Math.PI * 2);
+                    const edges = new THREE.EdgesGeometry(edgeGeo, 30);
+                    solid.mesh.add(new THREE.LineSegments(edges, edgeMaterial));
+                    
+                    scene.add(solid.mesh);
+                } else if (angle <= 0.02) {
+                    // 【绝对0度】：显示二维平面自身
+                    solid.flatMesh = new THREE.Mesh(solid.flatGeo, solid.material);
+                    const flatEdges = new THREE.EdgesGeometry(solid.flatGeo);
+                    solid.flatMesh.add(new THREE.LineSegments(flatEdges, edgeMaterial));
+                    scene.add(solid.flatMesh);
+                } else {
+                    // 【核心修复：中途不再显示平面的残影】，保障“面动”视觉效果
+                    const geometry = new THREE.LatheGeometry(solid.lathePoints, 64, 0, angle);
+                    solid.mesh = new THREE.Mesh(geometry, solid.material);
+                    
+                    const edgeGeo = new THREE.LatheGeometry(solid.basePoints, 64, 0, angle);
+                    const edges = new THREE.EdgesGeometry(edgeGeo, 30);
+                    solid.mesh.add(new THREE.LineSegments(edges, edgeMaterial));
+                    
+                    scene.add(solid.mesh);
+                }
+            });
+        }
+
+
+        function animate3D() {
+            if (!is3DMode) return;
+            animationRequestId = requestAnimationFrame(animate3D);
+            controls.update();
+
+
+            if (isAutoAnimating) {
+                let step = (targetAngle - currentAngle) * 0.05;
+                if (step > 0.03) step = 0.03; 
+                if (step < 0.005) step = 0.005;
+
+
+                if (currentAngle < targetAngle - 0.01) {
+                    currentAngle += step;
+                    if (currentAngle > targetAngle) currentAngle = targetAngle;
+                    updateLatheMeshes(currentAngle);
+                    document.getElementById('progress-slider').value = currentAngle;
+                } else {
+                    currentAngle = targetAngle;
+                    updateLatheMeshes(currentAngle);
+                    document.getElementById('progress-slider').value = currentAngle;
+                    isAutoAnimating = false; 
+                }
+            }
+            renderer.render(scene, camera);
+        }
+
+
+        document.getElementById('progress-slider').addEventListener('input', function() {
+            isAutoAnimating = false; 
+            currentAngle = parseFloat(this.value);
+            if(currentAngle < 0.01) currentAngle = 0.01;
+            updateLatheMeshes(currentAngle);
+            if (!animationRequestId) renderer.render(scene, camera);
+        });
+
+
+        function exportJPG() {
+            renderer.render(scene, camera); 
+            const dataURL = renderer.domElement.toDataURL('image/jpeg', 1.0);
+            const link = document.createElement('a');
+            link.download = '我的面动成体创意作品.jpg';
+            link.href = dataURL;
+            link.click();
+        }
+
+
+        function exportSTL() {
+            if (typeof THREE.STLExporter === 'undefined') {
+                alert("未检测到导出组件，请确保网络连接正常！"); return;
+            }
+            if (currentAngle < Math.PI * 2 - 0.1) {
+                alert("请先将进度条拉满，形成完整的闭合立体图形后再导出打印哦！"); return;
+            }
+
+
+            const exporter = new THREE.STLExporter();
+            const exportScene = new THREE.Scene();
+            
+            solids.forEach(solid => {
+                if (solid.mesh) {
+                    const clone = new THREE.Mesh(solid.mesh.geometry, solid.material);
+                    exportScene.add(clone);
+                }
+            });
+
+
+            const stlString = exporter.parse(exportScene);
+            const blob = new Blob([stlString], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = '创客实验室_3D打印模型.stl';
+            link.click();
+        }
+        
+        renderSVG();
+    </script>
+</body>
+</html>
