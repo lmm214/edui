@@ -5,7 +5,6 @@
     <title>探索周长</title>
     <style>
         :root {
-            /* 保持原配色：米色背景，淡蓝填充，深青边框 */
             --bg-color: #F4F3EC;
             --grid-size: 60px;
             --fill-color: rgba(178, 226, 242, 0.8);
@@ -31,7 +30,6 @@
             justify-content: space-between;
             align-items: center;
         }
-        /* 标题样式调整：缩小字号、取消加粗、修改颜色 */
         h1 { 
             margin: 0; 
             font-size: 1.2rem; 
@@ -48,6 +46,7 @@
             cursor: pointer;
             font-size: 1rem;
             transition: all 0.2s;
+            z-index: 1000;
         }
         .btn-reset:hover { background: #eee; transform: translateY(-2px); }
         
@@ -77,6 +76,7 @@
             height: var(--grid-size);
             background-color: var(--fill-color);
             position: relative;
+            transition: background-color 0.3s;
         }
         .grid-cell.empty {
             background-color: transparent;
@@ -87,7 +87,7 @@
         .edge {
             position: absolute;
             background-color: var(--border-deep);
-            transition: background-color 0.2s, box-shadow 0.2s;
+            transition: background-color 0.2s, box-shadow 0.2s, transform 0.1s;
             z-index: 50;
             cursor: pointer;
         }
@@ -97,19 +97,23 @@
             box-shadow: 0 0 8px rgba(255, 86, 0, 0.5);
             z-index: 60;
         }
+        /* 可拖动标识：去除箭头符号 */
+        .edge.can-drag.active {
+            cursor: move;
+        }
+
         /* 内部线条点击后的虚线状态 */
-        .edge-h.internal.dashed-active {
+        .edge-h.internal.dashed-active, .edge-h.drag-placeholder {
             background-color: transparent !important;
             background-image: linear-gradient(to right, var(--border-deep) 60%, transparent 60%);
             background-size: 12px 100%;
         }
-        .edge-v.internal.dashed-active {
+        .edge-v.internal.dashed-active, .edge-v.drag-placeholder {
             background-color: transparent !important;
             background-image: linear-gradient(to bottom, var(--border-deep) 60%, transparent 60%);
             background-size: 100% 12px;
         }
 
-        /* 交互热区扩大 */
         .edge::after {
             content: '';
             position: absolute;
@@ -147,12 +151,19 @@
             margin: 0 5px;
         }
         .bump { transform: scale(1.3); }
+
+        /* 拖拽中的样式 */
+        .dragging {
+            opacity: 0.8;
+            z-index: 100;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
     <header>
         <h1>探索：面积与周长的关系</h1>
-        <button class="btn-reset" onclick="resetAll()">重置描边</button>
+        <button class="btn-reset" onclick="resetAll()">重置课件</button>
     </header>
     <main id="main-content">
         <div class="shape-wrapper">
@@ -181,18 +192,20 @@
             shapeD: { grid: [[1,1,1],[1,0,0]], cols: 3, rows: 2 }
         };
 
-        let isDragging = false;
+        let isGlobalDragging = false; 
+        let activeDragElement = null;
+        let dragStartX, dragStartY;
+        let dragInitialPos;
 
         function init() {
             Object.keys(shapesData).forEach(id => renderShape(id));
             
-            const startDrag = () => isDragging = true;
-            const endDrag = () => isDragging = false;
-            
-            window.addEventListener('mousedown', startDrag);
-            window.addEventListener('mouseup', endDrag);
-            window.addEventListener('touchstart', startDrag);
-            window.addEventListener('touchend', endDrag);
+            window.addEventListener('mousedown', (e) => { if(!activeDragElement) isGlobalDragging = true; });
+            window.addEventListener('mouseup', handleGlobalMouseUp);
+            window.addEventListener('mousemove', handleGlobalMouseMove);
+            window.addEventListener('touchstart', (e) => { if(!activeDragElement) isGlobalDragging = true; }, {passive: false});
+            window.addEventListener('touchend', handleGlobalMouseUp);
+            window.addEventListener('touchmove', handleGlobalMouseMove, {passive: false});
         }
 
         function renderShape(shapeId) {
@@ -202,40 +215,46 @@
             container.style.gridTemplateColumns = `repeat(${cols}, var(--grid-size))`;
             container.innerHTML = '';
 
-            // 1. 渲染填充格子
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++) {
                     const cell = document.createElement('div');
                     cell.className = grid[r][c] ? 'grid-cell' : 'grid-cell empty';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
                     container.appendChild(cell);
                 }
             }
 
-            // 2. 渲染边框线段（统一由线段构成，不重叠）
             const step = "var(--grid-size)";
             const halfBorder = "calc(var(--border-width) / 2)";
 
-            // 水平线段
+            // 水平
             for (let r = 0; r <= rows; r++) {
                 for (let c = 0; c < cols; c++) {
                     const top = r > 0 ? grid[r-1][c] : 0;
                     const bottom = r < rows ? grid[r][c] : 0;
                     if (top || bottom) {
                         const isPerimeter = top !== bottom;
-                        createEdge(container, shapeId, 'h', r, c, step, halfBorder, isPerimeter);
+                        const edge = createEdge(container, shapeId, 'h', r, c, step, halfBorder, isPerimeter);
+                        
+                        // 定义可拖动的凹角线段
+                        if (shapeId === 'shapeA' && r === 1 && (c === 0 || c === 2)) edge.classList.add('can-drag');
+                        if (shapeId === 'shapeD' && r === 1 && (c === 1 || c === 2)) edge.classList.add('can-drag');
                     }
                 }
             }
 
-            // 垂直线段
+            // 垂直
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c <= cols; c++) {
                     const left = c > 0 ? grid[r][c-1] : 0;
-                    // 修复此处语法错误：补充三元运算符的默认值 : 0
                     const right = c < cols ? grid[r][c] : 0;
                     if (left || right) {
                         const isPerimeter = left !== right;
-                        createEdge(container, shapeId, 'v', r, c, step, halfBorder, isPerimeter);
+                        const edge = createEdge(container, shapeId, 'v', r, c, step, halfBorder, isPerimeter);
+                        
+                        if (shapeId === 'shapeA' && r === 0 && (c === 1 || c === 2)) edge.classList.add('can-drag');
+                        if (shapeId === 'shapeD' && r === 1 && c === 1) edge.classList.add('can-drag');
                     }
                 }
             }
@@ -244,8 +263,11 @@
         function createEdge(container, shapeId, type, r, c, step, halfBorder, isPerimeter) {
             const edge = document.createElement('div');
             edge.className = `edge edge-${type} ${isPerimeter ? 'perimeter' : 'internal'}`;
+            edge.dataset.r = r;
+            edge.dataset.c = c;
+            edge.dataset.type = type;
+            edge.dataset.shapeId = shapeId;
             
-            // 物理位置对齐
             edge.style.top = `calc(${r} * ${step} - ${halfBorder})`;
             edge.style.left = `calc(${c} * ${step} - ${halfBorder})`;
 
@@ -256,28 +278,118 @@
                         updateCount(shapeId);
                     }
                 } else {
-                    // 内部线段点击切换虚线状态
                     edge.classList.toggle('dashed-active');
                 }
             };
 
-            // 鼠标悬停支持拖动描边
-            edge.addEventListener('mouseover', () => isDragging && toggle());
-            edge.addEventListener('mousedown', toggle);
+            edge.addEventListener('mouseover', () => isGlobalDragging && toggle());
+            edge.addEventListener('mousedown', (e) => {
+                if (edge.classList.contains('can-drag') && edge.classList.contains('active')) {
+                    startDragging(edge, e);
+                } else {
+                    toggle();
+                }
+            });
             
-            // 触摸支持
-            edge.addEventListener('touchmove', (e) => {
-                e.preventDefault();
-                const touch = e.touches[0];
-                const target = document.elementFromPoint(touch.clientX, touch.clientY);
-                if (target && target.classList.contains('edge') && target.parentElement === container) {
-                    const event = new CustomEvent('manual-trigger');
-                    target.dispatchEvent(event);
+            edge.addEventListener('touchstart', (e) => {
+                if (edge.classList.contains('can-drag') && edge.classList.contains('active')) {
+                    startDragging(edge, e.touches[0]);
+                } else {
+                    toggle();
                 }
             }, {passive: false});
 
             edge.addEventListener('manual-trigger', toggle);
             container.appendChild(edge);
+            return edge;
+        }
+
+        function startDragging(el, e) {
+            activeDragElement = el;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            dragInitialPos = {
+                top: parseFloat(window.getComputedStyle(el).top),
+                left: parseFloat(window.getComputedStyle(el).left)
+            };
+            el.classList.add('dragging');
+            
+            // 创建原地占位虚线
+            const placeholder = el.cloneNode();
+            placeholder.className = `edge edge-${el.dataset.type} drag-placeholder`;
+            placeholder.classList.remove('active', 'can-drag', 'dragging');
+            el.parentElement.appendChild(placeholder);
+            el._placeholder = placeholder;
+        }
+
+        function handleGlobalMouseMove(e) {
+            if (activeDragElement) {
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                const dx = clientX - dragStartX;
+                const dy = clientY - dragStartY;
+
+                const shapeId = activeDragElement.dataset.shapeId;
+                const type = activeDragElement.dataset.type;
+                const r = parseInt(activeDragElement.dataset.r);
+                const c = parseInt(activeDragElement.dataset.c);
+
+                // 限制拖动方向
+                if (type === 'h') {
+                    // T形肩部向上，L形凹角向下
+                    const moveY = (shapeId === 'shapeA') ? Math.min(0, dy) : Math.max(0, dy);
+                    activeDragElement.style.top = (dragInitialPos.top + moveY) + 'px';
+                } else {
+                    // T形头部向左/右，L形凹角向右
+                    let moveX = dx;
+                    if (shapeId === 'shapeA' && c === 1) moveX = Math.min(0, dx);
+                    if (shapeId === 'shapeA' && c === 2) moveX = Math.max(0, dx);
+                    if (shapeId === 'shapeD') moveX = Math.max(0, dx);
+                    activeDragElement.style.left = (dragInitialPos.left + moveX) + 'px';
+                }
+            }
+        }
+
+        function handleGlobalMouseUp(e) {
+            isGlobalDragging = false;
+            if (activeDragElement) {
+                const el = activeDragElement;
+                const shapeId = el.dataset.shapeId;
+                const type = el.dataset.type;
+                const r = parseInt(el.dataset.r);
+                const c = parseInt(el.dataset.c);
+                const container = el.parentElement;
+
+                const currentTop = parseFloat(el.style.top);
+                const currentLeft = parseFloat(el.style.left);
+                const distY = Math.abs(currentTop - dragInitialPos.top);
+                const distX = Math.abs(currentLeft - dragInitialPos.left);
+
+                const threshold = 30; // 吸附阈值
+
+                if (distY > threshold || distX > threshold) {
+                    // 成功完成平移补全边界
+                    if (type === 'h') {
+                        const targetR = (shapeId === 'shapeA') ? 0 : 2;
+                        // 移动到目标边界
+                        el.style.top = `calc(${targetR} * var(--grid-size) - (var(--border-width) / 2))`;
+                    } else {
+                        const targetC = (shapeId === 'shapeA') ? (c===1?0:3) : 3;
+                        // 移动到目标边界
+                        el.style.left = `calc(${targetC} * var(--grid-size) - (var(--border-width) / 2))`;
+                    }
+                    el.classList.remove('can-drag');
+                    // 注意：这里移除了 fillCells 调用，角落保持不填充颜色
+                } else {
+                    // 还原
+                    el.style.top = dragInitialPos.top + 'px';
+                    el.style.left = dragInitialPos.left + 'px';
+                    if (el._placeholder) el._placeholder.remove();
+                }
+
+                el.classList.remove('dragging');
+                activeDragElement = null;
+            }
         }
 
         function updateCount(shapeId) {
@@ -293,11 +405,7 @@
         }
 
         function resetAll() {
-            // 清除周长描边
-            document.querySelectorAll('.perimeter.active').forEach(e => e.classList.remove('active'));
-            // 清除内部虚线
-            document.querySelectorAll('.internal.dashed-active').forEach(e => e.classList.remove('dashed-active'));
-            
+            Object.keys(shapesData).forEach(id => renderShape(id));
             document.querySelectorAll('.peri-display span').forEach(s => {
                 s.innerText = '0';
                 s.classList.remove('bump');
