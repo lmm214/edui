@@ -1,0 +1,310 @@
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>探索周长</title>
+    <style>
+        :root {
+            /* 保持原配色：米色背景，淡蓝填充，深青边框 */
+            --bg-color: #F4F3EC;
+            --grid-size: 60px;
+            --fill-color: rgba(178, 226, 242, 0.8);
+            --border-deep: #5D8A99;
+            --highlight-orange: #FF5600;
+            --border-width: 3px;
+        }
+        @media (min-width: 1024px) { :root { --grid-size: 80px; } }
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-color);
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        /* 标题样式调整：缩小字号、取消加粗、修改颜色 */
+        h1 { 
+            margin: 0; 
+            font-size: 1.2rem; 
+            font-weight: normal; 
+            color: #5D8A99; 
+        }
+        .btn-reset {
+            background: white;
+            border: 2px solid var(--border-deep);
+            color: var(--border-deep);
+            padding: 8px 24px;
+            border-radius: 30px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+        .btn-reset:hover { background: #eee; transform: translateY(-2px); }
+        
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            place-items: center;
+        }
+        .shape-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+        .shape-container {
+            display: grid;
+            position: relative;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .grid-cell {
+            width: var(--grid-size);
+            height: var(--grid-size);
+            background-color: var(--fill-color);
+            position: relative;
+        }
+        .grid-cell.empty {
+            background-color: transparent;
+            visibility: hidden;
+        }
+        
+        /* 统一线段层 */
+        .edge {
+            position: absolute;
+            background-color: var(--border-deep);
+            transition: background-color 0.2s, box-shadow 0.2s;
+            z-index: 50;
+            cursor: pointer;
+        }
+        /* 外周边缘激活状态 */
+        .edge.perimeter.active {
+            background-color: var(--highlight-orange);
+            box-shadow: 0 0 8px rgba(255, 86, 0, 0.5);
+            z-index: 60;
+        }
+        /* 内部线条点击后的虚线状态 */
+        .edge-h.internal.dashed-active {
+            background-color: transparent !important;
+            background-image: linear-gradient(to right, var(--border-deep) 60%, transparent 60%);
+            background-size: 12px 100%;
+        }
+        .edge-v.internal.dashed-active {
+            background-color: transparent !important;
+            background-image: linear-gradient(to bottom, var(--border-deep) 60%, transparent 60%);
+            background-size: 100% 12px;
+        }
+
+        /* 交互热区扩大 */
+        .edge::after {
+            content: '';
+            position: absolute;
+            inset: -12px;
+        }
+        
+        .edge.internal {
+            opacity: 0.6;
+        }
+        
+        .edge-h { 
+            height: var(--border-width); 
+            width: calc(var(--grid-size) + var(--border-width));
+        }
+        .edge-v { 
+            width: var(--border-width); 
+            height: calc(var(--grid-size) + var(--border-width));
+        }
+        
+        .peri-display {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--border-deep);
+            background: white;
+            padding: 5px 20px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .peri-display span {
+            color: var(--highlight-orange);
+            font-size: 1.8rem;
+            display: inline-block;
+            transition: transform 0.2s;
+            margin: 0 5px;
+        }
+        .bump { transform: scale(1.3); }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>探索：面积与周长的关系</h1>
+        <button class="btn-reset" onclick="resetAll()">重置描边</button>
+    </header>
+    <main id="main-content">
+        <div class="shape-wrapper">
+            <div id="shapeA" class="shape-container"></div>
+            <div class="peri-display">周长: <span id="periA">0</span> cm</div>
+        </div>
+        <div class="shape-wrapper">
+            <div id="shapeB" class="shape-container"></div>
+            <div class="peri-display">周长: <span id="periB">0</span> cm</div>
+        </div>
+        <div class="shape-wrapper">
+            <div id="shapeC" class="shape-container"></div>
+            <div class="peri-display">周长: <span id="periC">0</span> cm</div>
+        </div>
+        <div class="shape-wrapper">
+            <div id="shapeD" class="shape-container"></div>
+            <div class="peri-display">周长: <span id="periD">0</span> cm</div>
+        </div>
+    </main>
+
+    <script>
+        const shapesData = {
+            shapeA: { grid: [[0,1,0],[1,1,1]], cols: 3, rows: 2 },
+            shapeB: { grid: [[1,1,1,1]], cols: 4, rows: 1 },
+            shapeC: { grid: [[1,1],[1,1]], cols: 2, rows: 2 },
+            shapeD: { grid: [[1,1,1],[1,0,0]], cols: 3, rows: 2 }
+        };
+
+        let isDragging = false;
+
+        function init() {
+            Object.keys(shapesData).forEach(id => renderShape(id));
+            
+            const startDrag = () => isDragging = true;
+            const endDrag = () => isDragging = false;
+            
+            window.addEventListener('mousedown', startDrag);
+            window.addEventListener('mouseup', endDrag);
+            window.addEventListener('touchstart', startDrag);
+            window.addEventListener('touchend', endDrag);
+        }
+
+        function renderShape(shapeId) {
+            const container = document.getElementById(shapeId);
+            const { grid, cols, rows } = shapesData[shapeId];
+            
+            container.style.gridTemplateColumns = `repeat(${cols}, var(--grid-size))`;
+            container.innerHTML = '';
+
+            // 1. 渲染填充格子
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = grid[r][c] ? 'grid-cell' : 'grid-cell empty';
+                    container.appendChild(cell);
+                }
+            }
+
+            // 2. 渲染边框线段（统一由线段构成，不重叠）
+            const step = "var(--grid-size)";
+            const halfBorder = "calc(var(--border-width) / 2)";
+
+            // 水平线段
+            for (let r = 0; r <= rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const top = r > 0 ? grid[r-1][c] : 0;
+                    const bottom = r < rows ? grid[r][c] : 0;
+                    if (top || bottom) {
+                        const isPerimeter = top !== bottom;
+                        createEdge(container, shapeId, 'h', r, c, step, halfBorder, isPerimeter);
+                    }
+                }
+            }
+
+            // 垂直线段
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c <= cols; c++) {
+                    const left = c > 0 ? grid[r][c-1] : 0;
+                    // 修复此处语法错误：补充三元运算符的默认值 : 0
+                    const right = c < cols ? grid[r][c] : 0;
+                    if (left || right) {
+                        const isPerimeter = left !== right;
+                        createEdge(container, shapeId, 'v', r, c, step, halfBorder, isPerimeter);
+                    }
+                }
+            }
+        }
+
+        function createEdge(container, shapeId, type, r, c, step, halfBorder, isPerimeter) {
+            const edge = document.createElement('div');
+            edge.className = `edge edge-${type} ${isPerimeter ? 'perimeter' : 'internal'}`;
+            
+            // 物理位置对齐
+            edge.style.top = `calc(${r} * ${step} - ${halfBorder})`;
+            edge.style.left = `calc(${c} * ${step} - ${halfBorder})`;
+
+            const toggle = () => {
+                if (isPerimeter) {
+                    if (!edge.classList.contains('active')) {
+                        edge.classList.add('active');
+                        updateCount(shapeId);
+                    }
+                } else {
+                    // 内部线段点击切换虚线状态
+                    edge.classList.toggle('dashed-active');
+                }
+            };
+
+            // 鼠标悬停支持拖动描边
+            edge.addEventListener('mouseover', () => isDragging && toggle());
+            edge.addEventListener('mousedown', toggle);
+            
+            // 触摸支持
+            edge.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                if (target && target.classList.contains('edge') && target.parentElement === container) {
+                    const event = new CustomEvent('manual-trigger');
+                    target.dispatchEvent(event);
+                }
+            }, {passive: false});
+
+            edge.addEventListener('manual-trigger', toggle);
+            container.appendChild(edge);
+        }
+
+        function updateCount(shapeId) {
+            const activeEdges = document.querySelectorAll(`#${shapeId} .perimeter.active`).length;
+            const displayId = 'peri' + shapeId.replace('shape', '');
+            const span = document.getElementById(displayId);
+            if (span && span.innerText != activeEdges) {
+                span.innerText = activeEdges;
+                span.classList.remove('bump');
+                void span.offsetWidth; 
+                span.classList.add('bump');
+            }
+        }
+
+        function resetAll() {
+            // 清除周长描边
+            document.querySelectorAll('.perimeter.active').forEach(e => e.classList.remove('active'));
+            // 清除内部虚线
+            document.querySelectorAll('.internal.dashed-active').forEach(e => e.classList.remove('dashed-active'));
+            
+            document.querySelectorAll('.peri-display span').forEach(s => {
+                s.innerText = '0';
+                s.classList.remove('bump');
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
