@@ -289,11 +289,6 @@
             <line id="ghostLine" x1="5" y1="20" x2="75" y2="20" stroke="rgba(0,0,0,0.2)" stroke-width="1"></line>
         </svg>
     </div>
-
-    <a href="http://www.xtai2026.com" target="_blank" class="watermark">
-        习题AI小助手 http://www.xtai2026.com
-    </a>
-
     <script>
         // 配置参数
         const BRICK_WIDTH = 80;
@@ -452,17 +447,19 @@
             wallSvg.innerHTML = '';
             
             wallBricks.forEach(b => {
-                if (!b.present && !b.isFilled) {
-                    // 渲染空缺占位
-                    let rect = document.createElementNS(svgNS, 'rect');
-                    rect.setAttribute('x', b.x);
-                    rect.setAttribute('y', b.y);
-                    rect.setAttribute('width', b.width);
-                    rect.setAttribute('height', b.height);
-                    rect.setAttribute('fill', '#e0e0e0');
-                    wallSvg.appendChild(rect);
-                } else {
-                    // 渲染原生砖 或 用户补上的砖
+                // 1. 无论是否被补上，只要是空缺位置，始终在最底层绘制灰色的空缺占位背景
+                if (!b.present) {
+                    let bgRect = document.createElementNS(svgNS, 'rect');
+                    bgRect.setAttribute('x', b.x);
+                    bgRect.setAttribute('y', b.y);
+                    bgRect.setAttribute('width', b.width);
+                    bgRect.setAttribute('height', b.height);
+                    bgRect.setAttribute('fill', '#e0e0e0');
+                    wallSvg.appendChild(bgRect);
+                }
+                
+                // 2. 如果是原生砖，或者是已经被用户补上的砖，则在顶层绘制砖块图形
+                if (b.present || b.isFilled) {
                     let g = document.createElementNS(svgNS, 'g');
                     let rect = document.createElementNS(svgNS, 'rect');
                     rect.setAttribute('x', b.x);
@@ -491,6 +488,7 @@
                     g.appendChild(rect);
                     g.appendChild(line);
 
+                    // 绑定拖拽事件
                     if (!b.present && b.isFilled) {
                         g.style.cursor = 'pointer';
                         g.setAttribute('pointer-events', 'auto');
@@ -500,7 +498,8 @@
                                 b.isFilled = false;
                                 renderWall();
                             } else if (mode === 'normal') {
-                                startDrag(e, b);
+                                // 传入当前的 DOM 元素 g
+                                startDrag(e, b, g);
                             }
                         };
                         g.addEventListener('mousedown', startDragEvent);
@@ -512,7 +511,7 @@
         }
         
         // --- 拖拽交互核心系统 ---
-        function startDrag(e, source) {
+        function startDrag(e, source, svgGroup = null) {
             if (mode !== 'normal') return;
             e.preventDefault();
             
@@ -540,8 +539,16 @@
             dragGhost.classList.add('breathing');
             
             if (source !== 'bottom') {
+                // 标记逻辑状态为已移出
                 source.isFilled = false;
-                renderWall();
+                
+                if (svgGroup) {
+                    // 【核心修复】不重新渲染墙面(避免破坏DOM引发触控断连)
+                    // 而是仅仅在视觉上隐藏这个元素。由于底层已经有了灰色占位，视觉效果完美。
+                    svgGroup.style.visibility = 'hidden';
+                } else {
+                    renderWall();
+                }
             }
         }
 
