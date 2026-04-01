@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>补墙游戏</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            /* 更有层次感的渐变背景，突出玻璃质感 */
+            background: linear-gradient(135deg, #e0f2f1 0%, #c8e6c9 100%);
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+        .container {
+            position: relative;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+        }
+        
+        /* 玻璃质感悬浮工具栏 (已垂直居中) */
+        .toolbar {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            left: 25px;
+            width: 170px;
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            border-radius: 16px;
+            padding: 20px 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 100;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+        }
+        .toolbar h3 {
+            font-size: 16px;
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 10px;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+        }
+        button {
+            padding: 12px 8px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            color: #34495e;
+            transition: all 0.2s;
+            touch-action: manipulation;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        button:hover { 
+            background: rgba(255, 255, 255, 0.9); 
+            transform: translateY(-1px);
+        }
+        button.active {
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+            border-color: #4CAF50;
+        }
+        button.delete-active {
+            background: rgba(244, 67, 54, 0.9);
+            color: white;
+            border-color: #f44336;
+        }
+        button.move-active {
+            background: rgba(33, 150, 243, 0.9);
+            color: white;
+            border-color: #2196F3;
+        }
+        .row-control {
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            padding-top: 15px;
+            margin-top: 10px;
+        }
+        .row-control label {
+            display: block;
+            font-size: 13px;
+            color: #444;
+            text-align: center;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .row-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .row-buttons button {
+            width: 45%;
+            padding: 8px;
+            font-size: 18px;
+        }
+        #rowCount {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 8px 0 0 0;
+        }
+
+        /* 主体操作区 */
+        .main-area {
+            flex: 1;
+            /* 压缩边距，为左侧悬浮窗预留一定空间的同时，让右侧墙面极限放大 */
+            padding: 20px 20px 20px 210px; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden; /* 防止内部元素撑破边界 */
+        }
+        /* 将墙面和底部砖块包在一起，形成紧密的整体 */
+        .content-wrapper {
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 15px; /* 墙面与下方砖块的固定间距 */
+        }
+        .wall-container {
+            /* content-box 确保边框(3px)不会往内挤压，解决了与SVG之间的留白空隙 */
+            box-sizing: content-box; 
+            background: #f5f5f5;
+            border: 3px solid #333;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            /* 宽高将完全由JS动态计算接管 */
+            position: relative;
+        }
+        #wallSvg {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* 底部砖块源 */
+        .brick-selector {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 5px;
+            z-index: 10;
+        }
+        .brick-option {
+            cursor: grab;
+            transition: transform 0.2s;
+            touch-action: none;
+        }
+        .brick-option:active {
+            cursor: grabbing;
+        }
+        .brick-option svg {
+            display: block;
+            /* 尺寸由JS动态控制以严格匹配墙面被放大的砖块 */
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2));
+        }
+
+        /* 画笔SVG覆盖层 */
+        #paintLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 50;
+        }
+        
+        /* 拖拽视觉替身 */
+        #dragGhost {
+            display: none;
+            position: absolute;
+            pointer-events: none;
+            z-index: 9999;
+            transform: translate(-50%, -50%);
+        }
+        /* 拖拽呼吸感动画 */
+        .breathing {
+            animation: breathe 1.2s infinite ease-in-out;
+        }
+        @keyframes breathe {
+            0% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+            100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .watermark {
+            position: absolute;
+            bottom: 15px;
+            left: 25px;
+            font-size: 12px;
+            color: #7f8c8d;
+            text-decoration: none;
+            z-index: 100;
+        }
+        .watermark:hover {
+            color: #34495e;
+        }
+        
+        /* 响应式调整：小屏幕缩小左边距并重置居中状态 */
+        @media (max-width: 768px) {
+            .main-area {
+                padding: 120px 10px 10px 10px; /* 悬浮窗放顶部或者自适应重叠 */
+            }
+            .toolbar {
+                width: calc(100% - 40px);
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: center;
+                padding: 10px;
+                top: 10px; 
+                left: 20px; 
+                right: 20px;
+                transform: none; /* 取消垂直居中 */
+            }
+            .row-control { margin-top: 0; padding-top: 0; border: none; display: flex; align-items: center; gap: 10px; }
+            .watermark { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 玻璃质感悬浮工具栏 -->
+        <div class="toolbar">
+            <h3>🧱 补墙游戏</h3>
+            
+            <button id="moveBtn" class="move-active" onclick="setMode('normal')">↔️ 拖拽补砖</button>
+            <button id="deleteBtn" onclick="setMode('delete')">🗑️ 消除模式</button>
+            <button id="penBtn" onclick="setMode('pen')">✏️ 画笔批注</button>
+            <button id="eraserBtn" onclick="setMode('eraser')">🧽 橡皮擦</button>
+            <button onclick="resetWall()">🔄 重置墙面</button>
+            
+            <div class="row-control">
+                <label>墙面行数</label>
+                <div class="row-buttons">
+                    <button onclick="changeRows(-1)">−</button>
+                    <button onclick="changeRows(1)">+</button>
+                </div>
+                <div id="rowCount">5行</div>
+            </div>
+        </div>
+        
+        <!-- 主体操作区 -->
+        <div class="main-area">
+            <!-- 将墙和底部砖块合并包裹，整体居中自适应 -->
+            <div class="content-wrapper">
+                <div class="wall-container">
+                    <!-- preserveAspectRatio="none" 确保无死角地填满内容区，消除任何浮点数误差产生的白边 -->
+                    <svg id="wallSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+                </div>
+                
+                <!-- 底部砖块源，紧贴在墙面下方 -->
+                <div class="brick-selector">
+                    <div class="brick-option" id="brickSource">
+                        <svg id="sourceSvg" viewBox="0 0 80 40">
+                            <!-- 和墙面一致的泥砖色，加上亮橙色高亮边框 -->
+                            <rect x="1" y="1" width="78" height="38" fill="#d4a574" stroke="#ff9800" stroke-width="3"></rect>
+                            <line x1="5" y1="20" x2="75" y2="20" stroke="rgba(0,0,0,0.2)" stroke-width="1"></line>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 全屏涂鸦层 -->
+    <svg id="paintLayer" xmlns="http://www.w3.org/2000/svg"></svg>
+    
+    <!-- 拖拽虚拟体（呼吸感） -->
+    <div id="dragGhost">
+        <svg id="ghostSvg" viewBox="0 0 80 40">
+            <rect id="ghostRect" x="1" y="1" width="78" height="38" fill="#d4a574" stroke="#ff9800" stroke-width="3"></rect>
+            <line id="ghostLine" x1="5" y1="20" x2="75" y2="20" stroke="rgba(0,0,0,0.2)" stroke-width="1"></line>
+        </svg>
+    </div>
+
+    <a href="http://www.xtai2026.com" target="_blank" class="watermark">
+        习题AI小助手 http://www.xtai2026.com
+    </a>
+
+    <script>
+        // 配置参数
+        const BRICK_WIDTH = 80;
+        const BRICK_HEIGHT = 40;
+        const COLS = 8; // 整砖列数，墙面总宽: 8 * 80 = 640
+        const svgNS = "http://www.w3.org/2000/svg";
+        
+        // 状态管理
+        let rows = 5;
+        let wallBricks = []; 
+        let mode = 'normal'; 
+        
+        // 拖拽相关状态
+        let isDragging = false;
+        let dragSource = null; 
+        
+        // 涂鸦状态
+        let isDrawing = false;
+        let currentPath = null;
+        let pathData = '';
+
+        // DOM元素
+        const wallSvg = document.getElementById('wallSvg');
+        const paintLayer = document.getElementById('paintLayer');
+        const dragGhost = document.getElementById('dragGhost');
+        const brickSource = document.getElementById('brickSource');
+        const sourceSvg = document.getElementById('sourceSvg');
+        const ghostSvg = document.getElementById('ghostSvg');
+        
+        // 初始化
+        function init() {
+            updateWallViewBox();
+            generateWall();
+            bindEvents();
+            // 监听窗口大小变化，实时拉伸墙面以利用最大空间
+            window.addEventListener('resize', () => requestAnimationFrame(syncWallSize));
+        }
+        
+        // 更新墙面 viewBox 映射，并触发彻底的宽高等比自适应
+        function updateWallViewBox() {
+            const width = COLS * BRICK_WIDTH;
+            const height = rows * BRICK_HEIGHT;
+            wallSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            
+            // 确保 DOM 渲染完比例后，计算边界最大化
+            requestAnimationFrame(syncWallSize);
+        }
+
+        // 精确计算墙体容器尺寸，确保其最大化并保持完美长宽比例不越界
+        function syncWallSize() {
+            const wrapper = document.querySelector('.content-wrapper');
+            const container = document.querySelector('.wall-container');
+            const selector = document.querySelector('.brick-selector');
+            
+            // 核心修复：暂时隐藏容器，从而获取到外层真实的“最大可用空间”，不被之前的容器撑开影响
+            const originalDisplay = container.style.display;
+            container.style.display = 'none';
+            
+            const wrapperWidth = wrapper.clientWidth;
+            const wrapperHeight = wrapper.clientHeight - selector.offsetHeight - 15;
+            
+            // 恢复容器显示
+            container.style.display = originalDisplay || 'block';
+            
+            if (wrapperWidth <= 0 || wrapperHeight <= 0) return;
+            
+            // 扣除边框的厚度（两侧边框各 3px，共 6px），确保边框不会溢出可视区域
+            const availableWidth = wrapperWidth - 6;
+            const availableHeight = wrapperHeight - 6;
+            
+            // 墙面固有的长宽比
+            const wallAspect = (COLS * BRICK_WIDTH) / (rows * BRICK_HEIGHT);
+            // 外部环境长宽比
+            const wrapperAspect = availableWidth / availableHeight;
+            
+            // 决定如何贪婪地填充
+            if (wallAspect > wrapperAspect) {
+                // 宽度优先铺满
+                container.style.width = availableWidth + 'px';
+                container.style.height = (availableWidth / wallAspect) + 'px';
+            } else {
+                // 高度优先铺满
+                container.style.height = availableHeight + 'px';
+                container.style.width = (availableHeight * wallAspect) + 'px';
+            }
+            
+            // 顺带同步底部源砖块及重影物理大小，绝对1:1
+            syncBrickSize();
+        }
+
+        // 同步底部源砖块与墙面砖块在屏幕上显示的物理大小
+        function syncBrickSize() {
+            const wallRect = wallSvg.getBoundingClientRect();
+            if(wallRect.width === 0) return;
+            
+            // 计算屏幕上单块砖被放大后真实的宽高像素
+            const brickDomWidth = wallRect.width / COLS;
+            const brickDomHeight = wallRect.height / rows;
+            
+            if(sourceSvg) {
+                sourceSvg.style.width = `${brickDomWidth}px`;
+                sourceSvg.style.height = `${brickDomHeight}px`;
+            }
+            if(ghostSvg) {
+                ghostSvg.style.width = `${brickDomWidth}px`;
+                ghostSvg.style.height = `${brickDomHeight}px`;
+            }
+        }
+        
+        // 生成墙面
+        function generateWall() {
+            wallBricks = [];
+            for (let r = 0; r < rows; r++) {
+                let y = r * BRICK_HEIGHT;
+                let isTopOrBottom = (r === 0 || r === rows - 1); 
+                
+                if (r % 2 === 0) {
+                    for (let c = 0; c < COLS; c++) {
+                        let x = c * BRICK_WIDTH;
+                        let isMissing = !isTopOrBottom && Math.random() < 0.4;
+                        wallBricks.push({
+                            id: `r${r}c${c}`,
+                            x, y, width: BRICK_WIDTH, height: BRICK_HEIGHT,
+                            type: 'full', present: !isMissing, isFilled: false
+                        });
+                    }
+                } else {
+                    wallBricks.push({
+                        id: `r${r}left`,
+                        x: 0, y, width: BRICK_WIDTH / 2, height: BRICK_HEIGHT,
+                        type: 'half', present: true, isFilled: false
+                    });
+                    
+                    for (let c = 0; c < COLS - 1; c++) {
+                        let x = BRICK_WIDTH / 2 + c * BRICK_WIDTH;
+                        let isMissing = !isTopOrBottom && Math.random() < 0.4;
+                        wallBricks.push({
+                            id: `r${r}c${c}`,
+                            x, y, width: BRICK_WIDTH, height: BRICK_HEIGHT,
+                            type: 'full', present: !isMissing, isFilled: false
+                        });
+                    }
+                    
+                    wallBricks.push({
+                        id: `r${r}right`,
+                        x: BRICK_WIDTH / 2 + (COLS - 1) * BRICK_WIDTH, y, width: BRICK_WIDTH / 2, height: BRICK_HEIGHT,
+                        type: 'half', present: true, isFilled: false
+                    });
+                }
+            }
+            renderWall();
+        }
+        
+        // 渲染墙面到 SVG
+        function renderWall() {
+            wallSvg.innerHTML = '';
+            
+            wallBricks.forEach(b => {
+                if (!b.present && !b.isFilled) {
+                    // 渲染空缺占位
+                    let rect = document.createElementNS(svgNS, 'rect');
+                    rect.setAttribute('x', b.x);
+                    rect.setAttribute('y', b.y);
+                    rect.setAttribute('width', b.width);
+                    rect.setAttribute('height', b.height);
+                    rect.setAttribute('fill', '#e0e0e0');
+                    wallSvg.appendChild(rect);
+                } else {
+                    // 渲染原生砖 或 用户补上的砖
+                    let g = document.createElementNS(svgNS, 'g');
+                    let rect = document.createElementNS(svgNS, 'rect');
+                    rect.setAttribute('x', b.x);
+                    rect.setAttribute('y', b.y);
+                    rect.setAttribute('width', b.width);
+                    rect.setAttribute('height', b.height);
+                    
+                    if (b.present) {
+                        rect.setAttribute('fill', '#d4a574');
+                        rect.setAttribute('stroke', '#8b6914');
+                        rect.setAttribute('stroke-width', '2');
+                    } else if (b.isFilled) {
+                        rect.setAttribute('fill', '#999999');
+                        rect.setAttribute('stroke', '#666666');
+                        rect.setAttribute('stroke-width', '2');
+                    }
+                    
+                    let line = document.createElementNS(svgNS, 'line');
+                    line.setAttribute('x1', b.x + 5);
+                    line.setAttribute('y1', b.y + b.height / 2);
+                    line.setAttribute('x2', b.x + b.width - 5);
+                    line.setAttribute('y2', b.y + b.height / 2);
+                    line.setAttribute('stroke', 'rgba(0,0,0,0.1)');
+                    line.setAttribute('stroke-width', '1');
+
+                    g.appendChild(rect);
+                    g.appendChild(line);
+
+                    if (!b.present && b.isFilled) {
+                        g.style.cursor = 'pointer';
+                        g.setAttribute('pointer-events', 'auto');
+                        const startDragEvent = (e) => {
+                            e.stopPropagation();
+                            if (mode === 'delete') {
+                                b.isFilled = false;
+                                renderWall();
+                            } else if (mode === 'normal') {
+                                startDrag(e, b);
+                            }
+                        };
+                        g.addEventListener('mousedown', startDragEvent);
+                        g.addEventListener('touchstart', startDragEvent, {passive: false});
+                    }
+                    wallSvg.appendChild(g);
+                }
+            });
+        }
+        
+        // --- 拖拽交互核心系统 ---
+        function startDrag(e, source) {
+            if (mode !== 'normal') return;
+            e.preventDefault();
+            
+            isDragging = true;
+            dragSource = source;
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            // 根据拖拽源动态改变 ghost 的颜色
+            const ghostRect = document.getElementById('ghostRect');
+            if (source === 'bottom') {
+                ghostRect.setAttribute('fill', '#d4a574');
+                ghostRect.setAttribute('stroke', '#ff9800'); // 亮橙色
+            } else {
+                ghostRect.setAttribute('fill', '#999999');
+                ghostRect.setAttribute('stroke', '#666666'); // 补砖的灰色
+            }
+
+            dragGhost.style.display = 'block';
+            dragGhost.style.left = clientX + 'px';
+            dragGhost.style.top = clientY + 'px';
+            
+            // 增加呼吸感动画
+            dragGhost.classList.add('breathing');
+            
+            if (source !== 'bottom') {
+                source.isFilled = false;
+                renderWall();
+            }
+        }
+
+        // 将屏幕坐标映射到 SVG viewBox 坐标
+        function getSvgPoint(svg, clientX, clientY) {
+            const pt = svg.createSVGPoint();
+            pt.x = clientX;
+            pt.y = clientY;
+            return pt.matrixTransform(svg.getScreenCTM().inverse());
+        }
+
+        function handleDragEnd(e) {
+            if (!isDragging) return;
+            isDragging = false;
+            dragGhost.style.display = 'none';
+            dragGhost.classList.remove('breathing');
+            
+            const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+            const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+            
+            const pt = getSvgPoint(wallSvg, clientX, clientY);
+            
+            let targetBrick = null;
+            for (let b of wallBricks) {
+                if (!b.present && !b.isFilled) {
+                    const cx = b.x + b.width / 2;
+                    const cy = b.y + b.height / 2;
+                    if (Math.abs(pt.x - cx) < 40 && Math.abs(pt.y - cy) < 20) {
+                        targetBrick = b;
+                        break;
+                    }
+                }
+            }
+            
+            if (targetBrick) {
+                targetBrick.isFilled = true;
+            } else {
+                if (dragSource !== 'bottom') {
+                    dragSource.isFilled = true;
+                }
+            }
+            
+            renderWall();
+            dragSource = null;
+        }
+
+        // --- 画笔系统 ---
+        function handlePaintStart(e) {
+            if (mode !== 'pen' && mode !== 'eraser') return;
+            isDrawing = true;
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            if (mode === 'pen') {
+                currentPath = document.createElementNS(svgNS, 'path');
+                currentPath.setAttribute('stroke', '#2980b9');
+                currentPath.setAttribute('stroke-width', '4');
+                currentPath.setAttribute('fill', 'none');
+                currentPath.setAttribute('stroke-linecap', 'round');
+                currentPath.setAttribute('stroke-linejoin', 'round');
+                
+                pathData = `M ${clientX} ${clientY}`;
+                currentPath.setAttribute('d', pathData);
+                paintLayer.appendChild(currentPath);
+            } else if (mode === 'eraser') {
+                eraseAtPoint(clientX, clientY);
+            }
+        }
+
+        function handlePaintMove(e) {
+            if (!isDrawing) return;
+            e.preventDefault(); 
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            if (mode === 'pen') {
+                pathData += ` L ${clientX} ${clientY}`;
+                currentPath.setAttribute('d', pathData);
+            } else if (mode === 'eraser') {
+                eraseAtPoint(clientX, clientY);
+            }
+        }
+
+        function handlePaintEnd() {
+            isDrawing = false;
+            currentPath = null;
+        }
+
+        function eraseAtPoint(x, y) {
+            const oldEvents = paintLayer.style.pointerEvents;
+            paintLayer.style.pointerEvents = 'none'; 
+            
+            const offsets = [[0,0], [-8,0], [8,0], [0,-8], [0,8]];
+            offsets.forEach(([dx, dy]) => {
+                const els = document.elementsFromPoint(x + dx, y + dy);
+                for (let el of els) {
+                    if (el.tagName === 'path' && el.parentElement === paintLayer) {
+                        el.remove();
+                    }
+                }
+            });
+            
+            paintLayer.style.pointerEvents = oldEvents;
+        }
+
+        // 事件绑定
+        function bindEvents() {
+            brickSource.addEventListener('mousedown', (e) => startDrag(e, 'bottom'));
+            brickSource.addEventListener('touchstart', (e) => startDrag(e, 'bottom'), {passive: false});
+            
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                dragGhost.style.left = e.clientX + 'px';
+                dragGhost.style.top = e.clientY + 'px';
+            });
+            
+            document.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                dragGhost.style.left = e.touches[0].clientX + 'px';
+                dragGhost.style.top = e.touches[0].clientY + 'px';
+            }, {passive: false});
+            
+            document.addEventListener('mouseup', handleDragEnd);
+            document.addEventListener('touchend', handleDragEnd);
+            
+            paintLayer.addEventListener('mousedown', handlePaintStart);
+            paintLayer.addEventListener('mousemove', handlePaintMove);
+            window.addEventListener('mouseup', handlePaintEnd);
+            
+            paintLayer.addEventListener('touchstart', handlePaintStart, {passive: false});
+            paintLayer.addEventListener('touchmove', handlePaintMove, {passive: false});
+            window.addEventListener('touchend', handlePaintEnd);
+        }
+        
+        // 模式切换
+        function setMode(newMode) {
+            mode = newMode;
+            document.querySelectorAll('.toolbar button').forEach(btn => {
+                btn.classList.remove('active', 'delete-active', 'move-active');
+            });
+            
+            if (mode === 'normal') {
+                document.getElementById('moveBtn').classList.add('move-active');
+            } else if (mode === 'delete') {
+                document.getElementById('deleteBtn').classList.add('delete-active');
+            } else if (mode === 'pen') {
+                document.getElementById('penBtn').classList.add('active');
+            } else if (mode === 'eraser') {
+                document.getElementById('eraserBtn').classList.add('active');
+            }
+            
+            if (mode === 'pen' || mode === 'eraser') {
+                paintLayer.style.pointerEvents = 'auto';
+            } else {
+                paintLayer.style.pointerEvents = 'none';
+            }
+        }
+        
+        function changeRows(delta) {
+            const newRows = Math.max(3, Math.min(10, rows + delta));
+            if (newRows !== rows) {
+                rows = newRows;
+                document.getElementById('rowCount').textContent = rows + '行';
+                updateWallViewBox();
+                generateWall();
+            }
+        }
+        
+        function resetWall() {
+            generateWall();
+            paintLayer.innerHTML = '';
+        }
+        
+        // 启动应用
+        init();
+    </script>
+</body>
+</html>
