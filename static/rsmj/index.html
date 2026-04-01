@@ -1,0 +1,718 @@
+<html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>认识面积</title>
+    <style>
+        :root {
+            --primary-pink: #FF6B9D;
+            --primary-blue: #4A90E2;
+            --bg-light: #F0F4F8;
+            --shape-yellow: #FFD93D;
+            --shape-green: #6BCB77;
+            --shape-triangle: #95CD41;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: var(--bg-light);
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+        .canvas-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            /* 移除了整体偏移，高度自适应一屏高度 */
+        }
+        /* 矩形框样式 */
+        .rect-box {
+            position: absolute;
+            border: 3px solid;
+            border-radius: 4px;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            z-index: 5;
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), left 0.5s cubic-bezier(0.4, 0, 0.2, 1), top 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            /* 修复问题1：改为 content-box，确保内部实际容量能严格整除 80，不会超出边框 */
+            box-sizing: content-box; 
+        }
+        .rect-1 {
+            border-color: var(--primary-pink);
+            background-color: #FFE5ED;
+            width: 400px;
+            height: 160px;
+            /* 包含边框后的水平居中：左侧偏移 386px */
+            left: calc(50% - 386px);
+            top: calc(50% - 100px); /* 单独向上偏移 100px */
+            transform: translateY(-50%);
+            cursor: move;
+        }
+        .rect-2 {
+            border-color: var(--primary-blue);
+            background-color: #E1F0FF;
+            width: 320px;
+            height: 240px;
+            /* 包含边框后的水平居中：右侧图形距中心向右偏移 60px (保持原有的40px间距) */
+            left: calc(50% + 60px);
+            top: calc(50% - 100px); /* 单独向上偏移 100px */
+            transform: translateY(-50%);
+            cursor: move;
+        }
+        .rect-box.in-tool-mode {
+            cursor: default;
+        }
+        .rect-box.dragging {
+            transition: none;
+            z-index: 50;
+            opacity: 0.7; /* 增加一点透明度 */
+        }
+        /* 编号标签 */
+        .label-circle {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            bottom: -45px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+        }
+        .label-1 { background-color: var(--primary-pink); }
+        .label-2 { background-color: var(--primary-blue); }
+        /* 计数器 */
+        .counter-badge {
+            position: absolute;
+            bottom: -90px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 8px 20px;
+            border-radius: 25px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: none;
+            align-items: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: bold;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+        .counter-badge.show {
+            display: flex;
+        }
+        .counter-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* 底部工具栏 */
+        .toolbar {
+            position: fixed;
+            bottom: -200px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 100;
+            transition: bottom 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .toolbar.show {
+            bottom: 4rem; /* 至于页面底部 */
+        }
+        .tool-item {
+            width: 100px;
+            height: 100px;
+            border-radius: 12px;
+            border: 2px dashed #CBD5E0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            transition: all 0.2s;
+            position: relative;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .tool-item.active {
+            border: 2px solid var(--primary-blue);
+            background-color: #EBF8FF;
+        }
+        .tool-item svg {
+            width: 80px;
+            height: 80px;
+            margin: 10px;
+        }
+        .divider {
+            width: 1px;
+            height: 30px;
+            background-color: #E2E8F0;
+            margin: 0 5px;
+        }
+        .action-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid #E2E8F0;
+            background-color: #F7FAFC;
+            color: #4A5568;
+        }
+        .action-btn:hover {
+            background-color: #EDF2F7;
+        }
+        .clear-btn {
+            color: #F56565;
+            background-color: #FFF5F5;
+            border-color: #FED7D7;
+        }
+        /* 放置的图形样式 */
+        .placed-shape {
+            position: absolute;
+            cursor: grab;
+            z-index: 10;
+            touch-action: none;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+        }
+        .placed-shape.dragging-ghost {
+            position: fixed;
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0.8;
+            transition: none;
+        }
+        /* 模式切换按钮 */
+        .mode-toggle-btn {
+            position: fixed;
+            right: 40px;
+            bottom: 40px;
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 200;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid #E2E8F0;
+        }
+        .mode-toggle-btn:hover {
+            transform: scale(1.05);
+        }
+        .mode-toggle-btn .icon {
+            font-size: 24px;
+            margin-bottom: 2px;
+        }
+        .mode-toggle-btn .text {
+            font-size: 12px;
+            font-weight: bold;
+            color: #4A5568;
+        }
+        .mode-toggle-btn.active {
+            background: var(--primary-blue);
+            border-color: var(--primary-blue);
+        }
+        .mode-toggle-btn.active .icon,
+        .mode-toggle-btn.active .text {
+            color: white;
+        }
+
+        /* 自定义提示弹窗样式 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 24px 32px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .modal-text {
+            font-size: 16px;
+            color: #2D3748;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        .modal-btn {
+            padding: 8px 24px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .modal-btn-cancel {
+            background: #EDF2F7;
+            color: #4A5568;
+        }
+        .modal-btn-cancel:hover {
+            background: #E2E8F0;
+        }
+        .modal-btn-confirm {
+            background: var(--primary-blue);
+            color: white;
+        }
+        .modal-btn-confirm:hover {
+            background: #3182CE;
+        }
+    </style>
+</head><body>
+<div class="canvas-container" id="app">
+    <!-- 矩形 1 -->
+    <div class="rect-box rect-1" id="rect1" onclick="handleRectClick(event, 1)">
+        <div class="label-circle label-1">1</div>
+        <div class="counter-badge" id="badge-1">
+            <div id="badge-icon-1" class="counter-icon"></div>
+            <span>× <span id="count-1">0</span></span>
+        </div>
+    </div>
+    <!-- 矩形 2 -->
+    <div class="rect-box rect-2" id="rect2" onclick="handleRectClick(event, 2)">
+        <div class="label-circle label-2">2</div>
+        <div class="counter-badge" id="badge-2">
+            <div id="badge-icon-2" class="counter-icon"></div>
+            <span>× <span id="count-2">0</span></span>
+        </div>
+    </div>
+    <!-- 模式切换按钮 -->
+    <div class="mode-toggle-btn" id="modeBtn" onclick="toggleToolbar()">
+        <span class="icon" id="modeIcon">📏</span>
+        <span class="text" id="modeText">对比</span>
+    </div>
+    <!-- 工具栏 -->
+    <div class="toolbar" id="toolbar">
+        <div class="tool-item active" id="tool-square" onclick="selectTool('square')" onmousedown="startDrag(event, 'square')" ontouchstart="startDrag(event, 'square')">
+            <svg width="80" height="80" viewBox="0 0 80 80"><rect x="0.5" y="0.5" width="79" height="79" fill="var(--shape-yellow)" stroke="black" stroke-width="1"></rect></svg>
+        </div>
+        <div class="tool-item" id="tool-circle" onclick="selectTool('circle')" onmousedown="startDrag(event, 'circle')" ontouchstart="startDrag(event, 'circle')">
+            <svg width="80" height="80" viewBox="0 0 80 80"><circle cx="40" cy="40" r="39.5" fill="var(--shape-green)" stroke="black" stroke-width="1"></circle></svg>
+        </div>
+        <div class="tool-item" id="tool-triangle" onclick="selectTool('triangle')" onmousedown="startDrag(event, 'triangle')" ontouchstart="startDrag(event, 'triangle')">
+            <svg width="80" height="80" viewBox="0 0 80 80"><path d="M40 0.5 L79.5 79.5 L0.5 79.5 Z" fill="var(--shape-triangle)" stroke="black" stroke-width="1"></path></svg>
+        </div>
+        <div class="divider"></div>
+        <button class="action-btn" onclick="fillAll(1)">①号密铺</button>
+        <button class="action-btn" onclick="fillAll(2)">②号密铺</button>
+        <div class="divider"></div>
+        <button class="action-btn clear-btn" onclick="clearAll()">清空</button>
+    </div>
+
+    <!-- 自定义确认弹窗 -->
+    <div id="confirmModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-text">切换图形将清空已放置的图形，是否继续？</div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-cancel" onclick="cancelSwitch()">取消</button>
+                <button class="modal-btn modal-btn-confirm" onclick="confirmSwitch()">确认</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const SHAPES = {
+        square: {
+            svg: `<svg width="80" height="80" viewBox="0 0 80 80"><rect x="0.5" y="0.5" width="79" height="79" fill="var(--shape-yellow)" stroke="black" stroke-width="1"/></svg>`,
+            size: 80,
+            type: 'square'
+        },
+        circle: {
+            svg: `<svg width="80" height="80" viewBox="0 0 80 80"><circle cx="40" cy="40" r="39.5" fill="var(--shape-green)" stroke="black" stroke-width="1"/></svg>`,
+            size: 80,
+            type: 'circle'
+        },
+        triangle: {
+            svg: `<svg width="80" height="80" viewBox="0 0 80 80"><path d="M40 0.5 L79.5 79.5 L0.5 79.5 Z" fill="var(--shape-triangle)" stroke="black" stroke-width="1"/></svg>`,
+            size: 80,
+            type: 'triangle'
+        }
+    };
+    let currentTool = 'square';
+    let counts = { 1: 0, 2: 0 };
+    let activeDrag = null;
+    let isToolMode = false;
+    let pendingTool = null; // 用于记录准备切换的工具
+    // 记录初始位置
+    let initialPositions = {
+        rect1: { left: '', top: '', transform: '' },
+        rect2: { left: '', top: '', transform: '' }
+    };
+    function toggleToolbar() {
+        isToolMode = !isToolMode;
+        const toolbar = document.getElementById('toolbar');
+        const modeBtn = document.getElementById('modeBtn');
+        const modeIcon = document.getElementById('modeIcon');
+        const modeText = document.getElementById('modeText');
+        const rect1 = document.getElementById('rect1');
+        const rect2 = document.getElementById('rect2');
+        const badge1 = document.getElementById('badge-1');
+        const badge2 = document.getElementById('badge-2');
+        if (isToolMode) {
+            toolbar.classList.add('show');
+            modeBtn.classList.add('active');
+            modeIcon.innerText = '🧩';
+            modeText.innerText = '密铺';
+            rect1.classList.add('in-tool-mode');
+            rect2.classList.add('in-tool-mode');
+            badge1.classList.add('show');
+            badge2.classList.add('show');
+            // 移回初始位置
+            rect1.style.left = initialPositions.rect1.left;
+            rect1.style.top = initialPositions.rect1.top;
+            rect1.style.transform = initialPositions.rect1.transform;
+            rect2.style.left = initialPositions.rect2.left;
+            rect2.style.top = initialPositions.rect2.top;
+            rect2.style.transform = initialPositions.rect2.transform;
+        } else {
+            toolbar.classList.remove('show');
+            modeBtn.classList.remove('active');
+            modeIcon.innerText = '📏';
+            modeText.innerText = '对比';
+            rect1.classList.remove('in-tool-mode');
+            rect2.classList.remove('in-tool-mode');
+            badge1.classList.remove('show');
+            badge2.classList.remove('show');
+        }
+    }
+    function initRectDrag(rectId) {
+        const rect = document.getElementById(rectId);
+        let isDraggingRect = false;
+        let startX, startY, initialLeft, initialTop;
+        const onStart = (e) => {
+            if (isToolMode) return;
+            isDraggingRect = true;
+            const touch = e.type.startsWith('touch') ? e.touches[0] : e;
+            startX = touch.clientX;
+            startY = touch.clientY;
+            const bounds = rect.getBoundingClientRect();
+            initialLeft = bounds.left;
+            initialTop = bounds.top;
+            
+            // 提权：将正在拖动的长方形放在最上层，另一个长方形放底层
+            rect.style.zIndex = 10;
+            const otherRectId = rectId === 'rect1' ? 'rect2' : 'rect1';
+            document.getElementById(otherRectId).style.zIndex = 5;
+
+            rect.classList.add('dragging');
+            rect.style.left = initialLeft + 'px';
+            rect.style.top = initialTop + 'px';
+            rect.style.transform = 'none';
+        };
+        const onMove = (e) => {
+            if (!isDraggingRect) return;
+            const touch = e.type.startsWith('touch') ? e.touches[0] : e;
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+            rect.style.left = (initialLeft + dx) + 'px';
+            rect.style.top = (initialTop + dy) + 'px';
+        };
+        const onEnd = () => {
+            if (!isDraggingRect) return;
+            isDraggingRect = false;
+            rect.classList.remove('dragging');
+        };
+        rect.addEventListener('mousedown', onStart);
+        rect.addEventListener('touchstart', onStart);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('mouseup', onEnd);
+        window.addEventListener('touchend', onEnd);
+    }
+    
+    function selectTool(tool) {
+        if (tool === currentTool) return;
+        
+        // 当长方形中已经有拖入的图形，提示是否清空
+        if (counts[1] > 0 || counts[2] > 0) {
+            pendingTool = tool;
+            document.getElementById('confirmModal').style.display = 'flex';
+        } else {
+            doSelectTool(tool);
+        }
+    }
+
+    function doSelectTool(tool) {
+        currentTool = tool;
+        document.querySelectorAll('.tool-item').forEach(el => el.classList.remove('active'));
+        document.getElementById(`tool-${tool}`).classList.add('active');
+        document.getElementById('badge-icon-1').innerHTML = SHAPES[tool].svg;
+        document.getElementById('badge-icon-2').innerHTML = SHAPES[tool].svg;
+    }
+
+    function confirmSwitch() {
+        document.getElementById('confirmModal').style.display = 'none';
+        clearAll();
+        if (pendingTool) {
+            doSelectTool(pendingTool);
+            pendingTool = null;
+        }
+    }
+
+    function cancelSwitch() {
+        document.getElementById('confirmModal').style.display = 'none';
+        pendingTool = null;
+    }
+
+    function handleRectClick(e, rectId) {
+        if (!isToolMode) return;
+        if (e.target.closest('.placed-shape')) return;
+        const rect = document.getElementById(`rect${rectId}`);
+        const rectBounds = rect.getBoundingClientRect();
+        
+        // 精确计算内部偏移（扣除边框厚度）
+        const rectStyle = window.getComputedStyle(rect);
+        const borderLeft = parseFloat(rectStyle.borderLeftWidth) || 0;
+        const borderTop = parseFloat(rectStyle.borderTopWidth) || 0;
+        
+        const size = SHAPES[currentTool].size;
+        const x = e.clientX - rectBounds.left - borderLeft;
+        const y = e.clientY - rectBounds.top - borderTop;
+        const gridX = Math.floor(x / size) * size;
+        const gridY = Math.floor(y / size) * size;
+        
+        // 限制点击超出内容区域
+        const maxX = Math.floor((rect.clientWidth + 1) / size) * size - size;
+        const maxY = Math.floor((rect.clientHeight + 1) / size) * size - size;
+        if(gridX < 0 || gridX > maxX || gridY < 0 || gridY > maxY) return;
+
+        createShapeElement(rect, gridX, gridY, rectId);
+    }
+    function createShapeElement(parent, x, y, rectId) {
+        const existing = Array.from(parent.querySelectorAll('.placed-shape')).find(el => 
+            parseInt(el.style.left) === x && parseInt(el.style.top) === y
+        );
+        if (existing) return;
+        const shape = document.createElement('div');
+        shape.innerHTML = SHAPES[currentTool].svg;
+        shape.className = 'placed-shape';
+        shape.style.width = SHAPES[currentTool].size + 'px';
+        shape.style.height = SHAPES[currentTool].size + 'px';
+        shape.style.left = x + 'px';
+        shape.style.top = y + 'px';
+        shape.style.opacity = '0';
+        shape.style.transform = 'scale(0)';
+        shape.setAttribute('data-type', currentTool);
+        const shapeType = currentTool;
+        shape.onmousedown = (e) => startDrag(e, shapeType, shape);
+        shape.ontouchstart = (e) => startDrag(e, shapeType, shape);
+        shape.ondblclick = (e) => {
+            e.stopPropagation();
+            removeShape(shape, rectId);
+        };
+        parent.appendChild(shape);
+        // 原生动画
+        requestAnimationFrame(() => {
+            shape.style.opacity = '1';
+            shape.style.transform = 'scale(1)';
+        });
+        counts[rectId]++;
+        updateCounter(rectId);
+    }
+    function removeShape(el, rectId) {
+        el.style.opacity = '0';
+        el.style.transform = 'scale(0)';
+        setTimeout(() => {
+            el.remove();
+            counts[rectId]--;
+            updateCounter(rectId);
+        }, 300);
+    }
+    function startDrag(e, shapeType, existingEl = null) {
+        if (!isToolMode && !existingEl) return;
+        if (shapeType !== currentTool) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const isTouch = e.type.startsWith('touch');
+        const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+        const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+        const size = SHAPES[shapeType].size;
+        let ghost;
+        if (!existingEl) {
+            ghost = document.createElement('div');
+            ghost.innerHTML = SHAPES[shapeType].svg;
+            ghost.className = 'placed-shape dragging-ghost';
+            ghost.style.width = size + 'px';
+            ghost.style.height = size + 'px';
+            document.body.appendChild(ghost);
+        } else {
+            ghost = existingEl;
+            ghost.classList.add('dragging-ghost');
+            
+            // 修复问题3：将已有的元素转移到 body 中，使其不再受父级 transform 的影响，防止飞向右下角
+            const parentId = existingEl.parentElement.id;
+            const rectId = parentId === 'rect1' ? 1 : 2;
+            document.body.appendChild(ghost);
+            
+            counts[rectId]--;
+            updateCounter(rectId);
+        }
+        activeDrag = {
+            el: ghost,
+            type: shapeType,
+            isNew: !existingEl,
+            offsetX: size / 2,
+            offsetY: size / 2
+        };
+        updateDragPosition(clientX, clientY);
+        const moveHandler = (moveEvent) => {
+            const mX = isTouch ? moveEvent.touches[0].clientX : moveEvent.clientX;
+            const mY = isTouch ? moveEvent.touches[0].clientY : moveEvent.clientY;
+            updateDragPosition(mX, mY);
+        };
+        const endHandler = (endEvent) => {
+            const eX = isTouch ? endEvent.changedTouches[0].clientX : endEvent.clientX;
+            const eY = isTouch ? endEvent.changedTouches[0].clientY : endEvent.clientY;
+            finishDrag(eX, eY);
+            window.removeEventListener(isTouch ? 'touchmove' : 'mousemove', moveHandler);
+            window.removeEventListener(isTouch ? 'touchend' : 'mouseup', endHandler);
+        };
+        window.addEventListener(isTouch ? 'touchmove' : 'mousemove', moveHandler, { passive: false });
+        window.addEventListener(isTouch ? 'touchend' : 'mouseup', endHandler);
+    }
+    function updateDragPosition(x, y) {
+        if (!activeDrag) return;
+        activeDrag.el.style.left = (x - activeDrag.offsetX) + 'px';
+        activeDrag.el.style.top = (y - activeDrag.offsetY) + 'px';
+    }
+    function finishDrag(x, y) {
+        if (!activeDrag) return;
+        const ghost = activeDrag.el;
+        const shapeType = activeDrag.type;
+        const size = SHAPES[shapeType].size;
+        const rect1 = document.getElementById('rect1');
+        const rect2 = document.getElementById('rect2');
+        const r1Bounds = rect1.getBoundingClientRect();
+        const r2Bounds = rect2.getBoundingClientRect();
+        let targetRect = null;
+        let bounds = null;
+        let rectId = 0;
+        if (x >= r1Bounds.left && x <= r1Bounds.right && y >= r1Bounds.top && y <= r1Bounds.bottom) {
+            targetRect = rect1;
+            bounds = r1Bounds;
+            rectId = 1;
+        } else if (x >= r2Bounds.left && x <= r2Bounds.right && y >= r2Bounds.top && y <= r2Bounds.bottom) {
+            targetRect = rect2;
+            bounds = r2Bounds;
+            rectId = 2;
+        }
+        if (targetRect) {
+            // 计算相对容器内部的精准位置
+            const rectStyle = window.getComputedStyle(targetRect);
+            const borderLeft = parseFloat(rectStyle.borderLeftWidth) || 0;
+            const borderTop = parseFloat(rectStyle.borderTopWidth) || 0;
+            const relX = x - bounds.left - borderLeft - activeDrag.offsetX;
+            const relY = y - bounds.top - borderTop - activeDrag.offsetY;
+            
+            let gridX = Math.round(relX / size) * size;
+            let gridY = Math.round(relY / size) * size;
+            
+            // 使用 clientWidth / clientHeight 能够规避掉边框影响，精确限制拖放的最大范围
+            const finalX = Math.max(0, Math.min(gridX, Math.round(targetRect.clientWidth / size) * size - size));
+            const finalY = Math.max(0, Math.min(gridY, Math.round(targetRect.clientHeight / size) * size - size));
+            
+            const existing = Array.from(targetRect.querySelectorAll('.placed-shape')).find(el => 
+                el !== ghost && parseInt(el.style.left) === finalX && parseInt(el.style.top) === finalY
+            );
+            if (existing) {
+                ghost.remove();
+            } else {
+                ghost.classList.remove('dragging-ghost');
+                ghost.style.left = finalX + 'px';
+                ghost.style.top = finalY + 'px';
+                ghost.setAttribute('data-type', shapeType);
+                ghost.onmousedown = (e) => startDrag(e, shapeType, ghost);
+                ghost.ontouchstart = (e) => startDrag(e, shapeType, ghost);
+                targetRect.appendChild(ghost); // 放回目标框内
+                counts[rectId]++;
+                updateCounter(rectId);
+            }
+        } else {
+            ghost.remove();
+        }
+        activeDrag = null;
+    }
+    function updateCounter(rectId) {
+        document.getElementById(`count-${rectId}`).innerText = counts[rectId];
+    }
+    function fillAll(rectId) {
+        const rect = document.getElementById(`rect${rectId}`);
+        const size = SHAPES[currentTool].size;
+        const shapes = Array.from(rect.querySelectorAll('.placed-shape')).filter(s => s.getAttribute('data-type') === currentTool);
+        shapes.forEach(s => s.remove());
+        counts[rectId] -= shapes.length;
+        
+        // 修复问题2：使用元素的 clientWidth / clientHeight 可以精准计算行数，规避了由于受边框影响或浮点数误差导致 3 行变 2 行的 Bug
+        const cols = Math.round(rect.clientWidth / size);
+        const rows = Math.round(rect.clientHeight / size);
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                createShapeElement(rect, c * size, r * size, rectId);
+            }
+        }
+    }
+    function clearAll() {
+        document.querySelectorAll('.placed-shape').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'scale(0)';
+            setTimeout(() => el.remove(), 300);
+        });
+        counts = { 1: 0, 2: 0 };
+        updateCounter(1);
+        updateCounter(2);
+    }
+    window.onload = () => {
+        const r1 = document.getElementById('rect1');
+        const r2 = document.getElementById('rect2');
+        // 记录初始位置
+        const style1 = window.getComputedStyle(r1);
+        const style2 = window.getComputedStyle(r2);
+        initialPositions.rect1 = { left: style1.left, top: style1.top, transform: style1.transform };
+        initialPositions.rect2 = { left: style2.left, top: style2.top, transform: style2.transform };
+        doSelectTool('square');
+        initRectDrag('rect1');
+        initRectDrag('rect2');
+    };
+</script>
+</body></html>
