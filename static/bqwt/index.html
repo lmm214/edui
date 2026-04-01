@@ -81,8 +81,8 @@
         }
         .row-control {
             border-top: 1px solid rgba(0, 0, 0, 0.1);
-            padding-top: 15px;
-            margin-top: 10px;
+            padding-top: 12px;
+            margin-top: 5px;
         }
         .row-control label {
             display: block;
@@ -92,22 +92,33 @@
             margin-bottom: 8px;
             font-weight: bold;
         }
-        .row-buttons {
+        /* 行数按钮一行显示 */
+        .row-buttons-inline {
             display: flex;
-            gap: 10px;
-            justify-content: center;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            padding: 4px;
         }
-        .row-buttons button {
-            width: 45%;
-            padding: 8px;
+        .row-buttons-inline button {
+            width: 32px;
+            height: 32px;
+            padding: 0;
             font-size: 18px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: none;
         }
         #rowCount {
-            text-align: center;
-            font-size: 18px;
+            font-size: 15px;
             font-weight: bold;
             color: #2c3e50;
-            margin: 8px 0 0 0;
+            margin: 0;
+            flex: 1;
+            text-align: center;
         }
 
         /* 主体操作区 */
@@ -216,7 +227,7 @@
         /* 响应式调整：小屏幕缩小左边距并重置居中状态 */
         @media (max-width: 768px) {
             .main-area {
-                padding: 120px 10px 10px 10px; /* 悬浮窗放顶部或者自适应重叠 */
+                padding: 150px 10px 10px 10px; /* 悬浮窗放顶部或者自适应重叠 */
             }
             .toolbar {
                 width: calc(100% - 40px);
@@ -246,13 +257,16 @@
             <button id="eraserBtn" onclick="setMode('eraser')">🧽 橡皮擦</button>
             <button onclick="resetWall()">🔄 重置墙面</button>
             
+            <!-- 模式切换按钮 -->
+            <button id="modeToggleBtn" onclick="toggleBrickMode()" style="background: rgba(224, 247, 250, 0.8); border-color: #00bcd4; color: #00838f;">🧩 整块模式</button>
+            
             <div class="row-control">
                 <label>墙面行数</label>
-                <div class="row-buttons">
+                <div class="row-buttons-inline">
                     <button onclick="changeRows(-1)">−</button>
+                    <div id="rowCount">5行</div>
                     <button onclick="changeRows(1)">+</button>
                 </div>
-                <div id="rowCount">5行</div>
             </div>
         </div>
         
@@ -289,6 +303,11 @@
             <line id="ghostLine" x1="5" y1="20" x2="75" y2="20" stroke="rgba(0,0,0,0.2)" stroke-width="1"></line>
         </svg>
     </div>
+
+    <a href="http://www.xtai2026.com" target="_blank" class="watermark">
+        习题AI小助手 http://www.xtai2026.com
+    </a>
+
     <script>
         // 配置参数
         const BRICK_WIDTH = 80;
@@ -300,6 +319,7 @@
         let rows = 5;
         let wallBricks = []; 
         let mode = 'normal'; 
+        let currentBrickMode = 'full'; // 'full' (整块模式) 或 'half' (半块模式)
         
         // 拖拽相关状态
         let isDragging = false;
@@ -398,7 +418,7 @@
             }
         }
         
-        // 生成墙面
+        // 生成墙面 (支持半块模式残缺)
         function generateWall() {
             wallBricks = [];
             for (let r = 0; r < rows; r++) {
@@ -416,10 +436,12 @@
                         });
                     }
                 } else {
+                    // 如果是半块模式，边缘的半块砖也有概率残缺
+                    let isLeftMissing = currentBrickMode === 'half' && !isTopOrBottom && Math.random() < 0.4;
                     wallBricks.push({
                         id: `r${r}left`,
                         x: 0, y, width: BRICK_WIDTH / 2, height: BRICK_HEIGHT,
-                        type: 'half', present: true, isFilled: false
+                        type: 'half', present: !isLeftMissing, isFilled: false
                     });
                     
                     for (let c = 0; c < COLS - 1; c++) {
@@ -432,10 +454,11 @@
                         });
                     }
                     
+                    let isRightMissing = currentBrickMode === 'half' && !isTopOrBottom && Math.random() < 0.4;
                     wallBricks.push({
                         id: `r${r}right`,
                         x: BRICK_WIDTH / 2 + (COLS - 1) * BRICK_WIDTH, y, width: BRICK_WIDTH / 2, height: BRICK_HEIGHT,
-                        type: 'half', present: true, isFilled: false
+                        type: 'half', present: !isRightMissing, isFilled: false
                     });
                 }
             }
@@ -459,6 +482,7 @@
                 }
                 
                 // 2. 如果是原生砖，或者是已经被用户补上的砖，则在顶层绘制砖块图形
+                // 注：此处的渲染直接使用 b.width，若其被补入半砖空缺(宽度40)，则天然渲染成半砖截断效果
                 if (b.present || b.isFilled) {
                     let g = document.createElementNS(svgNS, 'g');
                     let rect = document.createElementNS(svgNS, 'rect');
@@ -510,6 +534,25 @@
             });
         }
         
+        // 模式切换
+        function toggleBrickMode() {
+            const btn = document.getElementById('modeToggleBtn');
+            if (currentBrickMode === 'full') {
+                currentBrickMode = 'half';
+                btn.innerHTML = '🧩 半块模式';
+                btn.style.background = 'rgba(255, 243, 224, 0.8)';
+                btn.style.borderColor = '#ff9800';
+                btn.style.color = '#e65100';
+            } else {
+                currentBrickMode = 'full';
+                btn.innerHTML = '🧩 整块模式';
+                btn.style.background = 'rgba(224, 247, 250, 0.8)';
+                btn.style.borderColor = '#00bcd4';
+                btn.style.color = '#00838f';
+            }
+            resetWall(); // 切换模式时自动应用出题
+        }
+
         // --- 拖拽交互核心系统 ---
         function startDrag(e, source, svgGroup = null) {
             if (mode !== 'normal') return;
@@ -543,7 +586,7 @@
                 source.isFilled = false;
                 
                 if (svgGroup) {
-                    // 【核心修复】不重新渲染墙面(避免破坏DOM引发触控断连)
+                    // 不重新渲染墙面(避免破坏DOM引发触控断连)
                     // 而是仅仅在视觉上隐藏这个元素。由于底层已经有了灰色占位，视觉效果完美。
                     svgGroup.style.visibility = 'hidden';
                 } else {
@@ -576,6 +619,7 @@
                 if (!b.present && !b.isFilled) {
                     const cx = b.x + b.width / 2;
                     const cy = b.y + b.height / 2;
+                    // 使用 40 像素的宽泛判定，确保半块砖（甚至更小的区域）也能轻松吸附触发
                     if (Math.abs(pt.x - cx) < 40 && Math.abs(pt.y - cy) < 20) {
                         targetBrick = b;
                         break;
@@ -690,7 +734,9 @@
         function setMode(newMode) {
             mode = newMode;
             document.querySelectorAll('.toolbar button').forEach(btn => {
-                btn.classList.remove('active', 'delete-active', 'move-active');
+                if (btn.id !== 'modeToggleBtn') {
+                    btn.classList.remove('active', 'delete-active', 'move-active');
+                }
             });
             
             if (mode === 'normal') {
