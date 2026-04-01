@@ -30,7 +30,6 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            /* 移除了整体偏移，高度自适应一屏高度 */
         }
         /* 矩形框样式 */
         .rect-box {
@@ -42,7 +41,6 @@
             align-content: flex-start;
             z-index: 5;
             transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), left 0.5s cubic-bezier(0.4, 0, 0.2, 1), top 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-            /* 修复问题1：改为 content-box，确保内部实际容量能严格整除 80，不会超出边框 */
             box-sizing: content-box; 
         }
         .rect-1 {
@@ -50,9 +48,8 @@
             background-color: #FFE5ED;
             width: 400px;
             height: 160px;
-            /* 包含边框后的水平居中：左侧偏移 386px */
             left: calc(50% - 386px);
-            top: calc(50% - 100px); /* 单独向上偏移 100px */
+            top: calc(50% - 100px);
             transform: translateY(-50%);
             cursor: move;
         }
@@ -61,9 +58,8 @@
             background-color: #E1F0FF;
             width: 320px;
             height: 240px;
-            /* 包含边框后的水平居中：右侧图形距中心向右偏移 60px (保持原有的40px间距) */
             left: calc(50% + 60px);
-            top: calc(50% - 100px); /* 单独向上偏移 100px */
+            top: calc(50% - 100px);
             transform: translateY(-50%);
             cursor: move;
         }
@@ -73,7 +69,7 @@
         .rect-box.dragging {
             transition: none;
             z-index: 50;
-            opacity: 0.7; /* 增加一点透明度 */
+            opacity: 0.7; 
         }
         /* 编号标签 */
         .label-circle {
@@ -139,11 +135,11 @@
             transition: bottom 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .toolbar.show {
-            bottom: 4rem; /* 至于页面底部 */
+            bottom: 20px; 
         }
         .tool-item {
-            width: 100px;
-            height: 100px;
+            width: 90px;
+            height: 90px;
             border-radius: 12px;
             border: 2px dashed #CBD5E0;
             display: flex;
@@ -162,7 +158,6 @@
         .tool-item svg {
             width: 80px;
             height: 80px;
-            margin: 10px;
         }
         .divider {
             width: 1px;
@@ -189,20 +184,33 @@
             background-color: #FFF5F5;
             border-color: #FED7D7;
         }
+        
         /* 放置的图形样式 */
         .placed-shape {
             position: absolute;
-            cursor: grab;
             z-index: 10;
             touch-action: none;
             transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+            pointer-events: none; /* 让外层容器穿透，避免重叠遮挡 */
         }
+        .placed-shape svg {
+            pointer-events: none; /* SVG 画板本身也穿透 */
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); /* 平滑的中心翻转动画 */
+        }
+        .placed-shape svg * {
+            pointer-events: visiblePainted; /* 重点：只有真实绘制颜色的图形区域才响应点击和拖拽 */
+            cursor: grab;
+        }
+        
         .placed-shape.dragging-ghost {
             position: fixed;
             pointer-events: none;
             z-index: 1000;
             opacity: 0.8;
             transition: none;
+        }
+        .placed-shape.dragging-ghost svg * {
+            pointer-events: none;
         }
         /* 模式切换按钮 */
         .mode-toggle-btn {
@@ -373,12 +381,13 @@
     let counts = { 1: 0, 2: 0 };
     let activeDrag = null;
     let isToolMode = false;
-    let pendingTool = null; // 用于记录准备切换的工具
-    // 记录初始位置
+    let pendingTool = null; 
+    
     let initialPositions = {
         rect1: { left: '', top: '', transform: '' },
         rect2: { left: '', top: '', transform: '' }
     };
+
     function toggleToolbar() {
         isToolMode = !isToolMode;
         const toolbar = document.getElementById('toolbar');
@@ -398,7 +407,6 @@
             rect2.classList.add('in-tool-mode');
             badge1.classList.add('show');
             badge2.classList.add('show');
-            // 移回初始位置
             rect1.style.left = initialPositions.rect1.left;
             rect1.style.top = initialPositions.rect1.top;
             rect1.style.transform = initialPositions.rect1.transform;
@@ -416,6 +424,7 @@
             badge2.classList.remove('show');
         }
     }
+
     function initRectDrag(rectId) {
         const rect = document.getElementById(rectId);
         let isDraggingRect = false;
@@ -430,7 +439,6 @@
             initialLeft = bounds.left;
             initialTop = bounds.top;
             
-            // 提权：将正在拖动的长方形放在最上层，另一个长方形放底层
             rect.style.zIndex = 10;
             const otherRectId = rectId === 'rect1' ? 'rect2' : 'rect1';
             document.getElementById(otherRectId).style.zIndex = 5;
@@ -463,8 +471,6 @@
     
     function selectTool(tool) {
         if (tool === currentTool) return;
-        
-        // 当长方形中已经有拖入的图形，提示是否清空
         if (counts[1] > 0 || counts[2] > 0) {
             pendingTool = tool;
             document.getElementById('confirmModal').style.display = 'flex';
@@ -495,35 +501,115 @@
         pendingTool = null;
     }
 
+    // 核心改进算法：真实斜边碰撞检测计算
+    function getDragTargetInfo(clientX, clientY, activeDragType) {
+        const rect1 = document.getElementById('rect1');
+        const rect2 = document.getElementById('rect2');
+        const r1Bounds = rect1.getBoundingClientRect();
+        const r2Bounds = rect2.getBoundingClientRect();
+        let targetRect = null, bounds = null, rectId = 0;
+
+        if (clientX >= r1Bounds.left && clientX <= r1Bounds.right && clientY >= r1Bounds.top && clientY <= r1Bounds.bottom) {
+            targetRect = rect1; bounds = r1Bounds; rectId = 1;
+        } else if (clientX >= r2Bounds.left && clientX <= r2Bounds.right && clientY >= r2Bounds.top && clientY <= r2Bounds.bottom) {
+            targetRect = rect2; bounds = r2Bounds; rectId = 2;
+        }
+
+        if (!targetRect) return null;
+
+        const rectStyle = window.getComputedStyle(targetRect);
+        const borderLeft = parseFloat(rectStyle.borderLeftWidth) || 0;
+        const borderTop = parseFloat(rectStyle.borderTopWidth) || 0;
+        const size = SHAPES[activeDragType || currentTool].size;
+
+        const relX = clientX - bounds.left - borderLeft;
+        const relY = clientY - bounds.top - borderTop;
+
+        const toolType = activeDragType || currentTool;
+        let finalX, finalY, rot = 0;
+
+        // 【算法重构】：针对三角形计算完美的斜边检测
+        if (toolType === 'triangle') {
+            const stepX = size / 2; // 40
+            const stepY = size;     // 80
+
+            let r = Math.floor(relY / stepY);
+            let dy = relY - r * stepY; // 落点在当前 80 像素行内的 Y 坐标
+
+            let gridX = Math.floor(relX / stepX);
+            let dx = relX - gridX * stepX; // 落点在当前 40 像素块内的 X 坐标
+
+            let c;
+            // 解决 JS 负数取模问题
+            let isEven = ((gridX + r) % 2 + 2) % 2 === 0;
+
+            // 根据三角形的真实几何斜率 (dx = dy/2) 划分鼠标落点归属
+            if (isEven) {
+                if (dx >= 40 - dy / 2) {
+                    c = gridX;
+                } else {
+                    c = gridX - 1;
+                }
+            } else {
+                if (dx >= dy / 2) {
+                    c = gridX;
+                } else {
+                    c = gridX - 1;
+                }
+            }
+
+            finalX = c * stepX;
+            finalY = r * stepY;
+
+            // 超出边界修正
+            const maxFinalX = targetRect.clientWidth - size;
+            const maxFinalY = targetRect.clientHeight - size;
+            finalX = Math.max(0, Math.min(finalX, maxFinalX));
+            finalY = Math.max(0, Math.min(finalY, maxFinalY));
+
+            // 根据最终定位确认该位置的三角形应该是正向还是倒置
+            let c_final = Math.round(finalX / stepX);
+            let r_final = Math.round(finalY / stepY);
+            rot = ((c_final + r_final) % 2 + 2) % 2 === 1 ? 180 : 0;
+
+        } else {
+            // 方形和圆形逻辑保持原样
+            const stepX = size;
+            const stepY = size;
+
+            let cellX = Math.round(relX / stepX);
+            let cellY = Math.round(relY / stepY);
+
+            const maxCellX = Math.round((targetRect.clientWidth - size) / stepX);
+            const maxCellY = Math.round((targetRect.clientHeight - size) / stepY);
+
+            cellX = Math.max(0, Math.min(cellX, maxCellX));
+            cellY = Math.max(0, Math.min(cellY, maxCellY));
+
+            finalX = cellX * stepX;
+            finalY = cellY * stepY;
+            rot = 0;
+        }
+
+        return { targetRect, rectId, finalX, finalY, rot };
+    }
+
     function handleRectClick(e, rectId) {
         if (!isToolMode) return;
         if (e.target.closest('.placed-shape')) return;
-        const rect = document.getElementById(`rect${rectId}`);
-        const rectBounds = rect.getBoundingClientRect();
         
-        // 精确计算内部偏移（扣除边框厚度）
-        const rectStyle = window.getComputedStyle(rect);
-        const borderLeft = parseFloat(rectStyle.borderLeftWidth) || 0;
-        const borderTop = parseFloat(rectStyle.borderTopWidth) || 0;
-        
-        const size = SHAPES[currentTool].size;
-        const x = e.clientX - rectBounds.left - borderLeft;
-        const y = e.clientY - rectBounds.top - borderTop;
-        const gridX = Math.floor(x / size) * size;
-        const gridY = Math.floor(y / size) * size;
-        
-        // 限制点击超出内容区域
-        const maxX = Math.floor((rect.clientWidth + 1) / size) * size - size;
-        const maxY = Math.floor((rect.clientHeight + 1) / size) * size - size;
-        if(gridX < 0 || gridX > maxX || gridY < 0 || gridY > maxY) return;
-
-        createShapeElement(rect, gridX, gridY, rectId);
+        const info = getDragTargetInfo(e.clientX, e.clientY, null);
+        if (info && info.rectId === rectId) {
+            createShapeElement(info.targetRect, info.finalX, info.finalY, rectId, info.rot);
+        }
     }
-    function createShapeElement(parent, x, y, rectId) {
-        const existing = Array.from(parent.querySelectorAll('.placed-shape')).find(el => 
-            parseInt(el.style.left) === x && parseInt(el.style.top) === y
-        );
+
+    function createShapeElement(parent, x, y, rectId, rot = 0) {
+        const existing = Array.from(parent.querySelectorAll('.placed-shape')).find(el => {
+            return parseInt(el.style.left) === x && parseInt(el.style.top) === y;
+        });
         if (existing) return;
+        
         const shape = document.createElement('div');
         shape.innerHTML = SHAPES[currentTool].svg;
         shape.className = 'placed-shape';
@@ -534,6 +620,12 @@
         shape.style.opacity = '0';
         shape.style.transform = 'scale(0)';
         shape.setAttribute('data-type', currentTool);
+        
+        if (currentTool === 'triangle') {
+            shape.setAttribute('data-rot', rot);
+            shape.children[0].style.transform = `rotate(${rot}deg)`;
+        }
+        
         const shapeType = currentTool;
         shape.onmousedown = (e) => startDrag(e, shapeType, shape);
         shape.ontouchstart = (e) => startDrag(e, shapeType, shape);
@@ -542,7 +634,7 @@
             removeShape(shape, rectId);
         };
         parent.appendChild(shape);
-        // 原生动画
+        
         requestAnimationFrame(() => {
             shape.style.opacity = '1';
             shape.style.transform = 'scale(1)';
@@ -550,6 +642,7 @@
         counts[rectId]++;
         updateCounter(rectId);
     }
+
     function removeShape(el, rectId) {
         el.style.opacity = '0';
         el.style.transform = 'scale(0)';
@@ -559,6 +652,7 @@
             updateCounter(rectId);
         }, 300);
     }
+
     function startDrag(e, shapeType, existingEl = null) {
         if (!isToolMode && !existingEl) return;
         if (shapeType !== currentTool) return;
@@ -579,12 +673,9 @@
         } else {
             ghost = existingEl;
             ghost.classList.add('dragging-ghost');
-            
-            // 修复问题3：将已有的元素转移到 body 中，使其不再受父级 transform 的影响，防止飞向右下角
             const parentId = existingEl.parentElement.id;
             const rectId = parentId === 'rect1' ? 1 : 2;
             document.body.appendChild(ghost);
-            
             counts[rectId]--;
             updateCounter(rectId);
         }
@@ -611,50 +702,35 @@
         window.addEventListener(isTouch ? 'touchmove' : 'mousemove', moveHandler, { passive: false });
         window.addEventListener(isTouch ? 'touchend' : 'mouseup', endHandler);
     }
+
     function updateDragPosition(x, y) {
         if (!activeDrag) return;
         activeDrag.el.style.left = (x - activeDrag.offsetX) + 'px';
         activeDrag.el.style.top = (y - activeDrag.offsetY) + 'px';
+
+        if (activeDrag.type === 'triangle') {
+            const info = getDragTargetInfo(x, y, activeDrag.type);
+            if (info && info.targetRect) {
+                activeDrag.el.children[0].style.transform = `rotate(${info.rot}deg)`;
+            }
+        }
     }
+
     function finishDrag(x, y) {
         if (!activeDrag) return;
         const ghost = activeDrag.el;
         const shapeType = activeDrag.type;
-        const size = SHAPES[shapeType].size;
-        const rect1 = document.getElementById('rect1');
-        const rect2 = document.getElementById('rect2');
-        const r1Bounds = rect1.getBoundingClientRect();
-        const r2Bounds = rect2.getBoundingClientRect();
-        let targetRect = null;
-        let bounds = null;
-        let rectId = 0;
-        if (x >= r1Bounds.left && x <= r1Bounds.right && y >= r1Bounds.top && y <= r1Bounds.bottom) {
-            targetRect = rect1;
-            bounds = r1Bounds;
-            rectId = 1;
-        } else if (x >= r2Bounds.left && x <= r2Bounds.right && y >= r2Bounds.top && y <= r2Bounds.bottom) {
-            targetRect = rect2;
-            bounds = r2Bounds;
-            rectId = 2;
-        }
-        if (targetRect) {
-            // 计算相对容器内部的精准位置
-            const rectStyle = window.getComputedStyle(targetRect);
-            const borderLeft = parseFloat(rectStyle.borderLeftWidth) || 0;
-            const borderTop = parseFloat(rectStyle.borderTopWidth) || 0;
-            const relX = x - bounds.left - borderLeft - activeDrag.offsetX;
-            const relY = y - bounds.top - borderTop - activeDrag.offsetY;
+        
+        const info = getDragTargetInfo(x, y, shapeType);
+        
+        if (info && info.targetRect) {
+            const { targetRect, rectId, finalX, finalY, rot } = info;
             
-            let gridX = Math.round(relX / size) * size;
-            let gridY = Math.round(relY / size) * size;
-            
-            // 使用 clientWidth / clientHeight 能够规避掉边框影响，精确限制拖放的最大范围
-            const finalX = Math.max(0, Math.min(gridX, Math.round(targetRect.clientWidth / size) * size - size));
-            const finalY = Math.max(0, Math.min(gridY, Math.round(targetRect.clientHeight / size) * size - size));
-            
-            const existing = Array.from(targetRect.querySelectorAll('.placed-shape')).find(el => 
-                el !== ghost && parseInt(el.style.left) === finalX && parseInt(el.style.top) === finalY
-            );
+            const existing = Array.from(targetRect.querySelectorAll('.placed-shape')).find(el => {
+                if (el === ghost) return false;
+                return parseInt(el.style.left) === finalX && parseInt(el.style.top) === finalY;
+            });
+
             if (existing) {
                 ghost.remove();
             } else {
@@ -662,9 +738,13 @@
                 ghost.style.left = finalX + 'px';
                 ghost.style.top = finalY + 'px';
                 ghost.setAttribute('data-type', shapeType);
+                if (shapeType === 'triangle') {
+                    ghost.setAttribute('data-rot', rot);
+                    ghost.children[0].style.transform = `rotate(${rot}deg)`;
+                }
                 ghost.onmousedown = (e) => startDrag(e, shapeType, ghost);
                 ghost.ontouchstart = (e) => startDrag(e, shapeType, ghost);
-                targetRect.appendChild(ghost); // 放回目标框内
+                targetRect.appendChild(ghost); 
                 counts[rectId]++;
                 updateCounter(rectId);
             }
@@ -673,9 +753,11 @@
         }
         activeDrag = null;
     }
+
     function updateCounter(rectId) {
         document.getElementById(`count-${rectId}`).innerText = counts[rectId];
     }
+
     function fillAll(rectId) {
         const rect = document.getElementById(`rect${rectId}`);
         const size = SHAPES[currentTool].size;
@@ -683,15 +765,23 @@
         shapes.forEach(s => s.remove());
         counts[rectId] -= shapes.length;
         
-        // 修复问题2：使用元素的 clientWidth / clientHeight 可以精准计算行数，规避了由于受边框影响或浮点数误差导致 3 行变 2 行的 Bug
-        const cols = Math.round(rect.clientWidth / size);
-        const rows = Math.round(rect.clientHeight / size);
+        const stepX = currentTool === 'triangle' ? size / 2 : size;
+        const stepY = size;
+        
+        const cols = Math.round((rect.clientWidth - size) / stepX) + 1;
+        const rows = Math.round(rect.clientHeight / stepY);
+        
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
-                createShapeElement(rect, c * size, r * size, rectId);
+                let rot = 0;
+                if (currentTool === 'triangle') {
+                    rot = ((c + r) % 2 === 1) ? 180 : 0;
+                }
+                createShapeElement(rect, c * stepX, r * stepY, rectId, rot);
             }
         }
     }
+
     function clearAll() {
         document.querySelectorAll('.placed-shape').forEach(el => {
             el.style.opacity = '0';
@@ -702,10 +792,10 @@
         updateCounter(1);
         updateCounter(2);
     }
+
     window.onload = () => {
         const r1 = document.getElementById('rect1');
         const r2 = document.getElementById('rect2');
-        // 记录初始位置
         const style1 = window.getComputedStyle(r1);
         const style2 = window.getComputedStyle(r2);
         initialPositions.rect1 = { left: style1.left, top: style1.top, transform: style1.transform };
