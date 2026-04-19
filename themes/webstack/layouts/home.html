@@ -230,375 +230,336 @@
 
 
 {{ define "footer" }}
-<script src="js/jquery-1.11.1.min.js"></script>
-<!-- 搜索功能 -->
+<!-- 合并后的核心脚本 (替代 bootstrap / TweenMax / resizeable / xenon-toggle / xenon-custom / lozad) -->
+<script src="/js/app.js"></script>
+<script src="/js/LetterAvatar.js"></script>
+
 <script type="text/javascript">
-// 准备搜索数据
-var searchData = [];
-var linksData = null;
+(function(){
+  'use strict';
 
-// 从 JSON 文件加载数据
-function loadLinksData(callback) {
-    $.getJSON('/data/links.json')
-        .done(function(data) {
-            linksData = data;
-            // 构建搜索数据
-            searchData = [];
-            if (data.list) {
-                data.list.forEach(function(category) {
-                    if (category.sub) {
-                        // 有子分类的情况
-                        category.sub.forEach(function(subCategory) {
-                            if (subCategory.item) {
-                                subCategory.item.forEach(function(item) {
-                                    searchData.push({
-                                        siteName: item.siteName || '',
-                                        description: item.description || '',
-                                        siteLink: item.siteLink || '',
-                                        siteLogo: item.siteLogo || '',
-                                        siteImage: item.siteImage || '',
-                                        siteSnip: item.siteSnip || ''
-                                    });
-                                });
-                            }
-                        });
-                    } else if (category.item) {
-                        // 没有子分类的情况
-                        category.item.forEach(function(item) {
-                            searchData.push({
-                                siteName: item.siteName || '',
-                                description: item.description || '',
-                                siteLink: item.siteLink || '',
-                                siteLogo: item.siteLogo || '',
-                                siteImage: item.siteImage || '',
-                                siteSnip: item.siteSnip || ''
-                            });
-                        });
-                    }
+  /* =========== 搜索功能 =========== */
+  var searchData = [];
+  var linksData = null;
+  var myStorage = 'webstack-' + window.location.hostname.replace(/\./g, '-');
+
+  function loadLinksData(callback) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/data/links.json', true);
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 400) {
+        var data = JSON.parse(xhr.responseText);
+        linksData = data;
+        searchData = [];
+        if (data.list) {
+          data.list.forEach(function(category) {
+            if (category.sub) {
+              category.sub.forEach(function(subCategory) {
+                if (subCategory.item) {
+                  subCategory.item.forEach(function(item) {
+                    searchData.push({
+                      siteName: item.siteName || '',
+                      description: item.description || '',
+                      siteLink: item.siteLink || '',
+                      siteLogo: item.siteLogo || '',
+                      siteImage: item.siteImage || '',
+                      siteSnip: item.siteSnip || ''
+                    });
+                  });
+                }
+              });
+            } else if (category.item) {
+              category.item.forEach(function(item) {
+                searchData.push({
+                  siteName: item.siteName || '',
+                  description: item.description || '',
+                  siteLink: item.siteLink || '',
+                  siteLogo: item.siteLogo || '',
+                  siteImage: item.siteImage || '',
+                  siteSnip: item.siteSnip || ''
                 });
+              });
             }
-            if (callback) callback();
-        })
-        .fail(function() {
-            console.error('无法加载链接数据');
-        });
-}
+          });
+        }
+        if (callback) callback();
+      }
+    };
+    xhr.onerror = function() { console.error('无法加载链接数据'); };
+    xhr.send();
+  }
 
-// 搜索功能
-function performSearch(query) {
+  function performSearch(query) {
+    var searchResults = document.getElementById('searchResults');
+    var originalContent = document.getElementById('originalContent');
     if (!query || query.trim() === '') {
-        $('#searchResults').hide();
-        $('#originalContent').show();
-        return;
+      searchResults.style.display = 'none';
+      originalContent.style.display = '';
+      return;
     }
-    
     query = query.toLowerCase();
     var results = searchData.filter(function(item) {
-        return item.siteName.toLowerCase().includes(query) ||
-               item.description.toLowerCase().includes(query);
+      return item.siteName.toLowerCase().includes(query) ||
+             item.description.toLowerCase().includes(query);
     });
-    
     displaySearchResults(results);
-}
+  }
 
-function displaySearchResults(results) {
-    var container = $('#searchResultsContainer');
-    container.empty();
-    
+  function displaySearchResults(results) {
+    var container = document.getElementById('searchResultsContainer');
+    container.innerHTML = '';
+
     if (results.length === 0) {
-        container.html('<div class="col-sm-12"><p class="text-muted">未找到匹配的结果</p></div>');
+      container.innerHTML = '<div class="col-sm-12"><p class="text-muted">未找到匹配的结果</p></div>';
     } else {
-        // 分离卡片样式和普通样式的项目
-        var cardItems = results.filter(function(item) { return item.siteSnip; });
-        var normalItems = results.filter(function(item) { return !item.siteSnip; });
-        
-        // 先显示卡片样式项目
+      var cardItems = results.filter(function(item) { return item.siteSnip; });
+      var normalItems = results.filter(function(item) { return !item.siteSnip; });
+
+      if (cardItems.length > 0) {
+        var cardRow = document.createElement('div');
+        cardRow.className = 'row';
+        cardItems.forEach(function(item) {
+          var html = '<div class="col-sm-3">';
+          html += '<div class="xe-widget xe-conversations card-style label-info box2" onclick="window.open(\'' + item.siteLink + '\', \'_blank\')" data-toggle="tooltip" data-placement="bottom" data-original-title="' + item.siteLink + '">';
+          html += '<div class="card-image"><img data-src="' + item.siteSnip + '" class="lozad card-preview" alt="' + item.siteName + '"></div>';
+          html += '<div class="card-content"><div class="card-header"><div class="card-title"><strong class="overflowClip_1">' + item.siteName + '</strong></div></div>';
+          html += '<p class="card-description overflowClip_1">' + item.description + '</p></div></div></div>';
+          cardRow.insertAdjacentHTML('beforeend', html);
+        });
+        container.appendChild(cardRow);
+      }
+
+      if (normalItems.length > 0) {
         if (cardItems.length > 0) {
-            var cardRow = $('<div class="row"></div>');
-            cardItems.forEach(function(item) {
-                var cardHtml = '<div class="col-sm-3">';
-                cardHtml += '<div class="xe-widget xe-conversations card-style label-info box2" onclick="window.open(\'' + item.siteLink + '\', \'_blank\')" data-toggle="tooltip" data-placement="bottom" title="" data-original-title="' + item.siteLink + '">';
-                cardHtml += '<div class="card-image">';
-                cardHtml += '<img data-src="' + item.siteSnip + '" class="lozad card-preview" alt="' + item.siteName + '">';
-                cardHtml += '</div>';
-                cardHtml += '<div class="card-content">';
-                cardHtml += '<div class="card-header">';
-                cardHtml += '<div class="card-title">';
-                cardHtml += '<strong class="overflowClip_1">' + item.siteName + '</strong>';
-                cardHtml += '</div>';
-                cardHtml += '</div>';
-                cardHtml += '<p class="card-description overflowClip_1">' + item.description + '</p>';
-                cardHtml += '</div>';
-                cardHtml += '</div>';
-                cardHtml += '</div>';
-                cardRow.append(cardHtml);
-            });
-            container.append(cardRow);
+          container.insertAdjacentHTML('beforeend', '<div class="col-sm-12"><h5 class="text-muted">其他项目</h5></div>');
         }
-        
-        // 再显示普通样式项目
-        if (normalItems.length > 0) {
-            if (cardItems.length > 0) {
-                container.append('<div class="col-sm-12"><h5 class="text-muted">其他项目</h5></div>');
-            }
-            var normalRow = $('<div class="row"></div>');
-            normalItems.forEach(function(item) {
-                var cardHtml = '<div class="col-sm-3">';
-                if (item.siteImage) {
-                    cardHtml += '<div class="xe-widget xe-conversations box2 label-info" data-toggle="tooltip" data-placement="bottom" title="" data-original-title="<img src=\'' + item.siteImage + '\' width=\'148\'>">';
-                } else {
-                    cardHtml += '<div class="xe-widget xe-conversations box2 label-info" onclick="window.open(\'' + item.siteLink + '\', \'_blank\')" data-toggle="tooltip" data-placement="bottom" title="" data-original-title="' + item.siteLink + '">';
-                }
-                
-                cardHtml += '<div class="xe-comment-entry">';
-                cardHtml += '<a class="xe-user-img">';
-                
-                if (item.siteLogo) {
-                    cardHtml += '<img data-src="' + item.siteLogo + '" class="lozad img-circle" width="40" height="40">';
-                } else {
-                    cardHtml += '<img avatar="' + item.siteName + '" class="img-circle" width="40" height="40">';
-                }
-                
-                cardHtml += '</a>';
-                cardHtml += '<div class="xe-comment">';
-                cardHtml += '<a href="javascript:void 0;" class="xe-user-name overflowClip_1">';
-                cardHtml += '<strong>' + item.siteName + '</strong>';
-                cardHtml += '</a>';
-                cardHtml += '<p class="overflowClip_2">' + item.description + '</p>';
-                cardHtml += '</div>';
-                cardHtml += '</div>';
-                cardHtml += '</div>';
-                cardHtml += '</div>';
-                
-                normalRow.append(cardHtml);
-            });
-            container.append(normalRow);
-        }
+        var normalRow = document.createElement('div');
+        normalRow.className = 'row';
+        normalItems.forEach(function(item) {
+          var html = '<div class="col-sm-3">';
+          if (item.siteImage) {
+            html += '<div class="xe-widget xe-conversations box2 label-info" data-toggle="tooltip" data-placement="bottom" data-original-title="<img src=\'' + item.siteImage + '\' width=\'148\'>">';
+          } else {
+            html += '<div class="xe-widget xe-conversations box2 label-info" onclick="window.open(\'' + item.siteLink + '\', \'_blank\')" data-toggle="tooltip" data-placement="bottom" data-original-title="' + item.siteLink + '">';
+          }
+          html += '<div class="xe-comment-entry"><a class="xe-user-img">';
+          if (item.siteLogo) {
+            html += '<img data-src="' + item.siteLogo + '" class="lozad img-circle" width="40" height="40">';
+          } else {
+            html += '<img avatar="' + item.siteName + '" class="img-circle" width="40" height="40">';
+          }
+          html += '</a><div class="xe-comment"><a href="javascript:void 0;" class="xe-user-name overflowClip_1"><strong>' + item.siteName + '</strong></a>';
+          html += '<p class="overflowClip_2">' + item.description + '</p></div></div></div></div>';
+          normalRow.insertAdjacentHTML('beforeend', html);
+        });
+        container.appendChild(normalRow);
+      }
     }
-    
-    $('#originalContent').hide();
-    $('#searchResults').show();
-    
+
+    document.getElementById('originalContent').style.display = 'none';
+    document.getElementById('searchResults').style.display = '';
+
     // 重新初始化图片懒加载
-    const observer = lozad();
-    observer.observe();
-    
-    // 初始化LetterAvatar为没有logo的网站生成字母头像
-    if (typeof LetterAvatar !== 'undefined') {
-        LetterAvatar.transform();
-    }
-    
-    // 重新绑定点击事件
-    $('#searchResultsContainer .xe-widget').off('click').on('click', function(){
-        var itemclick = $(this).attr('data-original-title');
+    var obs = lozad(); obs.observe();
+    // 初始化 LetterAvatar
+    if (typeof LetterAvatar !== 'undefined') { LetterAvatar.transform(); }
+
+    // 搜索结果中的点击记录
+    container.querySelectorAll('.xe-widget').forEach(function(widget) {
+      widget.addEventListener('click', function() {
+        var itemclick = this.getAttribute('data-original-title');
         if (itemclick && !itemclick.startsWith('<img')) {
-            var dataClick = JSON.parse(localStorage.getItem(myStorage)) || [];
-            var indexNum = dataClick.indexOf(itemclick);
-            if(indexNum >= 0 ){
-                dataClick.splice(indexNum,1);
-            }
-            if(dataClick.length == 8 ){
-                dataClick.shift();
-            }
-            dataClick.push(itemclick);
-            localStorage.setItem(myStorage, JSON.stringify(dataClick));
+          saveToHistory(itemclick);
         }
+      });
     });
-}
+  }
 
-function clearSearch() {
-    $('#searchInput').val('');
-    $('#searchResults').hide();
-    $('#originalContent').show();
-}
+  function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('originalContent').style.display = '';
+  }
+  window.clearSearch = clearSearch;
 
-// 绑定搜索事件
-$(document).ready(function() {
-    // 先加载链接数据，然后绑定搜索事件
-    loadLinksData(function() {
-        $('#searchInput').on('input', function() {
-            var query = $(this).val();
-            performSearch(query);
-        });
-        
-        $('#searchInput').on('keypress', function(e) {
-            if (e.which === 13) { // Enter键
-                e.preventDefault();
-                var query = $(this).val();
-                performSearch(query);
-            }
-        });
-    });
-});
-</script>
-<!-- 锚点平滑移动 -->
-<script type="text/javascript">
-$(document).ready(function() {
-     //img lazy loaded
-     const observer = lozad();observer.observe();
-    $(document).on('click', '.has-sub', function(){
-        var _this = $(this)
-        if(!$(this).hasClass('expanded')) {
-           setTimeout(function(){
-                _this.find('ul').attr("style","")
-           }, 300);
-          
-        } else {
-            $('.has-sub ul').each(function(id,ele){
-                var _that = $(this)
-                if(_this.find('ul')[0] != ele) {
-                    setTimeout(function(){
-                        _that.attr("style","")
-                    }, 300);
-                }
-            })
-        }
-    })
-    $('.user-info-menu .hidden-sm').click(function(){
-        if($('.sidebar-menu').hasClass('collapsed')) {
-            $('.has-sub.expanded > ul').attr("style","")
-        } else {
-            $('.has-sub.expanded > ul').show()
-        }
-    })
-    $("#main-menu li ul li").click(function() {
-        $(this).siblings('li').removeClass('active'); // 删除其他兄弟元素的样式
-        $(this).addClass('active'); // 添加当前元素的样式
-    });
-    $("a.smooth").click(function(ev) {
-        ev.preventDefault();
-        public_vars.$mainMenu.add(public_vars.$sidebarProfile).toggleClass('mobile-is-visible');
-        ps_destroy();
-        $("html, body").animate({
-            scrollTop: $($(this).attr("data-tag")).offset().top - 30
-        }, {
-            duration: 500,
-            easing: "swing"
-        });
-    });
-    return false;
-});
-
-var href = "";
-var pos = 0;
-$("a.smooth").click(function(e) {
-    $("#main-menu li").each(function() {
-        $(this).removeClass("active");
-    });
-    $(this).parent("li").addClass("active");
-    e.preventDefault();
-    href = $(this).attr("data-tag");
-    pos = $(href).position().top - 30;
-});
-
-//浏览记录
-var myStorage = 'webstack-'+window.location.hostname.replace(/\./g,'-');//'edui123'
-var myStorageData = JSON.parse(localStorage.getItem(myStorage)) || [];
-if(myStorageData.length == 0 ){
-    localStorage.setItem(myStorage, '[]');
-}else if(myStorageData.length > 0){
-    $('#recordALL').attr("style","display:block")
-    $.each(myStorageData, function(index, value) {
-        $('[data-original-title="'+value+'"]').clone(true).prependTo('#recordItems').wrap('<div class="col-sm-3"></div>');
-    });
-}
-$(".xe-widget").on("click", function(){
-    var itemclick = $(this).attr("data-original-title")
-    var dataClick = JSON.parse(localStorage.getItem(myStorage))
-    var indexNum = dataClick.indexOf(itemclick)
-    if(indexNum >= 0 ){
-        dataClick.splice(indexNum,1)
-    }
-    if(dataClick.length == 8 ){
-        dataClick.shift()
-    }
-    dataClick.push(itemclick);
+  /* =========== 浏览记录 =========== */
+  function saveToHistory(url) {
+    var dataClick = JSON.parse(localStorage.getItem(myStorage)) || [];
+    var indexNum = dataClick.indexOf(url);
+    if (indexNum >= 0) dataClick.splice(indexNum, 1);
+    if (dataClick.length == 8) dataClick.shift();
+    dataClick.push(url);
     localStorage.setItem(myStorage, JSON.stringify(dataClick));
-})
-</script>	
-<!-- Bottom Scripts -->
+  }
 
-<script src="/js/bootstrap.min.js"></script>
-<script src="/js/TweenMax.min.js"></script>
-<script src="/js/resizeable.js"></script>
-<script src="/js/xenon-toggle.js"></script>
-<script src="/js/xenon-custom.js"></script>
-<script src="/js/lozad.js"></script>
-<script src="/js/LetterAvatar.js"></script>
-<script type="text/javascript">
-$(function(){
-    function parseCats(str){
-        var out = [];
-        try {
-            var parsed = JSON.parse(str);
-            if (Array.isArray(parsed)) {
-                for (var i=0;i<parsed.length;i++){ out.push(String(parsed[i])); }
-                return out;
-            } else if (typeof parsed === 'string') {
-                return [parsed];
-            }
-        } catch(e) {}
-        var arr = (str || '').split(',');
-        for(var i=0;i<arr.length;i++){ var s = arr[i].replace(/^\s+|\s+$/g,''); if(s){ out.push(s); } }
-        return out;
-    }
-    function buildFilters(){
-        var container = $('.sub-content[data-subid="课中互动"]');
-        var cards = container.find('.col-sm-3');
-        var total = cards.length;
-        var counts = {};
-        cards.each(function(){
-            var c = $(this).find('.xe-widget').attr('data-cate');
-            var categories = parseCats(c);
-            for(var i=0;i<categories.length;i++){
-                var k = String(categories[i]);
-                counts[k] = (counts[k] || 0) + 1;
-            }
-        });
-        var labels = {
-            all:'全部', syds:'数与代数', txjh:'图形与几何', tjgl:'统计与概率', zhsj:'综合与实践', houke:'候课', xiti:'习题', other:'其它',
-            '1a':'一上','1b':'一下','2a':'二上','2b':'二下','3a':'三上','3b':'三下','4a':'四上','4b':'四下','5a':'五上','5b':'五下','6a':'六上','6b':'六下'
-        };
-        var group1 = ['all','syds','txjh','tjgl','zhsj','houke','xiti','other'];
-        var group2 = ['1a','1b','2a','2b','3a','3b','4a','4b','5a','5b','6a','6b'];
-        var html = '';
-        for(var i=0;i<group1.length;i++){
-            var k = group1[i];
-            var n = (k === 'all' ? total : (counts[k] || 0));
-            var text = labels[k] || k;
-            html += '<a href="javascript:" class="cate-filter' + (k==='all' ? ' active' : '') + '" data-cate="' + k + '">' + text + '（' + n + '）</a>';
+  function initBrowsingHistory() {
+    var myStorageData = JSON.parse(localStorage.getItem(myStorage)) || [];
+    if (myStorageData.length == 0) {
+      localStorage.setItem(myStorage, '[]');
+    } else if (myStorageData.length > 0) {
+      var recordALL = document.getElementById('recordALL');
+      var recordItems = document.getElementById('recordItems');
+      if (recordALL) recordALL.style.display = 'block';
+      myStorageData.forEach(function(value) {
+        var source = document.querySelector('[data-original-title="' + value + '"]');
+        if (source) {
+          var clone = source.cloneNode(true);
+          var wrapper = document.createElement('div');
+          wrapper.className = 'col-sm-3';
+          wrapper.appendChild(clone);
+          recordItems.insertBefore(wrapper, recordItems.firstChild);
         }
-        html += '<br/>';
-        for(var j=0;j<group2.length;j++){
-            var g = group2[j];
-            var gn = counts[g] || 0;
-            var gt = labels[g] || g;
-            html += '<a href="javascript:" class="cate-filter" data-cate="' + g + '">' + gt + '（' + gn + '）</a>';
-        }
-        $('#cate-filter-bar').html(html);
+      });
     }
-    function applyFilter(){
-        var container = $('.sub-content[data-subid="课中互动"]');
-        var activeCate = $('.cate-filter.active').attr('data-cate');
-        if (!activeCate || activeCate === 'all') {
-            container.find('.col-sm-3').show();
-            return;
-        }
-        container.find('.col-sm-3').each(function(){
-            var c = $(this).find('.xe-widget').attr('data-cate');
-            var categories = parseCats(c);
-            var ok = categories.indexOf(String(activeCate)) !== -1;
-            $(this).toggle(ok);
-        });
-    }
-    buildFilters();
-    $(document).on('click', '.cate-filter', function(ev){
-        ev.preventDefault();
-        $('.cate-filter').removeClass('active');
-        $(this).addClass('active');
-        applyFilter();
+
+    // 全局 xe-widget 点击记录
+    document.addEventListener('click', function(ev) {
+      var widget = ev.target.closest('.xe-widget');
+      if (!widget) return;
+      var itemclick = widget.getAttribute('data-original-title');
+      if (itemclick && !itemclick.startsWith('<img')) {
+        saveToHistory(itemclick);
+      }
     });
+  }
+
+  /* =========== 锚点平滑移动 =========== */
+  function initSmoothScroll() {
+    document.addEventListener('click', function(ev) {
+      var link = ev.target.closest('a.smooth');
+      if (!link) return;
+      ev.preventDefault();
+
+      // 收起移动端菜单
+      var mainMenu = public_vars.$mainMenu;
+      var sidebarProfile = public_vars.$sidebarProfile;
+      if (mainMenu) mainMenu.classList.toggle('mobile-is-visible');
+      if (sidebarProfile) sidebarProfile.classList.toggle('mobile-is-visible');
+
+      // 平滑滚动到锚点
+      var tag = link.getAttribute('data-tag');
+      var target = document.querySelector(tag);
+      if (target) {
+        var top = target.getBoundingClientRect().top + window.pageYOffset - 30;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+      }
+
+      // 侧边栏 active 状态
+      document.querySelectorAll('#main-menu li').forEach(function(li) { li.classList.remove('active'); });
+      if (link.parentElement) link.parentElement.classList.add('active');
+    });
+  }
+
+  /* =========== 课中互动分类筛选 =========== */
+  function parseCats(str) {
+    var out = [];
+    try {
+      var parsed = JSON.parse(str);
+      if (Array.isArray(parsed)) {
+        for (var i = 0; i < parsed.length; i++) { out.push(String(parsed[i])); }
+        return out;
+      } else if (typeof parsed === 'string') {
+        return [parsed];
+      }
+    } catch (e) {}
+    var arr = (str || '').split(',');
+    for (var i = 0; i < arr.length; i++) { var s = arr[i].trim(); if (s) out.push(s); }
+    return out;
+  }
+
+  function buildFilters() {
+    var container = document.querySelector('.sub-content[data-subid="课中互动"]');
+    if (!container) return;
+    var cards = container.querySelectorAll('.col-sm-3');
+    var total = cards.length;
+    var counts = {};
+    cards.forEach(function(card) {
+      var widget = card.querySelector('.xe-widget');
+      if (!widget) return;
+      var c = widget.getAttribute('data-cate');
+      var categories = parseCats(c);
+      for (var i = 0; i < categories.length; i++) {
+        var k = String(categories[i]);
+        counts[k] = (counts[k] || 0) + 1;
+      }
+    });
+    var labels = {
+      all:'全部', syds:'数与代数', txjh:'图形与几何', tjgl:'统计与概率', zhsj:'综合与实践', houke:'候课', xiti:'习题', other:'其它',
+      '1a':'一上','1b':'一下','2a':'二上','2b':'二下','3a':'三上','3b':'三下','4a':'四上','4b':'四下','5a':'五上','5b':'五下','6a':'六上','6b':'六下'
+    };
+    var group1 = ['all','syds','txjh','tjgl','zhsj','houke','xiti','other'];
+    var group2 = ['1a','1b','2a','2b','3a','3b','4a','4b','5a','5b','6a','6b'];
+    var html = '';
+    for (var i = 0; i < group1.length; i++) {
+      var k = group1[i];
+      var n = (k === 'all' ? total : (counts[k] || 0));
+      var text = labels[k] || k;
+      html += '<a href="javascript:" class="cate-filter' + (k === 'all' ? ' active' : '') + '" data-cate="' + k + '">' + text + '（' + n + '）</a>';
+    }
+    html += '<br/>';
+    for (var j = 0; j < group2.length; j++) {
+      var g = group2[j];
+      var gn = counts[g] || 0;
+      var gt = labels[g] || g;
+      html += '<a href="javascript:" class="cate-filter" data-cate="' + g + '">' + gt + '（' + gn + '）</a>';
+    }
+    var filterBar = document.getElementById('cate-filter-bar');
+    if (filterBar) filterBar.innerHTML = html;
+  }
+
+  function applyFilter() {
+    var container = document.querySelector('.sub-content[data-subid="课中互动"]');
+    if (!container) return;
+    var activeBtn = document.querySelector('.cate-filter.active');
+    var activeCate = activeBtn ? activeBtn.getAttribute('data-cate') : 'all';
+    if (!activeCate || activeCate === 'all') {
+      container.querySelectorAll('.col-sm-3').forEach(function(card) { card.style.display = ''; });
+      return;
+    }
+    container.querySelectorAll('.col-sm-3').forEach(function(card) {
+      var widget = card.querySelector('.xe-widget');
+      if (!widget) return;
+      var c = widget.getAttribute('data-cate');
+      var categories = parseCats(c);
+      card.style.display = categories.indexOf(String(activeCate)) !== -1 ? '' : 'none';
+    });
+  }
+
+  /* =========== DOMContentLoaded =========== */
+  document.addEventListener('DOMContentLoaded', function() {
+    // 图片懒加载
+    var obs = lozad(); obs.observe();
+
+    // 搜索
+    loadLinksData(function() {
+      var searchInput = document.getElementById('searchInput');
+      if (searchInput) {
+        searchInput.addEventListener('input', function() { performSearch(this.value); });
+        searchInput.addEventListener('keypress', function(e) {
+          if (e.keyCode === 13) { e.preventDefault(); performSearch(this.value); }
+        });
+      }
+    });
+
+    // 平滑滚动
+    initSmoothScroll();
+
+    // 浏览记录
+    initBrowsingHistory();
+
+    // 分类筛选
+    buildFilters();
     applyFilter();
-});
+    document.addEventListener('click', function(ev) {
+      var btn = ev.target.closest('.cate-filter');
+      if (!btn) return;
+      ev.preventDefault();
+      document.querySelectorAll('.cate-filter').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      applyFilter();
+    });
+  });
+
+})();
 </script>
 {{ end }}
