@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- ⚠️ 注意：为了演示场景1的“双击放大”，这里特意去掉了 user-scalable=no 和 maximum-scale=1.0 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>常见事件冲突演示</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #f1f5f9; color: #334155; font-family: system-ui, -apple-system, sans-serif; }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .panel { background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); transition: box-shadow 0.2s; }
+        
+        .graphic-element { user-select: none; cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .graphic-element:active { transform: scale(0.95); }
+
+        .canvas-bg {
+            background-image: 
+                linear-gradient(45deg, #e2e8f0 25%, transparent 25%), 
+                linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #e2e8f0 75%), 
+                linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+            background-size: 16px 16px;
+            background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+            background-color: #f8fafc;
+        }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes popIn { 0% { opacity: 0; transform: scale(0.8); } 70% { transform: scale(1.1); } 100% { opacity: 1; transform: scale(1); } }
+        
+        .log-item { animation: slideIn 0.2s ease-out; }
+        .timeline-node { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        .color-mouse { color: #3b82f6; background: #eff6ff; border-color: #bfdbfe; }
+        .color-touch { color: #10b981; background: #ecfdf5; border-color: #a7f3d0; }
+        .color-conflict { color: #ef4444; background: #fef2f2; border-color: #fecaca; }
+        .color-warn { color: #f59e0b; background: #fffbeb; border-color: #fde68a; }
+
+        * { -webkit-tap-highlight-color: transparent; }
+        
+        /* 防止长按文字被选中影响体验 */
+        .no-select { -webkit-user-select: none; user-select: none; }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col no-select">
+
+    <!-- 顶部：实时事件时间轴 -->
+    <div class="h-36 bg-white border-b border-gray-200 shadow-sm z-10 flex flex-col shrink-0">
+        <div class="px-6 py-2 border-b border-gray-100 flex justify-between items-center bg-slate-50">
+            <div>
+                <h1 class="text-lg font-bold text-slate-800">常见事件冲突颜色</h1>
+            </div>
+            <button id="btnClearTimeline" class="text-xs px-3 py-1.5 bg-white border border-slate-300 rounded text-slate-600 hover:bg-slate-50 transition shadow-sm">清空重置</button>
+        </div>
+        <div class="flex-1 overflow-x-auto overflow-y-hidden flex items-center px-6 gap-2" id="timelineContainer">
+            <div class="text-slate-400 text-sm italic" id="timelinePlaceholder">等待交互...</div>
+        </div>
+    </div>
+
+    <!-- 主体区域：左侧演示，右侧日志 -->
+    <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        
+        <!-- 左侧：操作演示区 -->
+        <div class="w-full md:w-3/5 h-full overflow-y-auto p-6 bg-slate-100 pb-32">
+            <div class="space-y-6 max-w-2xl mx-auto">
+                
+                <!-- 场景 1：单击 vs 双击 (包含触摸放大对比) -->
+                <div class="panel p-5 border-l-4 border-l-blue-500">
+                    <div class="flex justify-between items-start mb-2">
+                        <h2 class="text-base font-bold text-slate-800">1. 单/双击对比：PC逻辑重叠 vs 手机双击放大</h2>
+                        <span class="text-xs px-2 py-1 bg-red-100 text-red-600 rounded">系统级冲突</span>
+                    </div>
+                    <div class="text-sm text-slate-600 mb-4 space-y-1">
+                        <p><b>🖱️ 鼠标端：</b>双击必然包含两次单击，会导致单击和双击代码混在一起执行。</p>
+                        <p><b>👆 触摸端：</b>手机网页默认会拦截快速的“双击”用于<b>放大页面</b>，导致 JS 中的 <code>dblclick</code> 事件极大概率丢失或失效。</p>
+                        <p class="text-blue-600 font-bold mt-2">👉 体验：在电脑上双击看日志叠加；在手机模式下双击，看页面是否被系统强行放大了。</p>
+                    </div>
+                    <div class="w-full h-32 canvas-bg rounded-lg border border-slate-200 flex items-center justify-center relative overflow-hidden">
+                        <div id="shapeDblClick" class="w-16 h-16 bg-blue-500 rounded-full graphic-element shadow-lg ring-4 ring-transparent transition-all"></div>
+                        <span class="absolute bottom-2 text-xs text-slate-500 pointer-events-none bg-white/80 px-2 rounded">对蓝色圆形进行单/双击测试</span>
+                    </div>
+                </div>
+
+                <!-- 场景 2：拖拽绑定对比 (Mouse vs Touch) -->
+                <div class="panel p-5 border-l-4 border-l-orange-500">
+                    <div class="flex justify-between items-start mb-2">
+                        <h2 class="text-base font-bold text-slate-800">2. 拖拽对比：鼠标拖拽失效 vs 独立补充 Touch 事件</h2>
+                        <span class="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded">事件差异</span>
+                    </div>
+                    <div class="text-sm text-slate-600 mb-4 space-y-1">
+                        <p><b>🖱️ 鼠标端：</b>依赖 <code>mousedown / mousemove / mouseup</code> 实现拖拽。</p>
+                        <p><b>👆 触摸端：</b>鼠标代码在手机上完全瘫痪（摸上去根本拖不动）。必须<b>另外添加</b> <code>touchstart / touchmove / touchend</code>，并且用代码阻止页面跟随滑动。</p>
+                        <p class="text-blue-600 font-bold mt-2">👉 体验：随意拖拽橙色块，留意右侧日志：到底是触发了 Mouse 还是 Touch 事件流？</p>
+                    </div>
+                    <div class="w-full h-32 canvas-bg border border-slate-200 rounded-lg relative overflow-hidden flex items-center px-4" id="dragArea">
+                        <div id="dragGraphic" class="w-16 h-16 bg-orange-500 rounded-lg shadow-md graphic-element flex items-center justify-center text-white cursor-grab active:cursor-grabbing transform z-10 border-2 border-orange-600" style="touch-action: none;">
+                            <svg class="w-6 h-6 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                        </div>
+                        <span class="text-slate-500 text-xs ml-24 pointer-events-none z-10 bg-white/80 px-2 rounded">尝试拖动我</span>
+                    </div>
+                </div>
+
+                <!-- 场景 3：长按 vs 系统右键菜单拦截 -->
+                <div class="panel p-5 border-l-4 border-l-purple-500">
+                    <div class="flex justify-between items-start mb-2">
+                        <h2 class="text-base font-bold text-slate-800">3. 长按对比：自定义长按 vs 拦截系统原生右键菜单</h2>
+                        <span class="text-xs px-2 py-1 bg-red-100 text-red-600 rounded">菜单接管</span>
+                    </div>
+                    <div class="text-sm text-slate-600 mb-4 space-y-1">
+                        <p><b>🖱️ 交互目标：</b>按住超过1秒打开画笔设置菜单。</p>
+                        <p><b>👆 底层冲突：</b>在手机上长按，系统默认会弹出“复制/粘贴/保存图片”的右键菜单。在 PC 上点右键也是如此。必须手动禁止 <code>contextmenu</code> 事件。</p>
+                        <p class="text-blue-600 font-bold mt-2">👉 体验：按住画笔超1秒。我们已经强行禁用了系统右键菜单，您可以在日志看到拦截记录。</p>
+                    </div>
+                    <div class="flex gap-4 items-center p-4 bg-slate-50 rounded border border-slate-200">
+                        <button id="toolLongPress" class="w-16 h-16 bg-white border-2 border-slate-300 text-slate-600 rounded-xl graphic-element flex flex-col items-center justify-center hover:border-purple-400 hover:text-purple-500 transition-colors shadow-sm">
+                            <svg class="w-6 h-6 mb-1 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                            <span class="text-[10px] pointer-events-none">画笔</span>
+                        </button>
+                        <span class="text-xs text-slate-500 flex-1">长按（或右键）测试菜单拦截...</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 右侧：详细日志流 -->
+        <div class="w-full md:w-2/5 h-64 md:h-full bg-white border-t md:border-t-0 md:border-l border-slate-200 flex flex-col z-20">
+            <div class="px-4 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
+                <h2 class="text-sm font-bold text-slate-700">实时事件监测台</h2>
+                <button id="btnClearLog" class="text-xs text-slate-500 hover:text-slate-800 border border-slate-200 px-2 py-1 rounded bg-white shadow-sm">清空</button>
+            </div>
+            <!-- 正序排列容器 -->
+            <div id="logContainer" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm md:text-base flex flex-col">
+                <!-- 文本日志 -->
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const timelineContainer = document.getElementById('timelineContainer');
+        const timelinePlaceholder = document.getElementById('timelinePlaceholder');
+        const logContainer = document.getElementById('logContainer');
+        
+        let timelineNodes = [];
+        let activeSceneId = null;
+
+        // 大白话注释字典
+        const eventComments = {
+            'mousedown': '鼠标按下',
+            'mousemove': '鼠标拖动',
+            'mouseup': '鼠标松开',
+            'click': '判定点击',
+            'dblclick': '判定双击',
+            'touchstart': '手指摸到屏幕',
+            'touchmove': '手指滑动中',
+            'touchend': '手指离开屏幕',
+            'contextmenu': '系统菜单呼出',
+            '触发业务代码': '长按生效'
+        };
+
+        // 场景切换器
+        function switchScene(sceneId) {
+            if (activeSceneId !== sceneId) {
+                clearData();
+                activeSceneId = sceneId;
+                const sysLog = document.createElement('div');
+                sysLog.className = 'text-center text-slate-400 text-xs py-2 my-2 border-b border-slate-100';
+                sysLog.innerText = `--- 当前追踪：场景 ${sceneId} ---`;
+                logContainer.appendChild(sysLog);
+            }
+        }
+
+        function clearData() {
+            timelineContainer.innerHTML = '';
+            if (timelinePlaceholder) timelineContainer.appendChild(timelinePlaceholder);
+            timelinePlaceholder.style.display = 'block';
+            timelineNodes = [];
+            logContainer.innerHTML = '';
+        }
+
+        document.getElementById('btnClearTimeline').addEventListener('click', clearData);
+        document.getElementById('btnClearLog').addEventListener('click', () => { logContainer.innerHTML = ''; });
+
+
+        // 统一控制：添加事件到时间轴和日志
+        function recordEvent(source, eventName, category = 'mouse', isConflict = false, extraInfo = '') {
+            const now = new Date();
+            const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}.${now.getMilliseconds().toString().padStart(3,'0')}`;
+            
+            // --- 更新详细日志 ---
+            const logDiv = document.createElement('div');
+            logDiv.className = `log-item p-3 rounded border flex flex-col gap-2 shadow-sm ${getCategoryClass(category, isConflict)}`;
+            
+            let icon = category === 'mouse' ? '🖱️ 鼠标' : (category === 'touch' ? '👆 触摸' : '⚡ 逻辑');
+            if (isConflict) icon = '⚠️ 警告';
+
+            logDiv.innerHTML = `
+                <div class="flex items-center gap-3 flex-wrap">
+                    <span class="text-slate-500 text-xs font-mono bg-white px-1.5 py-0.5 rounded border shrink-0">${timeStr}</span>
+                    <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-white/50">${icon}</span>
+                    <span class="font-bold text-lg">${source}</span>
+                    <span class="text-slate-600">→</span>
+                    <span class="font-bold text-lg underline decoration-dotted">${eventName}</span>
+                </div>
+                ${extraInfo ? `<div class="ml-1 mt-1 text-sm bg-white/50 p-2 rounded border-l-2 border-slate-400">${extraInfo}</div>` : ''}
+            `;
+            
+            logContainer.appendChild(logDiv);
+            logContainer.scrollTop = logContainer.scrollHeight;
+
+            // --- 更新顶部时间轴 ---
+            if (timelinePlaceholder) timelinePlaceholder.style.display = 'none';
+
+            const nodeDiv = document.createElement('div');
+            nodeDiv.className = `timeline-node flex items-center shrink-0`;
+            
+            if (timelineNodes.length > 0) {
+                const arrow = document.createElement('div');
+                arrow.className = 'w-4 h-px bg-slate-300 mx-1 relative';
+                arrow.innerHTML = `<div class="absolute right-0 top-1/2 -translate-y-1/2 border-solid border-l-slate-300 border-l-4 border-y-transparent border-y-4 border-r-0"></div>`;
+                timelineContainer.appendChild(arrow);
+            }
+
+            let nodeClass = 'bg-slate-100 border-slate-300 text-slate-700';
+            if (isConflict) nodeClass = 'bg-red-100 border-red-300 text-red-700 font-bold';
+            else if (eventName.includes('click')) nodeClass = 'bg-blue-100 border-blue-300 text-blue-700 font-bold';
+            else if (eventName.includes('touch')) nodeClass = 'bg-emerald-100 border-emerald-300 text-emerald-700 font-bold';
+            else if (eventName.includes('move')) nodeClass = 'bg-slate-50 border-dashed border-slate-300 text-slate-500'; 
+
+            const comment = eventComments[eventName] || '未知动作';
+
+            nodeDiv.innerHTML = `
+                <div class="px-3 py-2 border rounded flex flex-col items-center shadow-sm ${nodeClass}">
+                    <span class="font-bold">${eventName}</span>
+                    <span class="text-xs opacity-90 mt-1 ${eventName.includes('move') ? 'text-slate-400' : 'bg-white/50 px-2 rounded-full'}">${comment}</span>
+                </div>
+            `;
+            timelineContainer.appendChild(nodeDiv);
+            timelineContainer.scrollLeft = timelineContainer.scrollWidth; 
+            timelineNodes.push(nodeDiv);
+        }
+
+        function getCategoryClass(category, isConflict) {
+            if (isConflict) return 'color-conflict';
+            if (category === 'mouse') return 'color-mouse';
+            if (category === 'touch') return 'color-touch';
+            return 'color-warn';
+        }
+
+
+        // ==========================================
+        // 场景 1：单击 vs 双击 (包含 Touch 观察)
+        // ==========================================
+        const shapeDblClick = document.getElementById('shapeDblClick');
+        
+        // 鼠标事件
+        shapeDblClick.addEventListener('mousedown', () => { switchScene(1); recordEvent('圆形', 'mousedown', 'mouse'); });
+        shapeDblClick.addEventListener('mouseup', () => recordEvent('圆形', 'mouseup', 'mouse'));
+        shapeDblClick.addEventListener('click', () => {
+            recordEvent('圆形', 'click', 'mouse', false, '执行单击逻辑：添加外边框。');
+            shapeDblClick.classList.add('ring-blue-500');
+            setTimeout(() => shapeDblClick.classList.remove('ring-blue-500'), 500);
+        });
+        shapeDblClick.addEventListener('dblclick', () => recordEvent('圆形', 'dblclick', 'mouse', true, '❌ 执行双击逻辑。注意：它依然被附赠了 2 次不需要的 click！'));
+
+        // 触摸事件补充观察
+        shapeDblClick.addEventListener('touchstart', () => { switchScene(1); recordEvent('圆形', 'touchstart', 'touch', false, '检测到手指触摸。如果您快速双击，系统可能会接管控制权进行画面缩放，从而丢失 dblclick。'); }, {passive: true});
+        shapeDblClick.addEventListener('touchend', () => recordEvent('圆形', 'touchend', 'touch'));
+
+
+        // ==========================================
+        // 场景 2：拖拽绑定对比 (Mouse + Touch 双轨并行)
+        // ==========================================
+        const dragGraphic = document.getElementById('dragGraphic');
+        const dragArea = document.getElementById('dragArea');
+        let isDraggingMouse = false;
+        let isDraggingTouch = false;
+        let startX = 0;
+        let currentX = 0;
+        let lastMoveLogTime = 0;
+
+        // --- 轨道 A：鼠标拖拽逻辑 ---
+        dragGraphic.addEventListener('mousedown', (e) => {
+            switchScene(2);
+            isDraggingMouse = true;
+            startX = e.clientX - currentX;
+            recordEvent('图层', 'mousedown', 'mouse');
+            dragGraphic.style.transition = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDraggingMouse) return;
+            switchScene(2);
+            const newX = e.clientX - startX;
+            currentX = Math.max(0, Math.min(newX, dragArea.clientWidth - dragGraphic.clientWidth - 32));
+            dragGraphic.style.transform = `translateX(${currentX}px)`;
+
+            if (Date.now() - lastMoveLogTime > 150) {
+                recordEvent('图层', 'mousemove', 'mouse', false, `PC端鼠标拖拽中...`);
+                lastMoveLogTime = Date.now();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDraggingMouse) {
+                isDraggingMouse = false;
+                recordEvent('图层', 'mouseup', 'mouse');
+                dragGraphic.style.transition = 'transform 0.2s';
+            }
+        });
+
+        // --- 轨道 B：触摸拖拽逻辑补充 ---
+        dragGraphic.addEventListener('touchstart', (e) => {
+            switchScene(2);
+            isDraggingTouch = true;
+            startX = e.touches[0].clientX - currentX;
+            recordEvent('图层', 'touchstart', 'touch', false, '✅ 手机专用触摸起手式');
+            dragGraphic.style.transition = 'none';
+            // 手机上常常需要禁止系统默认的页面滚动，否则拖动时页面会跟着滚
+            e.stopPropagation();
+        }, {passive: false});
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isDraggingTouch) return;
+            switchScene(2);
+            
+            // 强行阻止移动端滚屏冲突
+            e.preventDefault(); 
+            
+            const newX = e.touches[0].clientX - startX;
+            currentX = Math.max(0, Math.min(newX, dragArea.clientWidth - dragGraphic.clientWidth - 32));
+            dragGraphic.style.transform = `translateX(${currentX}px)`;
+
+            if (Date.now() - lastMoveLogTime > 150) {
+                recordEvent('图层', 'touchmove', 'touch', false, `移动端手指滑动中...`);
+                lastMoveLogTime = Date.now();
+            }
+        }, {passive: false});
+
+        document.addEventListener('touchend', () => {
+            if (isDraggingTouch) {
+                isDraggingTouch = false;
+                recordEvent('图层', 'touchend', 'touch');
+                dragGraphic.style.transition = 'transform 0.2s';
+            }
+        });
+
+        // --- 通用 Click 冲突展示 ---
+        dragGraphic.addEventListener('click', () => {
+            switchScene(2);
+            recordEvent('图层', 'click', 'mouse', true, '❌ 松手后（无论是鼠标还是手指），意外触发了“置于顶层”的点按逻辑！');
+        });
+
+
+        // ==========================================
+        // 场景 3：长按 vs 系统右键菜单拦截
+        // ==========================================
+        const toolLongPress = document.getElementById('toolLongPress');
+        let lpTimer = null;
+
+        // 通用触发长按逻辑
+        function startLongPress(e, type) {
+            switchScene(3);
+            recordEvent('画笔', type, type === 'mousedown' ? 'mouse' : 'touch');
+            toolLongPress.classList.remove('bg-purple-100', 'border-purple-500', 'text-purple-600');
+            
+            lpTimer = setTimeout(() => {
+                recordEvent('业务逻辑', '触发业务代码', 'other', false, '✅ 超过1秒，成功展开画笔二级菜单！');
+                toolLongPress.classList.add('bg-purple-100', 'border-purple-500', 'text-purple-600'); 
+            }, 1000);
+        }
+
+        function endLongPress(e, type) {
+            if(activeSceneId === 3) {
+                clearTimeout(lpTimer);
+                recordEvent('画笔', type, type === 'mouseup' ? 'mouse' : 'touch');
+                toolLongPress.classList.remove('bg-purple-100', 'border-purple-500', 'text-purple-600');
+            }
+        }
+
+        // 绑定两套事件
+        toolLongPress.addEventListener('mousedown', (e) => startLongPress(e, 'mousedown'));
+        toolLongPress.addEventListener('mouseup', (e) => endLongPress(e, 'mouseup'));
+        toolLongPress.addEventListener('touchstart', (e) => startLongPress(e, 'touchstart'), {passive: true});
+        toolLongPress.addEventListener('touchend', (e) => endLongPress(e, 'touchend'));
+        
+        toolLongPress.addEventListener('click', () => {
+            if(activeSceneId === 3) {
+                recordEvent('画笔', 'click', 'mouse', true, '❌ 长按松手后，附赠的 click 把工具状态又给重置了。');
+            }
+        });
+
+        // --- 核心：拦截系统原生长按/右键菜单 ---
+        toolLongPress.addEventListener('contextmenu', (e) => {
+            switchScene(3);
+            // 这里是阻止系统菜单弹出的核心代码
+            e.preventDefault(); 
+            recordEvent('画笔', 'contextmenu', 'other', true, '🛡️ 已成功拦截系统默认的【右键/长按菜单】呼出！');
+        });
+
+    </script>
+</body>
+</html>
