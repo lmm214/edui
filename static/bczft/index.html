@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>摆长（正）方体</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: row;
+            overflow: hidden;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        .main-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .container {
+            flex: 1;
+            position: relative;
+            border: 2px dashed rgba(0, 0, 0, 0.4);
+            background-color: #fff;
+            margin: 16px 16px 8px 16px;
+            border-radius: 4px;
+            overflow: visible;
+        }
+
+        #drawCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 600;
+            border-radius: 4px;
+        }
+
+        .source-container {
+            height: 180px;
+            padding: 0 20px;
+            display: flex;
+            gap: 80px;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+            border-top: 1px solid #e8e8e8;
+        }
+
+        .source {
+            cursor: move;
+            position: relative;
+            overflow: visible;
+            flex-shrink: 0;
+        }
+
+        .draggable {
+            cursor: move;
+            position: absolute;
+            overflow: visible;
+        }
+
+        .draggable.selected {
+            opacity: 0.6;
+            z-index: 1000 !important;
+        }
+
+        /* ===== 右侧面板 ===== */
+        .right-panel {
+            width: 144px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #f2f4f8;
+            border-left: 1px solid #dde;
+        }
+
+        /* 上部（工具+着色面）可滚动 */
+        .rp-upper {
+            flex-shrink: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* 自定义区：固定在底部，自适应高度 */
+        .rp-custom {
+            flex-shrink: 0;
+            border-top: 2px solid #c8d0e0;
+            background: #edf0f7;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 8px 8px 10px;
+        }
+
+        .rp-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            padding: 10px 8px;
+        }
+
+        .rp-label {
+            font-size: 10px;
+            color: #999;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            width: 100%;
+            text-align: center;
+            border-bottom: 1px solid #e0e4ee;
+            padding-bottom: 4px;
+        }
+
+        .rp-divider {
+            height: 1px;
+            background: #dde;
+            margin: 0;
+        }
+
+        /* 工具按钮 2列 */
+        .rp-grid2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            width: 100%;
+        }
+
+        .tool-btn {
+            padding: 7px 2px;
+            font-size: 16px;
+            border: 1.5px solid #ccc;
+            border-radius: 8px;
+            background: #fff;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1px;
+            color: #444;
+        }
+
+        .tool-btn span {
+            font-size: 10px;
+            color: #888;
+        }
+
+        .tool-btn:hover {
+            background: #e0eaff;
+            border-color: #4a90e2;
+        }
+
+        .tool-btn.active {
+            background: #e74c3c;
+            border-color: #c0392b;
+            color: #fff;
+        }
+
+        .tool-btn.active span {
+            color: #fdd;
+        }
+
+        /* 面模式按钮 */
+        .face-btn {
+            width: 100%;
+            padding: 17px 4px;
+            font-size: 13px;
+            border: 1.5px solid #bbb;
+            border-radius: 14px;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.15s;
+            color: #444;
+            text-align: center;
+        }
+
+        .face-btn:hover {
+            background: #e0eaff;
+            border-color: #4a90e2;
+            color: #1a5bbf;
+        }
+
+        .face-btn.active {
+            background: #4a90e2;
+            border-color: #2a70c2;
+            color: #fff;
+            font-weight: bold;
+        }
+
+        /* 自定义区 - 滑块 */
+        .rp-slider-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            width: 100%;
+        }
+
+        .rp-slider-row label {
+            width: 14px;
+            font-size: 11px;
+            font-weight: bold;
+            color: #555;
+            text-align: right;
+        }
+
+        .rp-slider-row input[type=range] {
+            flex: 1;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #c8d8ee;
+            border-radius: 2px;
+            cursor: pointer;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+        }
+
+        .rp-slider-row input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #4a90e2;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .rp-slider-row span {
+            width: 16px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #4a90e2;
+            text-align: center;
+        }
+
+        .color-row {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: 2px 0;
+        }
+
+        .color-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.15s;
+        }
+
+        .color-dot.sel {
+            border-color: #222;
+        }
+
+        .drag-hint {
+            font-size: 10px;
+            color: #aaa;
+            text-align: center;
+        }
+
+        .custom-preview {
+            cursor: move;
+            display: block;
+        }
+
+        /* 预览区自适应，不溢出 */
+        .preview-wrap {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="main-area">
+        <div class="container" id="container">
+            <canvas id="drawCanvas"></canvas>
+        </div>
+        <div class="source-container" id="sourceContainer"></div>
+    </div>
+
+    <div class="right-panel">
+        <!-- 上部：工具 + 着色面 -->
+        <div class="rp-upper">
+            <!-- 工具 -->
+            <div class="rp-section">
+                <div class="rp-label">工具</div>
+                <div class="rp-grid2">
+                    <button class="tool-btn active" id="btn-mouse" onclick="setTool('none')"><span
+                            style="font-size:18px">🖱️</span><span>鼠标</span></button>
+                    <button class="tool-btn" id="btn-pen" onclick="togglePen()"><span
+                            style="font-size:18px">✏️</span><span>画笔</span></button>
+                    <button class="tool-btn" id="btn-eraser" onclick="eraserOrClear()"><span
+                            style="font-size:18px">🧹</span><span>橡皮/清</span></button>
+                    <button class="tool-btn" id="btn-reset" onclick="resetAll()"><span
+                            style="font-size:18px">↺</span><span>重置</span></button>
+                </div>
+            </div>
+            <div class="rp-divider"></div>
+            <!-- 着色面 -->
+            <div class="rp-section">
+                <div class="rp-label">着色面</div>
+                <div class="rp-grid2">
+                    <button class="face-btn" id="btn-ud" onclick="setMode('ud')">上下</button>
+                    <button class="face-btn" id="btn-lr" onclick="setMode('lr')">左右</button>
+                    <button class="face-btn" id="btn-fb" onclick="setMode('fb')">前后</button>
+                    <button class="face-btn active" id="btn-all" onclick="setMode('all')">全部</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 自定义区：固定在底部 -->
+        <div class="rp-custom">
+            <div class="rp-label">自定义</div>
+            <div class="rp-slider-row"><label>长</label><input type="range" id="cW" value="2" min="1" max="5"><span
+                    id="cW-val">2</span></div>
+            <div class="rp-slider-row"><label>宽</label><input type="range" id="cD" value="2" min="1" max="5"><span
+                    id="cD-val">2</span></div>
+            <div class="rp-slider-row"><label>高</label><input type="range" id="cH" value="2" min="1" max="5"><span
+                    id="cH-val">2</span></div>
+            <div class="color-row" id="colorRow"></div>
+            <div class="drag-hint">拖动预览放置</div>
+            <div class="preview-wrap">
+                <div class="custom-preview" id="customPreview"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== 颜色 =====
+        const COLORS = {
+            blue: { front: 'rgba(128,155,191,0.55)', back: 'rgba(128,155,191,0.35)', top: 'rgba(180,200,225,0.55)', bottom: 'rgba(180,200,225,0.35)', right: 'rgba(80,110,160,0.75)', left: 'rgba(80,110,160,0.5)' },
+            orange: { front: 'rgba(245,166,35,0.55)', back: 'rgba(245,166,35,0.35)', top: 'rgba(255,210,120,0.55)', bottom: 'rgba(255,210,120,0.35)', right: 'rgba(200,120,10,0.75)', left: 'rgba(200,120,10,0.5)' },
+            red: { front: 'rgba(208,2,27,0.55)', back: 'rgba(208,2,27,0.35)', top: 'rgba(240,100,100,0.55)', bottom: 'rgba(240,100,100,0.35)', right: 'rgba(150,0,20,0.75)', left: 'rgba(150,0,20,0.5)' },
+            green: { front: 'rgba(100,185,40,0.55)', back: 'rgba(100,185,40,0.35)', top: 'rgba(170,225,100,0.55)', bottom: 'rgba(170,225,100,0.35)', right: 'rgba(60,140,10,0.75)', left: 'rgba(60,140,10,0.5)' },
+            purple: { front: 'rgba(155,89,182,0.55)', back: 'rgba(155,89,182,0.35)', top: 'rgba(190,150,215,0.55)', bottom: 'rgba(190,150,215,0.35)', right: 'rgba(100,40,150,0.75)', left: 'rgba(100,40,150,0.5)' }
+        };
+        const COLOR_DOT = { blue: '#7b9bbf', orange: '#f5a623', red: '#d0021b', green: '#64b928', purple: '#9b59b6' };
+
+        // ===== SVG生成（W=长单位, D=宽/深单位, H=高单位, UNIT=60px/单位）=====
+        const UNIT = 60;
+        function makeSVG(colorName, W, D, H) {
+            const c = COLORS[colorName] || COLORS.blue;
+            const Wpx = W * UNIT, Hpx = H * UNIT;
+            const dx = D * Math.round(UNIT * 28 / 90), dy = D * Math.round(UNIT / 3);
+            const svgW = Wpx + dx, svgH = Hpx + dy;
+            const sk = 'rgba(0,0,0,0.6)', dsk = 'rgba(0,0,0,0.45)', sw = 1.2;
+            const front = `0,${dy} ${Wpx},${dy} ${Wpx},${dy + Hpx} 0,${dy + Hpx}`;
+            const back = `${dx},0 ${dx + Wpx},0 ${dx + Wpx},${Hpx} ${dx},${Hpx}`;
+            const top = `0,${dy} ${dx},0 ${dx + Wpx},0 ${Wpx},${dy}`;
+            const bottom = `0,${dy + Hpx} ${dx},${Hpx} ${dx + Wpx},${Hpx} ${Wpx},${dy + Hpx}`;
+            const left = `${dx},0 0,${dy} 0,${dy + Hpx} ${dx},${Hpx}`;
+            const right = `${Wpx},${dy} ${dx + Wpx},0 ${dx + Wpx},${Hpx} ${Wpx},${dy + Hpx}`;
+            return `<svg class="cube-svg" xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}"
+  style="position:absolute;left:0;top:-${dy}px;pointer-events:none;overflow:visible;">
+  <polygon class="face-back"   points="${back}"   fill="none" stroke="none"/>
+  <polygon class="face-left"   points="${left}"   fill="none" stroke="none"/>
+  <polygon class="face-bottom" points="${bottom}" fill="none" stroke="none"/>
+  <line x1="${dx}" y1="0" x2="${dx}" y2="${Hpx}" stroke="${dsk}" stroke-width="${sw}" stroke-dasharray="4,3"/>
+  <line x1="${dx}" y1="${Hpx}" x2="${dx + Wpx}" y2="${Hpx}" stroke="${dsk}" stroke-width="${sw}" stroke-dasharray="4,3"/>
+  <line x1="0" y1="${dy + Hpx}" x2="${dx}" y2="${Hpx}" stroke="${dsk}" stroke-width="${sw}" stroke-dasharray="4,3"/>
+  <polygon class="face-right"  points="${right}"  fill="${c.right}"  stroke="${sk}" stroke-width="${sw}"/>
+  <polygon class="face-top"    points="${top}"    fill="${c.top}"    stroke="${sk}" stroke-width="${sw}"/>
+  <polygon class="face-front"  points="${front}"  fill="${c.front}"  stroke="${sk}" stroke-width="${sw}"/>
+</svg>`;
+        }
+
+        // ===== 源色块 =====
+        const SOURCES = [
+            { color: 'blue', W: 1, D: 1, H: 1 },
+            { color: 'orange', W: 1, D: 1, H: 1 },
+            { color: 'red', W: 3, D: 2, H: 1 },
+            { color: 'green', W: 3, D: 2, H: 1 }
+        ];
+        const sourceContainer = document.getElementById('sourceContainer');
+        SOURCES.forEach(s => {
+            const div = document.createElement('div');
+            div.className = 'source';
+            div.dataset.color = s.color; div.dataset.w = s.W; div.dataset.d = s.D; div.dataset.h = s.H;
+            div.style.width = s.W * UNIT + 'px'; div.style.height = s.H * UNIT + 'px';
+            div.innerHTML = makeSVG(s.color, s.W, s.D, s.H);
+            sourceContainer.appendChild(div);
+            div.addEventListener('mousedown', startSourceDrag);
+            div.addEventListener('touchstart', startSourceDrag, { passive: false });
+        });
+
+        // ===== 自定义面板 =====
+        let customColor = 'purple', customW = 2, customD = 2, customH = 2;
+
+        const colorRow = document.getElementById('colorRow');
+        Object.keys(COLORS).forEach(name => {
+            const dot = document.createElement('div');
+            dot.className = 'color-dot' + (name === customColor ? ' sel' : '');
+            dot.style.background = COLOR_DOT[name]; dot.title = name;
+            dot.addEventListener('click', () => {
+                customColor = name;
+                colorRow.querySelectorAll('.color-dot').forEach(d => d.classList.remove('sel'));
+                dot.classList.add('sel');
+                refreshPreview();
+            });
+            colorRow.appendChild(dot);
+        });
+
+        function refreshPreview() {
+            const prev = document.getElementById('customPreview');
+            const c = COLORS[customColor] || COLORS.blue;
+            const Wpx = customW * UNIT, Hpx = customH * UNIT;
+            const dx = customD * Math.round(UNIT * 28 / 90);
+            const dy = customD * Math.round(UNIT / 3);
+            const svgW = Wpx + dx, svgH = Hpx + dy;
+            // 根据面板内容宽度和最大预览高度自适应缩放
+            const maxW = 120, maxH = 180;
+            const scale = Math.min(maxW / svgW, maxH / svgH, 1);
+            const dispW = Math.ceil(svgW * scale);
+            const dispH = Math.ceil(svgH * scale);
+            const sk = 'rgba(0,0,0,0.6)', dsk = 'rgba(0,0,0,0.45)', sw = 1.5;
+            const front = `0,${dy} ${Wpx},${dy} ${Wpx},${dy + Hpx} 0,${dy + Hpx}`;
+            const back = `${dx},0 ${dx + Wpx},0 ${dx + Wpx},${Hpx} ${dx},${Hpx}`;
+            const top = `0,${dy} ${dx},0 ${dx + Wpx},0 ${Wpx},${dy}`;
+            const bottom = `0,${dy + Hpx} ${dx},${Hpx} ${dx + Wpx},${Hpx} ${Wpx},${dy + Hpx}`;
+            const left = `${dx},0 0,${dy} 0,${dy + Hpx} ${dx},${Hpx}`;
+            const right = `${Wpx},${dy} ${dx + Wpx},0 ${dx + Wpx},${Hpx} ${Wpx},${dy + Hpx}`;
+            // 使用 viewBox 内建缩放，无需 position:absolute 负偏移
+            prev.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg"
+                width="${dispW}" height="${dispH}"
+                viewBox="0 0 ${svgW} ${svgH}" style="display:block;">
+  <polygon points="${back}"   fill="none" stroke="none"/>
+  <polygon points="${left}"   fill="none" stroke="none"/>
+  <polygon points="${bottom}" fill="none" stroke="none"/>
+  <line x1="${dx}" y1="0" x2="${dx}" y2="${Hpx}" stroke="${dsk}" stroke-width="${sw}" stroke-dasharray="4,3"/>
+  <line x1="${dx}" y1="${Hpx}" x2="${dx + Wpx}" y2="${Hpx}" stroke="${dsk}" stroke-width="${sw}" stroke-dasharray="4,3"/>
+  <line x1="0" y1="${dy + Hpx}" x2="${dx}" y2="${Hpx}" stroke="${dsk}" stroke-width="${sw}" stroke-dasharray="4,3"/>
+  <polygon points="${right}"  fill="${c.right}"  stroke="${sk}" stroke-width="${sw}"/>
+  <polygon points="${top}"    fill="${c.top}"    stroke="${sk}" stroke-width="${sw}"/>
+  <polygon points="${front}"  fill="${c.front}"  stroke="${sk}" stroke-width="${sw}"/>
+</svg>`;
+            prev.style.width = dispW + 'px';
+            prev.style.height = dispH + 'px';
+        }
+        refreshPreview();
+
+        ['cW', 'cD', 'cH'].forEach(id => {
+            document.getElementById(id).addEventListener('input', function () {
+                const v = Math.max(1, Math.min(9, parseInt(this.value) || 2));
+                if (id === 'cW') customW = v; else if (id === 'cD') customD = v; else customH = v;
+                document.getElementById(id + '-val').textContent = v;
+                refreshPreview();
+            });
+        });
+
+        document.getElementById('customPreview').addEventListener('mousedown', startCustomDrag);
+        document.getElementById('customPreview').addEventListener('touchstart', startCustomDrag, { passive: false });
+
+        // 自定义预览拖动：使用 body 级 ghost，解决跨容器拖动问题
+        function startCustomDrag(e) {
+            e.preventDefault(); e.stopPropagation();
+            const pt = e.touches ? e.touches[0] : e;
+
+            // 创建全局 ghost
+            const ghost = document.createElement('div');
+            ghost.style.cssText = `position:fixed;pointer-events:none;z-index:9999;opacity:0.85;
+                left:${pt.clientX - customW * UNIT / 2}px;top:${pt.clientY - customH * UNIT / 2}px;overflow:visible;`;
+            ghost.innerHTML = makeSVG(customColor, customW, customD, customH);
+            // 修復 SVG 定位为 static，方便 ghost 显示
+            const gSvg = ghost.querySelector('svg');
+            if (gSvg) {
+                gSvg.style.position = 'static';
+                ghost.style.paddingTop = Math.round(customD * UNIT / 3) + 'px';
+            }
+            document.body.appendChild(ghost);
+
+            function moveGhost(e) {
+                const pt = e.touches ? e.touches[0] : e;
+                ghost.style.left = (pt.clientX - customW * UNIT / 2) + 'px';
+                ghost.style.top = (pt.clientY - customH * UNIT / 2 - Math.round(customD * UNIT / 3)) + 'px';
+            }
+            function dropGhost(e) {
+                document.removeEventListener('mousemove', moveGhost);
+                document.removeEventListener('mouseup', dropGhost);
+                document.removeEventListener('touchmove', moveGhost);
+                document.removeEventListener('touchend', dropGhost);
+                ghost.remove();
+                const pt = e.changedTouches ? e.changedTouches[0] : e;
+                const cRect = container.getBoundingClientRect();
+                // 仅当释放点在 container 内时创建方块
+                if (pt.clientX >= cRect.left && pt.clientX <= cRect.right &&
+                    pt.clientY >= cRect.top && pt.clientY <= cRect.bottom) {
+                    const x = pt.clientX - cRect.left - customW * UNIT / 2;
+                    const y = pt.clientY - cRect.top - customH * UNIT / 2;
+
+                    let pos = getClosestGrid(x, y, customW, customD, customH, null);
+                    if (isCollision(pos.cx, pos.cy, pos.cz, customW, customD, customH, null)) {
+                        return;
+                    }
+
+                    const el = createDraggable(customColor, customW, customD, customH);
+                    el.dataset.cx = pos.cx;
+                    el.dataset.cy = pos.cy;
+                    el.dataset.cz = pos.cz;
+                    const snapX = pos.x + 1;
+                    const snapY = pos.y + 1;
+                    el.style.transform = `translate(${snapX}px,${snapY}px)`;
+
+                    updateAllZIndices();
+                }
+            }
+            document.addEventListener('mousemove', moveGhost);
+            document.addEventListener('mouseup', dropGhost);
+            document.addEventListener('touchmove', moveGhost, { passive: false });
+            document.addEventListener('touchend', dropGhost);
+        }
+
+        // ===== 拖拽 =====
+        const container = document.getElementById('container');
+        let draggedElement = null, offsetX = 0, offsetY = 0, isDragging = false;
+        const GRID = 60;
+
+        function getBlocksInfo(ignoreEl) {
+            const els = document.querySelectorAll('#container .draggable');
+            let blocks = [];
+            for (let el of els) {
+                if (el === ignoreEl) continue;
+                let cx = parseInt(el.dataset.cx);
+                let cy = parseInt(el.dataset.cy);
+                let cz = parseInt(el.dataset.cz);
+                let w = parseInt(el.dataset.w);
+                let d = parseInt(el.dataset.d);
+                let h = parseInt(el.dataset.h);
+                if (!isNaN(cx) && !isNaN(cy) && !isNaN(cz)) {
+                    blocks.push({ cx, cy, cz, w, d, h });
+                }
+            }
+            return blocks;
+        }
+
+        function checkCollisionArr(cx, cy, cz, w, d, h, blocks) {
+            for (let b of blocks) {
+                if (cx < b.cx + b.w && cx + w > b.cx &&
+                    cy < b.cy + b.h && cy + h > b.cy &&
+                    cz < b.cz + b.d && cz + d > b.cz) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function getAdjacencyScore(cx, cy, cz, w, d, h, blocks) {
+            let maxScore = 0;
+            for (let b of blocks) {
+                let overlapX = (cx < b.cx + b.w && cx + w > b.cx);
+                let overlapY = (cy < b.cy + b.h && cy + h > b.cy);
+                let overlapZ = (cz < b.cz + b.d && cz + d > b.cz);
+
+                let touchX = (cx === b.cx + b.w || cx + w === b.cx);
+                let touchY = (cy === b.cy + b.h || cy + h === b.cy);
+                let touchZ = (cz === b.cz + b.d || cz + d === b.cz);
+
+                let faceTouchX = touchX && overlapY && overlapZ;
+                let faceTouchY = touchY && overlapX && overlapZ;
+                let faceTouchZ = touchZ && overlapX && overlapY;
+
+                let edgeTouchX = touchY && touchZ && overlapX;
+                let edgeTouchY = touchX && touchZ && overlapY;
+                let edgeTouchZ = touchX && touchY && overlapZ;
+
+                let cornerTouch = touchX && touchY && touchZ;
+
+                let score = 0;
+
+                if (faceTouchX || faceTouchY || faceTouchZ) {
+                    score = 10; // Base face touch
+                    if (faceTouchX) {
+                        let alignY = (cy === b.cy && h === b.h);
+                        let alignZ = (cz === b.cz && d === b.d);
+                        if (alignY && alignZ) score += 30; // 40 max
+                        else {
+                            let edges = 0;
+                            if (cy === b.cy) edges++;
+                            if (cy + h === b.cy + b.h) edges++;
+                            if (cz === b.cz) edges++;
+                            if (cz + d === b.cz + b.d) edges++;
+                            score += edges * 5; // 10 + 20 = 30 max
+                        }
+                    } else if (faceTouchY) {
+                        let alignX = (cx === b.cx && w === b.w);
+                        let alignZ = (cz === b.cz && d === b.d);
+                        if (alignX && alignZ) score += 30;
+                        else {
+                            let edges = 0;
+                            if (cx === b.cx) edges++;
+                            if (cx + w === b.cx + b.w) edges++;
+                            if (cz === b.cz) edges++;
+                            if (cz + d === b.cz + b.d) edges++;
+                            score += edges * 5;
+                        }
+                    } else if (faceTouchZ) {
+                        let alignX = (cx === b.cx && w === b.w);
+                        let alignY = (cy === b.cy && h === b.h);
+                        if (alignX && alignY) score += 30;
+                        else {
+                            let edges = 0;
+                            if (cx === b.cx) edges++;
+                            if (cx + w === b.cx + b.w) edges++;
+                            if (cy === b.cy) edges++;
+                            if (cy + h === b.cy + b.h) edges++;
+                            score += edges * 5;
+                        }
+                    }
+                } else if (edgeTouchX || edgeTouchY || edgeTouchZ) {
+                    score = 5; // Base edge touch
+                    if (edgeTouchX) {
+                        let alignX = (cx === b.cx && w === b.w);
+                        if (alignX) score += 25; // Perfect edge match: 30 max
+                        else if (cx === b.cx || cx + w === b.cx + b.w) score += 10; // Partial edge align: 15
+                    } else if (edgeTouchY) {
+                        let alignY = (cy === b.cy && h === b.h);
+                        if (alignY) score += 25;
+                        else if (cy === b.cy || cy + h === b.cy + b.h) score += 10;
+                    } else if (edgeTouchZ) {
+                        let alignZ = (cz === b.cz && d === b.d);
+                        if (alignZ) score += 25;
+                        else if (cz === b.cz || cz + d === b.cz + b.d) score += 10;
+                    }
+                } else if (cornerTouch) {
+                    score = 2;
+                }
+
+                if (score > maxScore) maxScore = score;
+            }
+            return maxScore;
+        }
+
+        function getClosestGrid(x, y, w, d, h, ignoreEl) {
+            let bestDist = Infinity;
+            let bestPos = null;
+            let fallbackPos = null;
+            let fallbackDist = Infinity;
+            let blocks = getBlocksInfo(ignoreEl);
+
+            for (let cz = -30; cz <= 30; cz++) {
+                let px_cz = cz * Math.round(60 * 28 / 90);
+                let py_cz = cz * Math.round(60 / 3);
+                let targetX = x - px_cz;
+                let targetY = y + py_cz;
+                let base_cx = Math.round(targetX / 60);
+                let base_cy = Math.round(targetY / 60);
+
+                for (let dcx = -2; dcx <= 2; dcx++) {
+                    for (let dcy = -2; dcy <= 2; dcy++) {
+                        let cx = base_cx + dcx;
+                        let cy = base_cy + dcy;
+
+                        let px = cx * 60 + px_cz;
+                        let py = cy * 60 - py_cz;
+                        let dist = Math.sqrt((px - x) ** 2 + (py - y) ** 2);
+
+                        if (dist > 150) continue;
+
+                        let collides = checkCollisionArr(cx, cy, cz, w, d, h, blocks);
+
+                        if (!collides && dist < fallbackDist) {
+                            fallbackDist = dist;
+                            fallbackPos = { x: px, y: py, cx, cy, cz };
+                        }
+
+                        if (collides) continue;
+
+                        let adjScore = getAdjacencyScore(cx, cy, cz, w, d, h, blocks);
+                        let score = dist - adjScore;
+
+                        if (score < bestDist) {
+                            bestDist = score;
+                            bestPos = { x: px, y: py, cx, cy, cz };
+                        }
+                    }
+                }
+            }
+            if (!bestPos && !fallbackPos) {
+                return { x: Math.round(x / 60) * 60, y: Math.round(y / 60) * 60, cx: Math.round(x / 60), cy: Math.round(y / 60), cz: 0 };
+            }
+            return bestPos || fallbackPos;
+        }
+
+        function isCollision(cx, cy, cz, w, d, h, ignoreEl) {
+            let blocks = getBlocksInfo(ignoreEl);
+            return checkCollisionArr(cx, cy, cz, w, d, h, blocks);
+        }
+
+        function updateAllZIndices() {
+            const draggables = Array.from(document.querySelectorAll('#container .draggable'));
+            let elements = draggables.map(el => ({
+                el: el,
+                cx: parseInt(el.dataset.cx),
+                cy: parseInt(el.dataset.cy),
+                cz: parseInt(el.dataset.cz),
+                w: parseInt(el.dataset.w),
+                d: parseInt(el.dataset.d),
+                h: parseInt(el.dataset.h)
+            })).filter(e => !isNaN(e.cx) && !isNaN(e.cy) && !isNaN(e.cz));
+
+            let graph = new Map();
+            let inDegree = new Map();
+            elements.forEach(e => { graph.set(e, []); inDegree.set(e, 0); });
+
+            for (let i = 0; i < elements.length; i++) {
+                for (let j = 0; j < elements.length; j++) {
+                    if (i === j) continue;
+                    let a = elements[i], b = elements[j];
+                    if (a.cx < b.cx + b.w && a.cy < b.cy + b.h && a.cz + a.d > b.cz) {
+                        graph.get(a).push(b);
+                        inDegree.set(b, inDegree.get(b) + 1);
+                    }
+                }
+            }
+
+            let queue = [];
+            inDegree.forEach((deg, node) => { if (deg === 0) queue.push(node); });
+
+            let z = 1000;
+            let processed = new Set();
+            while (queue.length > 0) {
+                let node = queue.shift();
+                node.el.style.zIndex = z++;
+                processed.add(node);
+                for (let neighbor of graph.get(node)) {
+                    let deg = inDegree.get(neighbor) - 1;
+                    inDegree.set(neighbor, deg);
+                    if (deg === 0) queue.push(neighbor);
+                }
+            }
+
+            elements.forEach(e => {
+                if (!processed.has(e)) {
+                    e.el.style.zIndex = z++;
+                }
+            });
+        }
+
+        function createDraggable(colorName, W, D, H) {
+            const div = document.createElement('div');
+            div.className = 'draggable';
+            div.dataset.color = colorName; div.dataset.w = W; div.dataset.d = D; div.dataset.h = H;
+            div.style.width = (W * UNIT - 1) + 'px';
+            div.style.height = (H * UNIT - 1) + 'px';
+            div.innerHTML = makeSVG(colorName, W, D, H);
+            container.appendChild(div);
+            div.addEventListener('mousedown', startDragging);
+            div.addEventListener('touchstart', startDragging, { passive: false });
+            div.addEventListener('click', e => { e.stopPropagation(); if (!isDragging) selectElement(div); });
+            applyModeToEl(div, currentMode);
+            return div;
+        }
+
+        let selectedEl = null;
+        function selectElement(el) {
+            if (selectedEl) selectedEl.classList.remove('selected');
+            selectedEl = el;
+            if (selectedEl) selectedEl.classList.add('selected');
+        }
+        function startDragging(e) {
+            if (currentTool !== 'none') return;
+            e.preventDefault();
+            draggedElement = e.currentTarget;
+            isDragging = false;
+            const m = new DOMMatrix(getComputedStyle(draggedElement).transform);
+            const pt = e.touches ? e.touches[0] : e;
+            offsetX = pt.clientX - m.m41; offsetY = pt.clientY - m.m42;
+            draggedElement.style.transition = 'none';
+            draggedElement.style.zIndex = 9999;
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('mouseup', stopDragging);
+            document.addEventListener('touchmove', onDrag, { passive: false });
+            document.addEventListener('touchend', stopDragging);
+        }
+        function startSourceDrag(e) {
+            e.preventDefault();
+            const src = e.currentTarget;
+            const W = parseInt(src.dataset.w), D = parseInt(src.dataset.d), H = parseInt(src.dataset.h);
+            const cRect = container.getBoundingClientRect();
+            const pt = e.touches ? e.touches[0] : e;
+            draggedElement = createDraggable(src.dataset.color, W, D, H);
+            draggedElement.style.transform = `translate(${pt.clientX - cRect.left - W * UNIT / 2}px,${pt.clientY - cRect.top - H * UNIT / 2}px)`;
+            draggedElement.style.zIndex = 9999;
+            offsetX = W * UNIT / 2; offsetY = H * UNIT / 2;
+            isDragging = true;
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('mouseup', stopDragging);
+            document.addEventListener('touchmove', onDrag, { passive: false });
+            document.addEventListener('touchend', stopDragging);
+        }
+        function onDrag(e) {
+            e.preventDefault();
+            if (!draggedElement) return;
+            const cRect = container.getBoundingClientRect();
+            const pt = e.touches ? e.touches[0] : e;
+            draggedElement.style.transform = `translate(${pt.clientX - cRect.left - offsetX}px,${pt.clientY - cRect.top - offsetY}px)`;
+            isDragging = true;
+        }
+        function cleanupDrag() {
+            draggedElement = null; isDragging = false;
+            document.removeEventListener('mousemove', onDrag);
+            document.removeEventListener('mouseup', stopDragging);
+            document.removeEventListener('touchmove', onDrag);
+            document.removeEventListener('touchend', stopDragging);
+        }
+        function stopDragging() {
+            if (!draggedElement) return;
+            const m = new DOMMatrix(getComputedStyle(draggedElement).transform);
+            let x = m.m41 - 1;
+            let y = m.m42 - 1;
+
+            let w = parseInt(draggedElement.dataset.w);
+            let d = parseInt(draggedElement.dataset.d);
+            let h = parseInt(draggedElement.dataset.h);
+
+            let pos = getClosestGrid(x, y, w, d, h, draggedElement);
+
+            if (isCollision(pos.cx, pos.cy, pos.cz, w, d, h, draggedElement)) {
+                if (draggedElement.dataset.cx !== undefined) {
+                    pos.cx = parseInt(draggedElement.dataset.cx);
+                    pos.cy = parseInt(draggedElement.dataset.cy);
+                    pos.cz = parseInt(draggedElement.dataset.cz);
+                    pos.x = pos.cx * 60 + pos.cz * Math.round(60 * 28 / 90);
+                    pos.y = pos.cy * 60 - pos.cz * Math.round(60 / 3);
+                } else {
+                    draggedElement.remove();
+                    cleanupDrag();
+                    return;
+                }
+            }
+
+            draggedElement.dataset.cx = pos.cx;
+            draggedElement.dataset.cy = pos.cy;
+            draggedElement.dataset.cz = pos.cz;
+
+            const snapX = pos.x + 1;
+            const snapY = pos.y + 1;
+            draggedElement.style.transition = 'transform 0.3s ease';
+            draggedElement.style.transform = `translate(${snapX}px,${snapY}px)`;
+
+            updateAllZIndices();
+            cleanupDrag();
+        }
+        container.addEventListener('click', e => { if (e.target === container || e.target.id === 'drawCanvas') selectElement(null); });
+
+        // ===== 键盘删除选中方块 =====
+        document.addEventListener('keydown', e => {
+            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedEl) {
+                selectedEl.remove(); selectedEl = null;
+            }
+        });
+
+        // ===== 面模式 =====
+        let currentMode = 'all';
+        const MODE_FACES = {
+            all: { front: true, top: true, right: true, back: false, left: false, bottom: false },
+            ud: { front: false, top: true, right: false, back: false, left: false, bottom: true },
+            lr: { front: false, top: false, right: true, back: false, left: true, bottom: false },
+            fb: { front: true, top: false, right: false, back: true, left: false, bottom: false }
+        };
+        function applyModeToEl(el, mode) {
+            const c = COLORS[el.dataset.color]; if (!c) return;
+            const svg = el.querySelector('.cube-svg'); if (!svg) return;
+            const vis = MODE_FACES[mode] || MODE_FACES.all;
+            svg.querySelector('.face-front').setAttribute('fill', vis.front ? c.front : 'none');
+            svg.querySelector('.face-top').setAttribute('fill', vis.top ? c.top : 'none');
+            svg.querySelector('.face-right').setAttribute('fill', vis.right ? c.right : 'none');
+            svg.querySelector('.face-back').setAttribute('fill', vis.back ? c.back : 'none');
+            svg.querySelector('.face-left').setAttribute('fill', vis.left ? c.left : 'none');
+            svg.querySelector('.face-bottom').setAttribute('fill', vis.bottom ? c.bottom : 'none');
+        }
+        function setMode(mode) {
+            currentMode = mode;
+            ['ud', 'lr', 'fb', 'all'].forEach(m => document.getElementById('btn-' + m).classList.toggle('active', m === mode));
+            document.querySelectorAll('#container .draggable').forEach(el => applyModeToEl(el, mode));
+        }
+
+        // ===== 画笔/橡皮工具 =====
+        const drawCanvas = document.getElementById('drawCanvas');
+        let ctx = null, currentTool = 'none', isDrawing = false, lastDX = 0, lastDY = 0;
+
+        function initCtx() {
+            if (ctx) return;
+            const r = container.getBoundingClientRect();
+            drawCanvas.width = r.width; drawCanvas.height = r.height;
+            ctx = drawCanvas.getContext('2d');
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        }
+
+        // 设置工具：'none'=鼠标, 'pen'=画笔, 'eraser'=橡皮
+        function setTool(tool) {
+            currentTool = tool;
+            document.getElementById('btn-mouse').classList.toggle('active', tool === 'none');
+            document.getElementById('btn-pen').classList.toggle('active', tool === 'pen');
+            document.getElementById('btn-eraser').classList.toggle('active', tool === 'eraser');
+            if (tool === 'pen' || tool === 'eraser') {
+                initCtx();
+                drawCanvas.style.pointerEvents = 'auto';
+                drawCanvas.style.zIndex = '2000';
+                drawCanvas.style.cursor = tool === 'pen' ? 'crosshair' : 'cell';
+                // 屏蔽拖拽块的鼠标事件，使画布能捕获点击
+                document.querySelectorAll('#container .draggable').forEach(el => el.style.pointerEvents = 'none');
+            } else {
+                drawCanvas.style.pointerEvents = 'none';
+                drawCanvas.style.zIndex = '600';
+                drawCanvas.style.cursor = '';
+                document.querySelectorAll('#container .draggable').forEach(el => el.style.pointerEvents = '');
+            }
+        }
+        function togglePen() { setTool(currentTool === 'pen' ? 'none' : 'pen'); }
+        // 橡皮/清屏：未激活→激活橡皮；已激活→清空画布+退出
+        function eraserOrClear() {
+            if (currentTool === 'eraser') { clearDraw(); setTool('none'); }
+            else { setTool('eraser'); }
+        }
+
+        drawCanvas.addEventListener('mousedown', e => {
+            if (currentTool === 'none') return;
+            initCtx(); isDrawing = true;
+            const r = drawCanvas.getBoundingClientRect();
+            lastDX = e.clientX - r.left; lastDY = e.clientY - r.top;
+        });
+        // 触摸屏画笔 touch事件
+        drawCanvas.addEventListener('touchstart', e => {
+            if (currentTool === 'none') return;
+            e.preventDefault();
+            initCtx(); isDrawing = true;
+            const r = drawCanvas.getBoundingClientRect();
+            const t = e.touches[0];
+            lastDX = t.clientX - r.left; lastDY = t.clientY - r.top;
+        }, { passive: false });
+
+        function doDraw(x, y) {
+            ctx.beginPath();
+            if (currentTool === 'pen') {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3;
+            } else {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.strokeStyle = 'rgba(0,0,0,1)'; ctx.lineWidth = 20;
+            }
+            ctx.moveTo(lastDX, lastDY); ctx.lineTo(x, y); ctx.stroke();
+            lastDX = x; lastDY = y;
+        }
+
+        document.addEventListener('mousemove', e => {
+            if (!isDrawing || currentTool === 'none') return;
+            const r = drawCanvas.getBoundingClientRect();
+            doDraw(e.clientX - r.left, e.clientY - r.top);
+        });
+        document.addEventListener('touchmove', e => {
+            if (!isDrawing || currentTool === 'none') return;
+            e.preventDefault();
+            const r = drawCanvas.getBoundingClientRect();
+            const t = e.touches[0];
+            doDraw(t.clientX - r.left, t.clientY - r.top);
+        }, { passive: false });
+        document.addEventListener('mouseup', () => { isDrawing = false; });
+        document.addEventListener('touchend', () => { isDrawing = false; });
+
+        function clearDraw() {
+            initCtx();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        }
+        function resetAll() {
+            document.querySelectorAll('#container .draggable').forEach(el => el.remove());
+            selectElement(null);
+            clearDraw();
+        }
+    </script>
+</body>
+
+</html>
