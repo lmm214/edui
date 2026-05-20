@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>认识时间 - 24小时 & 12小时对照学习</title>
+    <style>
+        :root {
+            --primary-blue: #1e82d2;
+            --light-blue: #e8f5fe;
+            --bg-color: #f5f9fc;
+            --yellow-am: #fede15;
+            --blue-pm: #aeddf2;
+            --gray-out: #dcdcdc;
+            --red-accent: #e74c3c;
+            --dark-text: #2c3e50;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--dark-text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 顶部数字时间显示 */
+        .header-clocks {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .digital-display {
+            background: white;
+            border-radius: 16px;
+            padding: 12px;
+            text-align: center;
+            font-size: 38px;
+            font-weight: bold;
+            color: var(--primary-blue);
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03);
+            border: 1px solid #f0f4f8;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+        }
+
+        /* 钟面显示区 */
+        .clock-cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .clock-card {
+            background: white;
+            border-radius: 20px;
+            border: 1px solid #eef2f6;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.02);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .clock-card.hidden {
+            display: none;
+        }
+
+        .clock-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--dark-text);
+            margin-bottom: 16px;
+        }
+
+        .clock-svg-container {
+            width: 100%;
+            max-width: 280px;
+            aspect-ratio: 1;
+            position: relative;
+        }
+
+        /* 时间轴部分 */
+        .timeline-container {
+            background: white;
+            border-radius: 16px;
+            padding: 30px 10px 10px 10px;
+            position: relative;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+            border: 1px solid #eef2f6;
+            margin-top: 10px;
+        }
+
+        /* 轴顶刻度标签 */
+        .top-labels {
+            position: relative;
+            height: 40px;
+            width: 100%;
+        }
+
+        .top-label {
+            position: absolute;
+            transform: translateX(-50%);
+            font-size: 14px;
+            font-weight: bold;
+            color: #666;
+            text-align: center;
+        }
+
+        .top-label.yesterday-label { color: #95a5a6; }
+        .top-label.tomorrow-label { color: #95a5a6; }
+        .top-label.am-label { color: #e67e22; }
+        .top-label.pm-label { color: #3498db; }
+
+        .top-indicator {
+            position: absolute;
+            transform: translate(-50%, -100%);
+            top: -5px;
+            font-size: 12px;
+            color: var(--primary-blue);
+            font-weight: bold;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .top-indicator svg {
+            width: 12px;
+            height: 12px;
+            fill: var(--primary-blue);
+        }
+
+        /* 时间滑块轨道 */
+        .timeline-track {
+            height: 44px;
+            border-radius: 6px;
+            border: 1.5px solid #bdc3c7;
+            display: flex;
+            position: relative;
+            overflow: visible;
+        }
+
+        .segment {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+            color: #7f8c8d;
+        }
+
+        .segment.yesterday {
+            width: calc(100% * 2 / 28);
+            background-color: var(--gray-out);
+            border-right: 1.5px solid #bdc3c7;
+        }
+
+        .segment.today-am {
+            width: calc(100% * 12 / 28);
+            background-color: var(--yellow-am);
+            border-right: 1.5px solid #bdc3c7;
+            position: relative;
+        }
+
+        .segment.today-pm {
+            width: calc(100% * 12 / 28);
+            background-color: var(--blue-pm);
+            border-right: 1.5px solid #bdc3c7;
+        }
+
+        .segment.tomorrow {
+            width: calc(100% * 2 / 28);
+            background-color: var(--gray-out);
+        }
+
+        /* 轴内底端刻度数字 */
+        .bottom-numbers {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+
+        .bottom-num {
+            position: absolute;
+            bottom: 2px;
+            transform: translateX(-50%);
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .bottom-num.am { color: #d35400; }
+        .bottom-num.pm { color: #2980b9; }
+
+        /* 滑块手柄与指示线 */
+        .slider-handle-container {
+            position: absolute;
+            top: -24px;
+            bottom: 0;
+            width: 0;
+            left: calc(100% * 2 / 28); /* 默认0点位置，对应today起始 */
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .slider-line {
+            width: 3px;
+            background-color: var(--red-accent);
+            position: absolute;
+            top: 24px;
+            bottom: 0;
+            transform: translateX(-50%);
+        }
+
+        .slider-pin {
+            width: 14px;
+            height: 14px;
+            background-color: var(--red-accent);
+            border-radius: 50%;
+            position: absolute;
+            top: 14px;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            pointer-events: auto;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        .slider-pin:active {
+            cursor: grabbing;
+            transform: translate(-50%, -50%) scale(1.2);
+       }
+
+        /* 底部“昨天、今天、明天”文本标签 */
+        .bottom-labels {
+            display: flex;
+            width: 100%;
+            margin-top: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #555;
+        }
+        .bottom-label-item {
+            text-align: center;
+        }
+        .bottom-label-item.yesterday { width: calc(100% * 2 / 28); }
+        .bottom-label-item.today { width: calc(100% * 24 / 28); color: var(--primary-blue); }
+        .bottom-label-item.tomorrow { width: calc(100% * 2 / 28); }
+
+        /* 控制菜单 */
+        .control-panel {
+            background: #f1f5f9;
+            border-radius: 50px;
+            padding: 8px 16px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .control-label {
+            font-size: 13px;
+            font-weight: bold;
+            color: #64748b;
+        }
+
+        .btn-toggle-group {
+            display: flex;
+            background: #e2e8f0;
+            border-radius: 20px;
+            padding: 2px;
+        }
+
+        .btn-toggle {
+            border: none;
+            background: transparent;
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: bold;
+            border-radius: 18px;
+            cursor: pointer;
+            color: #64748b;
+            transition: all 0.2s;
+        }
+
+        .btn-toggle.active {
+            background: var(--primary-blue);
+            color: white;
+            box-shadow: 0 2px 6px rgba(30,130,210,0.3);
+        }
+
+        .btn-toggle.orange.active {
+            background: #f39c12;
+            box-shadow: 0 2px 6px rgba(243,156,18,0.3);
+        }
+
+        .btn-action {
+            border: none;
+            background: #e2e8f0;
+            color: #334155;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-action:hover {
+            background: #cbd5e1;
+        }
+
+        .btn-action:active {
+            transform: scale(0.95);
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .header-clocks, .clock-cards {
+                grid-template-columns: 1fr;
+            }
+            .clock-card.hidden {
+                display: none;
+            }
+            .control-panel {
+                border-radius: 20px;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- 1. 顶部数字显示 -->
+    <div class="header-clocks">
+        <div id="display-24-card" class="digital-display">04:04</div>
+        <div id="display-12-card" class="digital-display">凌晨4:04</div>
+    </div>
+
+    <!-- 2. 双钟面教学显示 -->
+    <div class="clock-cards">
+        <!-- 24时制对比钟 -->
+        <div id="card-clock-24" class="clock-card">
+            <div class="clock-title">24时</div>
+            <div class="clock-svg-container">
+                <svg id="clock-24" viewBox="0 0 300 300" width="100%" height="100%"></svg>
+            </div>
+        </div>
+
+        <!-- 12时制传统钟 -->
+        <div id="card-clock-12" class="clock-card">
+            <div class="clock-title">12时</div>
+            <div class="clock-svg-container">
+                <svg id="clock-12" viewBox="0 0 300 300" width="100%" height="100%"></svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 时间数轴组件 -->
+    <div class="timeline-container">
+        <!-- 上方12时制刻度标签 -->
+        <div class="top-labels" id="top-labels-container"></div>
+
+        <!-- 数轴彩条轨道 -->
+        <div class="timeline-track" id="timeline-track">
+            <div class="segment yesterday"></div>
+            <div class="segment today-am"></div>
+            <div class="segment today-pm"></div>
+            <div class="segment tomorrow"></div>
+
+            <!-- 底端24时制刻度数字 -->
+            <div class="bottom-numbers" id="bottom-numbers-container"></div>
+
+            <!-- 指针/滑块 -->
+            <div class="slider-handle-container" id="slider-handle">
+                <div class="slider-line"></div>
+                <div class="slider-pin" id="slider-pin"></div>
+            </div>
+        </div>
+
+        <!-- 底部大文本标签 -->
+        <div class="bottom-labels">
+            <div class="bottom-label-item yesterday">昨天</div>
+            <div class="bottom-label-item today">今天</div>
+            <div class="bottom-label-item tomorrow">明天</div>
+        </div>
+    </div>
+
+    <!-- 4. 下方控制栏 -->
+    <div class="control-panel">
+        <div class="control-group">
+            <span class="control-label">切换显示</span>
+            <div class="btn-toggle-group">
+                <button class="btn-toggle active" onclick="setView('both')">双显示</button>
+                <button class="btn-toggle" onclick="setView('24')">24时</button>
+                <button class="btn-toggle" onclick="setView('12')">12时</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <span class="control-label">时段</span>
+            <button id="toggle-period" class="btn-toggle orange active" onclick="togglePeriod()">开</button>
+        </div>
+
+        <div class="control-group">
+            <span class="control-label">循环</span>
+            <button id="toggle-loop" class="btn-toggle orange" onclick="toggleLoop()">关</button>
+        </div>
+
+        <div class="control-group">
+            <span class="control-label">填色</span>
+            <button id="toggle-fill" class="btn-toggle orange active" onclick="toggleFill()">开</button>
+        </div>
+
+        <div class="control-group" style="margin-left: auto;">
+            <button class="btn-action" onclick="adjustTime(-60)">-1小时</button>
+            <button class="btn-action" onclick="adjustTime(60)">+1小时</button>
+            <button class="btn-action" onclick="resetToZero()" style="background: var(--primary-blue); color: white;">0点</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 1. 全局教学数据状态
+    let state = {
+        totalMinutes: 244, // 默认凌晨 04:04 (4*60 + 4)
+        viewMode: 'both',  // both, 24, 12
+        showPeriod: true,
+        isLoop: false,
+        fillColor: true
+    };
+
+    // 数轴配置参数：总显示28个小时（昨天2h + 今天24h + 明天2h）
+    const TOTAL_HOURS = 28;
+    const START_HOUR = 22; // 昨晚22点起始
+
+    // 2. 初始化页面元素
+    window.onload = function() {
+        initTimelineScales();
+        drawClocks();
+        updateUI();
+        setupDragEvents();
+    };
+
+    // 3. 构建高保真时间数轴刻度与标签
+    function initTimelineScales() {
+        const topContainer = document.getElementById('top-labels-container');
+        const bottomContainer = document.getElementById('bottom-numbers-container');
+        
+        topContainer.innerHTML = '';
+        bottomContainer.innerHTML = '';
+
+        for (let i = 0; i <= TOTAL_HOURS; i++) {
+            let pct = (i / TOTAL_HOURS) * 100;
+            let currentHour24 = (START_HOUR + i) % 24;
+            let currentHour12 = currentHour24 % 12;
+            if (currentHour12 === 0) currentHour12 = 12;
+
+            // 区分时间所属天数段
+            let dayType = 'today'; 
+            if (i < 2) dayType = 'yesterday';
+            else if (i > 26) dayType = 'tomorrow';
+
+            // A. 顶部 12时制 数字刻度标签
+            const topLabel = document.createElement('div');
+            topLabel.className = `top-label ${dayType}-label`;
+            topLabel.style.left = `${pct}%`;
+            topLabel.innerText = currentHour12;
+            topContainer.appendChild(topLabel);
+
+            // B. 顶部特殊标志：午夜、正午汉字指引箭头
+            if (i === 2) { // 今天 0点 (午夜)
+                createTopIndicator(topContainer, pct, "午夜");
+            } else if (i === 14) { // 今天 12点 (正午)
+                createTopIndicator(topContainer, pct, "正午");
+            } else if (i === 26) { // 明天 0点 (午夜)
+                createTopIndicator(topContainer, pct, "午夜");
+            }
+
+            // C. 轨道底部 24时制 刻度数字标签
+            if (dayType === 'today') {
+                const bottomNum = document.createElement('div');
+                let hourVal = i - 2; // 今天对应的 0 - 24 小时
+                
+                // 根据上午下午设定颜色
+                let colorClass = hourVal <= 12 ? 'am' : 'pm';
+                bottomNum.className = `bottom-num ${colorClass}`;
+                bottomNum.style.left = `${pct}%`;
+                bottomNum.innerText = hourVal;
+                bottomContainer.appendChild(bottomNum);
+            }
+        }
+    }
+
+    function createTopIndicator(parent, pct, text) {
+        const ind = document.createElement('div');
+        ind.className = 'top-indicator';
+        ind.style.left = `${pct}%`;
+        ind.innerHTML = `
+            <span>${text}</span>
+            <svg viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M512 768L128 384h768z"></path></svg>
+        `;
+        parent.appendChild(ind);
+    }
+
+    // 4. 重绘两个SVG钟面 (矢量、精细控制)
+    function drawClocks() {
+        drawClock12();
+        drawClock24();
+    }
+
+    // A. 绘制经典12小时时钟
+    function drawClock12() {
+        const svg = document.getElementById('clock-12');
+        svg.innerHTML = `
+            <!-- 钟壳外边框 -->
+            <circle cx="150" cy="150" r="135" fill="none" stroke="#7ec2e7" stroke-width="6"/>
+            <circle cx="150" cy="150" r="132" fill="#ffffff" />
+            <!-- 扇形填色路径 -->
+            <path id="fill-path-12" fill="#fede15" opacity="0.65" d=""/>
+            <!-- 刻度组 -->
+            <g id="ticks-12"></g>
+            <!-- 数字组 -->
+            <g id="numbers-12"></g>
+            <!-- 指针组 -->
+            <g id="hands-12">
+                <line id="hour-hand-12" x1="150" y1="150" x2="150" y2="90" stroke="#2c3e50" stroke-width="8" stroke-linecap="round" />
+                <line id="min-hand-12" x1="150" y1="150" x2="150" y2="60" stroke="#2c3e50" stroke-width="4.5" stroke-linecap="round" />
+                <!-- 轴心 -->
+                <circle cx="150" cy="150" r="8" fill="#4ba3e3" />
+                <circle cx="150" cy="150" r="3.5" fill="#9bd1f5" />
+            </g>
+        `;
+        
+        // 渲染刻度和数字
+        const ticksG = svg.getElementById('ticks-12');
+        const numbersG = svg.getElementById('numbers-12');
+
+        for (let i = 0; i < 60; i++) {
+            let angle = i * 6;
+            let rad = (angle * Math.PI) / 180;
+            if (i % 5 === 0) {
+                // 大刻度
+                let x1 = 150 + 118 * Math.sin(rad);
+                let y1 = 150 - 118 * Math.cos(rad);
+                let x2 = 150 + 128 * Math.sin(rad);
+                let y2 = 150 - 128 * Math.cos(rad);
+                ticksG.innerHTML += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#bdc3c7" stroke-width="2.5" />`;
+                
+                // 12小时数字
+                let hr = i / 5;
+                if (hr === 0) hr = 12;
+                let nx = 150 + 102 * Math.sin(rad);
+                let ny = 155 - 102 * Math.cos(rad);
+               numbersG.innerHTML += `<text x="${nx}" y="${ny}" text-anchor="middle" dominant-baseline="middle" font-size="20" font-weight="bold" fill="#2c3e50">${hr}</text>`;
+            } else {
+                // 小刻度
+                let x1 = 150 + 123 * Math.sin(rad);
+                let y1 = 150 - 123 * Math.cos(rad);
+                let x2 = 150 + 128 * Math.sin(rad);
+                let y2 = 150 - 128 * Math.cos(rad);
+                ticksG.innerHTML += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#dcdcdc" stroke-width="1.5" />`;
+            }
+        }
+    }
+
+    // B. 绘制24小时对比教学时钟 (带蓝色外环)
+    function drawClock24() {
+        const svg = document.getElementById('clock-24');
+        svg.innerHTML = `
+            <!-- 外环 (24小时环) -->
+            <circle cx="150" cy="150" r="135" fill="#bfe3f7" stroke="#7ec2e7" stroke-width="1.5"/>
+            <!-- 12制内环 -->
+            <circle cx="150" cy="150" r="110" fill="#ffffff" stroke="#7ec2e7" stroke-width="2"/>
+            <!-- 扇形填色路径 -->
+            <path id="fill-path-24" fill="#fede15" opacity="0.65" d=""/>
+            <!-- 刻度与外环分区线 -->
+            <g id="ticks-24"></g>
+            <!-- 12时内层数字 -->
+            <g id="numbers-24-inner"></g>
+            <!-- 24时外层数字 -->
+            <g id="numbers-24-outer"></g>
+            <!-- 指针组 -->
+            <g id="hands-24">
+                <line id="hour-hand-24" x1="150" y1="150" x2="150" y2="100" stroke="#2c3e50" stroke-width="8" stroke-linecap="round" />
+                <line id="min-hand-24" x1="150" y1="150" x2="150" y2="72" stroke="#2c3e50" stroke-width="4.5" stroke-linecap="round" />
+                <!-- 轴心 -->
+                <circle cx="150" cy="150" r="8" fill="#4ba3e3" />
+                <circle cx="150" cy="150" r="3.5" fill="#9bd1f5" />
+            </g>
+        `;
+
+        const ticksG = svg.getElementById('ticks-24');
+        const innerG = svg.getElementById('numbers-24-inner');
+        const outerG = svg.getElementById('numbers-24-outer');
+
+        for (let i = 0; i < 60; i++) {
+            let angle = i * 6;
+            let rad = (angle * Math.PI) / 180;
+            if (i % 5 === 0) {
+                // 内圈大刻度
+                let x1 = 150 + 98 * Math.sin(rad);
+                let y1 = 150 - 98 * Math.cos(rad);
+                let x2 = 150 + 108 * Math.sin(rad);
+                let y2 = 150 - 108 * Math.cos(rad);
+                ticksG.innerHTML += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#bdc3c7" stroke-width="2.5" />`;
+
+                // 外圈分隔线
+                let ox1 = 150 + 110 * Math.sin(rad);
+                let oy1 = 150 - 110 * Math.cos(rad);
+                let ox2 = 150 + 135 * Math.sin(rad);
+                let oy2 = 150 - 135 * Math.cos(rad);
+                ticksG.innerHTML += `<line x1="${ox1}" y1="${oy1}" x2="${ox2}" y2="${oy2}" stroke="#7ec2e7" stroke-width="1.5" />`;
+
+                // 内圈数字 (1-12)
+                let hr = i / 5;
+                if (hr === 0) hr = 12;
+                let nx = 150 + 84 * Math.sin(rad);
+                let ny = 154 - 84 * Math.cos(rad);
+                innerG.innerHTML += `<text x="${nx}" y="${ny}" text-anchor="middle" dominant-baseline="middle" font-size="17" font-weight="bold" fill="#2c3e50">${hr}</text>`;
+
+                // 外圈对应数字 (13-24)
+                let hrOuter = hr + 12;
+                let onx = 150 + 122 * Math.sin(rad);
+                let ony = 123.5 - 122 * Math.cos(rad); // 微调位置确保24居中
+                if (hr === 12) ony = 150 - 122 * Math.cos(rad) + 4; // 12点/24点垂直微调
+                outerG.innerHTML += `<text x="${onx}" y="${ony}" text-anchor="middle" dominant-baseline="middle" font-size="12" font-weight="bold" fill="#1b6ca8">${hrOuter}</text>`;
+
+            } else {
+                // 内圈小刻度
+                let x1 = 150 + 103 * Math.sin(rad);
+                let y1 = 150 - 103 * Math.cos(rad);
+                let x2 = 150 + 108 * Math.sin(rad);
+                let y2 = 150 - 108 * Math.cos(rad);
+                ticksG.innerHTML += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#dcdcdc" stroke-width="1.5" />`;
+            }
+        }
+    }
+
+    // 5. 数据联动计算核心
+    function updateUI() {
+        let curMin = state.totalMinutes;
+        let h = Math.floor(curMin / 60);
+        let m = curMin % 60;
+
+        // A. 格式化数字时间
+        let displayHour24 = String(h).padStart(2, '0');
+        let displayMin = String(m).padStart(2, '0');
+        let timePeriodData = getChinesePeriod(h);
+
+        // 12小时转换
+        let h12 = h % 12;
+        if (h12 === 0) h12 = 12;
+        let displayHour12 = String(h12);
+
+        // 更新顶部数字卡片
+        document.getElementById('display-24-card').innerText = `${displayHour24}:${displayMin}`;
+        if (state.showPeriod) {
+            document.getElementById('display-12-card').innerText = `${timePeriodData.period}${displayHour12}:${displayMin}`;
+        } else {
+            document.getElementById('display-12-card').innerText = `${displayHour12}:${displayMin}`;
+        }
+
+        // B. 联动时针、分针旋转角度
+        let minAngle = m * 6; // 分针 360/60=6度/分
+        let hourAngle = (h % 12) * 30 + m * 0.5; // 时针 360/12=30度/小时，0.5度/分
+
+        // 12小时制钟针
+        document.getElementById('hour-hand-12').setAttribute('transform', `rotate(${hourAngle} 150 150)`);
+        document.getElementById('min-hand-12').setAttribute('transform', `rotate(${minAngle} 150 150)`);
+
+        // 24小时制钟针
+        document.getElementById('hour-hand-24').setAttribute('transform', `rotate(${hourAngle} 150 150)`);
+        document.getElementById('min-hand-24').setAttribute('transform', `rotate(${minAngle} 150 150)`);
+
+        // C. 更新钟面填色 (扇形描绘)
+        updateClockFill('fill-path-12', 128, hourAngle);
+        updateClockFill('fill-path-24', 108, hourAngle);
+
+        // D. 同步数轴滑块位置 (2/28是昨天的偏置)
+        let totalDisplayMinutes = TOTAL_HOURS * 60;
+        let todayOffsetMinutes = 2 * 60; // 昨天的2个小时
+        let activePosMinutes = todayOffsetMinutes + curMin;
+        let sliderPct = (activePosMinutes / totalDisplayMinutes) * 100;
+        document.getElementById('slider-handle').style.left = `${sliderPct}%`;
+    }
+
+    // 计算扇形填充路径
+    function updateClockFill(elementId, radius, angle) {
+        const path = document.getElementById(elementId);
+        if (!state.fillColor || angle === 0) {
+            path.setAttribute('d', '');
+            return;
+        }
+
+        // 把角度转换为弧度
+        let startAngle = -Math.PI / 2; // 正上方12点
+        let endAngle = ((angle - 90) * Math.PI) / 180;
+
+        let x1 = 150 + radius * Math.cos(startAngle);
+        let y1 = 150 + radius * Math.sin(startAngle);
+        let x2 = 150 + radius * Math.cos(endAngle);
+        let y2 = 150 + radius * Math.sin(endAngle);
+
+        let largeArc = angle > 180 ? 1 : 0;
+
+        let d = `M 150 150 L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+        path.setAttribute('d', d);
+    }
+
+    // 获取传统汉字时段
+    function getChinesePeriod(hour) {
+        if (hour >= 0 && hour < 5) return { period: "凌晨", color: "#16a085" };
+        if (hour >= 5 && hour < 8) return { period: "早上", color: "#27ae60" };
+        if (hour >= 8 && hour < 11) return { period: "上午", color: "#f39c12" };
+        if (hour >= 11 && hour < 13) return { period: "中午", color: "#e67e22" };
+        if (hour >= 13 && hour < 18) return { period: "下午", color: "#2980b9" };
+        return { period: "晚上", color: "#8e44ad" };
+    }
+
+    // 6. 数轴交互拖拽手势
+    function setupDragEvents() {
+        const pin = document.getElementById('slider-pin');
+        const track = document.getElementById('timeline-track');
+        let isDragging = false;
+
+        function onDragStart(e) {
+            isDragging = true;
+            document.body.style.cursor = 'grabbing';
+            handleDrag(e);
+        }
+
+        function onDragMove(e) {
+            if (!isDragging) return;
+            handleDrag(e);
+        }
+
+        function onDragEnd() {
+            if (isDragging) {
+                isDragging = false;
+                document.body.style.cursor = 'default';
+            }
+        }
+
+        function handleDrag(e) {
+            const rect = track.getBoundingClientRect();
+            let clientX = e.clientX;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+            }
+
+            // 计算相对整个28小时大轨道的比例
+            let relativeX = clientX - rect.left;
+            let pct = relativeX / rect.width;
+            if (pct < 0) pct = 0;
+            if (pct > 1) pct = 1;
+
+            // 限制拖拽必须在“今天”范围内 (2/28 到 26/28)
+            let startBound = 2 / 28;
+            let endBound = 26 / 28;
+            
+            if (pct < startBound) pct = startBound;
+            if (pct > endBound) pct = endBound;
+
+            // 转化为今天的分钟数 (0 到 1440 分)
+            let todayProgress = (pct - startBound) / (24 / 28);
+            let totalMins = Math.round(todayProgress * 1440);
+            
+            // 每4分钟微调对齐，让指针体验更细腻精准
+            state.totalMinutes = Math.round(totalMins / 1) * 1; 
+            updateUI();
+        }
+
+        // 监听鼠标事件
+        pin.addEventListener('mousedown', onDragStart);
+        window.addEventListener('mousemove', onDragMove);
+        window.addEventListener('mouseup', onDragEnd);
+
+        // 监听移动端触摸事件
+        pin.addEventListener('touchstart', onDragStart, { passive: true });
+        window.addEventListener('touchmove', onDragMove, { passive: false });
+        window.addEventListener('touchend', onDragEnd);
+
+        // 点击数轴彩条任意位置同步跳转指针
+        track.addEventListener('mousedown', function(e) {
+            if (e.target !== pin) {
+                handleDrag(e);
+            }
+        });
+    }
+
+    // 7. 控制菜单与参数转换接口
+    function setView(mode) {
+        state.viewMode = mode;
+        const btnToggles = document.querySelectorAll('.btn-toggle-group .btn-toggle');
+        btnToggles.forEach(btn => btn.classList.remove('active'));
+
+        const card24 = document.getElementById('card-clock-24');
+        const card12 = document.getElementById('card-clock-12');
+        const disp24 = document.getElementById('display-24-card');
+        const disp12 = document.getElementById('display-12-card');
+
+        if (mode === 'both') {
+            btnToggles[0].classList.add('active');
+            card24.classList.remove('hidden');
+            card12.classList.remove('hidden');
+            disp24.style.display = 'block';
+            disp12.style.display = 'block';
+        } else if (mode === '24') {
+            btnToggles[1].classList.add('active');
+            card24.classList.remove('hidden');
+            card12.classList.add('hidden');
+            disp24.style.display = 'block';
+            disp12.style.display = 'none';
+        } else if (mode === '12') {
+            btnToggles[2].classList.add('active');
+            card24.classList.add('hidden');
+            card12.classList.remove('hidden');
+            disp24.style.display = 'none';
+            disp12.style.display = 'block';
+        }
+    }
+
+    function togglePeriod() {
+        state.showPeriod = !state.showPeriod;
+        let btn = document.getElementById('toggle-period');
+        btn.innerText = state.showPeriod ? '开' : '关';
+        btn.classList.toggle('active', state.showPeriod);
+        updateUI();
+    }
+
+    function toggleLoop() {
+        state.isLoop = !state.isLoop;
+        let btn = document.getElementById('toggle-loop');
+        btn.innerText = state.isLoop ? '开' : '关';
+        btn.classList.toggle('active', state.isLoop);
+    }
+
+    function toggleFill() {
+        state.fillColor = !state.fillColor;
+        let btn = document.getElementById('toggle-fill');
+        btn.innerText = state.fillColor ? '开' : '关';
+        btn.classList.toggle('active', state.fillColor);
+        updateUI();
+    }
+
+    function adjustTime(mins) {
+        let newMins = state.totalMinutes + mins;
+        if (state.isLoop) {
+            // 如果开启循环，跨天时循环往复
+            newMins = (newMins + 1440) % 1440;
+        } else {
+            // 否则，封顶在 00:00 - 24:00
+            if (newMins < 0) newMins = 0;
+            if (newMins > 1440) newMins = 1440;
+        }
+        state.totalMinutes = newMins;
+        updateUI();
+    }
+
+    function resetToZero() {
+        state.totalMinutes = 0;
+        updateUI();
+    }
+</script>
+
+</body>
+</html>
