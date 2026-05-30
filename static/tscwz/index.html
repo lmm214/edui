@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 文字类提示词设计指南</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --text: #111111;
+            --text-muted: #666666;
+            --border: #e5e5e5;
+            --hover-bg: #f5f5f5;
+            --accent: #000000;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            padding-bottom: 50px;
+        }
+        
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(5px);
+            border-bottom: 1px solid var(--border);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+        
+        nav {
+            display: flex;
+            gap: 20px;
+        }
+        
+        nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        
+        nav a:hover, nav a.active {
+            color: var(--accent);
+        }
+        
+        main {
+            padding: 40px 30px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 24px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--accent);
+            display: inline-block;
+        }
+        
+        /* Masonry Layout */
+        .grid {
+            column-count: 4;
+            column-gap: 24px;
+            margin-bottom: 60px;
+        }
+
+        @media (max-width: 1400px) { .grid { column-count: 4; } }
+        @media (max-width: 1100px) { .grid { column-count: 3; } }
+        @media (max-width: 800px) { .grid { column-count: 2; } }
+        @media (max-width: 500px) { .grid { column-count: 1; } }
+        
+        .card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.2s;
+            break-inside: avoid;
+            margin-bottom: 24px;
+        }
+        
+        .card:hover {
+            border-color: #999;
+        }
+        
+        .card-image-container {
+            width: 100%;
+            background: var(--hover-bg);
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+            display: flex;
+        }
+        
+        .card-image-container img {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            display: block;
+            transition: transform 0.3s;
+        }
+        
+        .card-image-container:hover img {
+            transform: scale(1.03);
+        }
+        
+        .card-image-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.03);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+        
+        .card-image-container:hover .card-image-overlay {
+            opacity: 1;
+        }
+        
+        .copy-icon {
+            background: #000;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        .card-content {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+        
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        
+        /* For Font Groups (1 image, 4 schemes) */
+        .schemes-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .scheme-item {
+            font-size: 0.85rem;
+            padding: 8px 12px;
+            background: var(--hover-bg);
+            border: 1px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .scheme-item:hover {
+            border-color: var(--border);
+            background: #ebebeb;
+        }
+        
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--accent);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+        
+        /* Reverse prompt */
+        .reverse-card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            background: var(--hover-bg);
+        }
+        
+        .reverse-card pre {
+            background: #fff;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            margin-top: 16px;
+            color: var(--text-muted);
+        }
+        
+        .btn-copy-lg {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .btn-copy-lg:hover {
+            background: #333;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>2026 文字类提示词设计指南</h1>
+        <nav>
+            <a href="#fonts" class="active">字体方案</a>
+            <a href="#effects">常用字效</a>
+            <a href="#reverse">图像反推</a>
+        </nav>
+    </header>
+    
+    <main>
+        <div id="fonts">
+            <h2 class="section-title">100个中文字体提示方案</h2>
+            <div class="grid">
+
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“高级玩家”，时尚体，字形修长，笔画干净，字距舒展，结构优雅，整体像时尚杂志标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-54cd7dddac35b68f26d6b138d369a15b.jpeg" alt="01｜时尚体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">01｜时尚体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“高级玩家”，时尚体，字形修长，笔画干净，字距舒展，结构优雅，整体像时尚杂志标题。`, event)" title="点击复制提示词">
+                                <span>方案 2：高级杂志字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“都市潮流”，时尚体，字形宽扁低重心，笔画横向延展，线条硬朗平直，结构紧密有节奏感，整体像现代城市潮流视觉标题。`, event)" title="点击复制提示词">
+                                <span>方案 3：都市潮流字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“先锋设计”，时尚体，字形结构大胆重组，局部笔画夸张变形，线条简洁但张力强，整体像实验性设计展海报标题。`, event)" title="点击复制提示词">
+                                <span>方案 4：先锋设计字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“极简品牌”，极简品牌体，字形方正厚重，笔画粗细完全统一，横竖比例均衡，结构紧密稳定，字距克制，整体像高端品牌 Logo。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-232c21136505a67c0b73fe8907f86135.jpeg" alt="02｜极简无衬线体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">02｜极简无衬线体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“极简品牌”，极简品牌体，字形方正厚重，笔画粗细完全统一，横竖比例均衡，结构紧密稳定，字距克制，整体像高端品牌 Logo。`, event)" title="点击复制提示词">
+                                <span>方案 5：极简品牌字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“现代知识”，知识标题体，字形端正清晰，笔画中等偏细，横竖线条干净利落，结构开放有序，字距舒展，整体像知识专栏或课程封面标题。`, event)" title="点击复制提示词">
+                                <span>方案 6：现代知识字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“如沐春风”，清爽留白体，字形轻盈舒展，笔画细而均匀，线条柔和干净，字距大幅拉开，结构松弛有呼吸感，整体安静、清爽。`, event)" title="点击复制提示词">
+                                <span>方案 7：清爽标题字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“智能工作流”，几何科技体，字形模块化，笔画平直硬朗，横竖转角接近直角，结构规整像科技产品 UI 标题，整体理性、系统、数字化。`, event)" title="点击复制提示词">
+                                <span>方案 8：科技简洁字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“时间复利”，轻奢细线体，字形高挑窄长，竖向比例明显拉伸，横画短而克制，竖画细长挺拔，笔画带极轻微粗细变化，末端收笔精致干净，字距适中，整体像高级香水、珠宝品牌标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-a143f821de5c518d297a127a8a150d70.jpeg" alt="03｜细线体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">03｜细线体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“时间复利”，轻奢细线体，字形高挑窄长，竖向比例明显拉伸，横画短而克制，竖画细长挺拔，笔画带极轻微粗细变化，末端收笔精致干净，字距适中，整体像高级香水、珠宝品牌标题。`, event)" title="点击复制提示词">
+                                <span>方案 9：轻奢细线字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“慢慢变好”，温柔细线体，笔画纤细柔和，线条带轻微自然弧度，字形舒展松弛，重心平稳，整体安静、温柔、像生活方式杂志标题。`, event)" title="点击复制提示词">
+                                <span>方案 10：温柔细线字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“深度观察”，理性细线体，字形端正方阔，横竖线条清晰笔直，笔画细而有秩序，转折干净，结构开放，字距均衡，整体像深度知识专栏或研究报告标题。`, event)" title="点击复制提示词">
+                                <span>方案 11：高级知识字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“智能边界”，未来细线体，字形几何化，笔画纤细平直，横竖转角接近直角，局部笔画呈模块断开式连接，结构轻盈但精密，整体像未来科技界面的系统标题。`, event)" title="点击复制提示词">
+                                <span>方案 12：未来细线字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“纤线灵动”，连续线稿体，字形由一根连续线条勾勒而成，线条粗细一致，转折流畅自然，笔画之间有连贯路径感，结构轻盈清晰，整体像极简线稿艺术标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-6917e69915f0e8fda8c61ea7a02b77e0.jpeg" alt="04｜单线字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">04｜单线字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“纤线灵动”，连续线稿体，字形由一根连续线条勾勒而成，线条粗细一致，转折流畅自然，笔画之间有连贯路径感，结构轻盈清晰，整体像极简线稿艺术标题。`, event)" title="点击复制提示词">
+                                <span>方案 13：连续线稿体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“灵感草图”，草图单线体，字形像设计师手稿中的快速线条，笔画细而自然，线条带轻微抖动和手绘停顿，结构松弛但可读，整体像创意草图标题。`, event)" title="点击复制提示词">
+                                <span>方案 14：草图单线体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“连接万物”，科技线框体，字形由细直线和几何折线组成，笔画像线框结构搭建而成，横竖转角清晰，局部有节点式连接感，整体像科技网络界面的标题字体。`, event)" title="点击复制提示词">
+                                <span>方案 15：科技线框字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“留白之美”，优雅单线体，字形修长舒展，笔画由细长单线构成，横画克制，竖画挺拔，转折柔和，字距宽松，整体像高级展览海报中的极简标题。`, event)" title="点击复制提示词">
+                                <span>方案 16：优雅单线字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“都市韵律”，杂志衬线体，字形修长挺拔，笔画有明显粗细对比，横画纤细，竖画有力度，衬线短小利落，字距舒展，整体像高端时尚杂志标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-25eebdc8a81e9c384016b17ec6bb0765.jpeg" alt="05｜现代衬线体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">05｜现代衬线体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“都市韵律”，杂志衬线体，字形修长挺拔，笔画有明显粗细对比，横画纤细，竖画有力度，衬线短小利落，字距舒展，整体像高端时尚杂志标题。`, event)" title="点击复制提示词">
+                                <span>方案 17：杂志衬线体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“增长模型”，现代衬线体，结构稳定，笔画利落，衬线克制，整体专业、商业、可信。`, event)" title="点击复制提示词">
+                                <span>方案 18：商业衬线体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“高阶审美”，轻奢衬线体，字形高挑纤长，横画极细，竖画优雅挺拔，衬线精致尖细，收笔干净，字距略宽，整体像珠宝、香水或高定品牌标题。`, event)" title="点击复制提示词">
+                                <span>方案 19：轻奢封面字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“深度观察”，专栏衬线体，字形方正端庄，笔画粗细分明，结构严肃有序，衬线短直稳定，字距均衡，整体像思想评论、财经专栏或深度报道标题。`, event)" title="点击复制提示词">
+                                <span>方案 20：深度专栏字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“清新手迹”，清新手迹体，字形轻盈自然，笔画细而流畅，线条像中性笔随手写下，结构简洁不复杂，字距舒展，整体干净、清爽、像生活杂志里的手写标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-81d2c64f16c2120764e4c3a6dc78a4cc.jpeg" alt="06｜极简手写体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">06｜极简手写体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“清新手迹”，清新手迹体，字形轻盈自然，笔画细而流畅，线条像中性笔随手写下，结构简洁不复杂，字距舒展，整体干净、清爽、像生活杂志里的手写标题。`, event)" title="点击复制提示词">
+                                <span>方案 21：清新手迹字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“慢慢变好”，成长笔记体，字形柔和松弛，笔画带轻微粗细变化，横竖转折自然，结构像笔记本里的认真手写标题，整体温柔、真实、有自我成长记录感。`, event)" title="点击复制提示词">
+                                <span>方案 22：成长笔记字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“自由开工”，个人签名体，字形连贯流动，笔画起伏明显，部分笔画自然相连，尾笔轻微拉长，整体像个人品牌签名，松弛但有识别度。`, event)" title="点击复制提示词">
+                                <span>方案 23：个人签名字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“别急着稳定”，情绪手写体，字形轻微倾斜，笔画带速度感，线条有自然抖动和停顿，结构松动但清晰，整体像情绪很满时写下的一句手写标题。`, event)" title="点击复制提示词">
+                                <span>方案 24：情绪手写字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“信手拈来”，柔和曲线体，字形由大量圆润曲线构成，笔画转折柔顺，线条像丝带一样自然弯折，结构舒展流畅，整体温和、轻盈、有柔软动感。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-14beef5d357ca22bc5fd86d8d3ec48c1.jpeg" alt="07｜弯曲字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">07｜弯曲字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“信手拈来”，柔和曲线体，字形由大量圆润曲线构成，笔画转折柔顺，线条像丝带一样自然弯折，结构舒展流畅，整体温和、轻盈、有柔软动感。`, event)" title="点击复制提示词">
+                                <span>方案 25：柔和曲线字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“自在生长”，女性美学体，字形纤长柔美，笔画带优雅弧线，横竖转折自然收放，结构舒展不紧绷，整体像女性生活方式杂志中的柔美标题。`, event)" title="点击复制提示词">
+                                <span>方案 26：女性美学字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“旋律流动”，音乐律动体，字形带明显波浪节奏，笔画像音符和声波一样起伏延展，线条流动感强，结构有节拍变化，整体像音乐海报标题。`, event)" title="点击复制提示词">
+                                <span>方案 27：音乐律动字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“曲线之间”，艺术曲线体，字形由夸张曲线和不对称弧线重组，笔画弯折幅度明显，结构富有实验性但保持可读，整体像艺术展览海报中的曲线字体。`, event)" title="点击复制提示词">
+                                <span>方案 28：艺术曲线字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“栩栩如生”，轮廓手绘体，字形由手工勾勒的外轮廓组成，笔画像被一笔一笔描出来，边缘带轻微不规则抖动，内部结构清晰，整体像手绘插画海报标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-ec226d878cfa327fee97844f9655f7d8.jpeg" alt="08｜手绘字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">08｜手绘字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“栩栩如生”，轮廓手绘体，字形由手工勾勒的外轮廓组成，笔画像被一笔一笔描出来，边缘带轻微不规则抖动，内部结构清晰，整体像手绘插画海报标题。`, event)" title="点击复制提示词">
+                                <span>方案 29：轮廓手绘体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“奇妙日常”，插画装饰体，字形圆润活泼，笔画像小插画一样被画出来，局部结构带星星、圆点、叶片般的图形化变化，整体像儿童绘本封面标题。`, event)" title="点击复制提示词">
+                                <span>方案 30：插画装饰体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“画出灵感”，草稿描线体，字形像设计草稿里的快速构思，笔画由多次重复描线组成，线条有断续和重叠感，结构自由但可读，整体像创作者画出来的标题字。`, event)" title="点击复制提示词">
+                                <span>方案 31：粗描海报体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“今天不错”，童趣涂画体，字形像用画笔认真涂画出来，笔画圆胖不完全对齐，结构大小错落，边缘带手工涂画痕迹，整体天真、轻松、有儿童画感。`, event)" title="点击复制提示词">
+                                <span>方案 32：童趣涂鸦体</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“天马行空”，锋利街头喷漆体，字形大幅倾斜张扬，笔画像高速喷漆扫过墙面，粗硬笔触带尖锐切角，边缘有喷漆颗粒、飞溅和干刷断裂，四个字横向紧凑排列，整体像街头墙面上攻击性很强的喷漆涂鸦标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-00278500149f082e5b81dc372aab3c7e.jpeg" alt="09｜涂鸦字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">09｜涂鸦字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“天马行空”，锋利街头喷漆体，字形大幅倾斜张扬，笔画像高速喷漆扫过墙面，粗硬笔触带尖锐切角，边缘有喷漆颗粒、飞溅和干刷断裂，四个字横向紧凑排列，整体像街头墙面上攻击性很强的喷漆涂鸦标题。`, event)" title="点击复制提示词">
+                                <span>方案 33：街头涂鸦字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“别装成熟”，手写标语涂鸦体，字形像粗马克笔在墙面上快速写下，笔画粗细不均，线条带明显手写停顿、拖拽和急停痕迹，四个字保持清晰可读，排列紧凑但不互相重叠，整体像年轻人写在街头墙上的反叛标语。`, event)" title="点击复制提示词">
+                                <span>方案 34：青年观点字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“能工智人”，泡泡潮牌涂鸦体，字形圆胖夸张，笔画厚实膨胀，外轮廓像街头 bubble graffiti 一样饱满，局部结构被拉伸和挤压，文字上下错位堆叠，整体像潮牌海报里的泡泡涂鸦标题。`, event)" title="点击复制提示词">
+                                <span>方案 35：泡泡潮流涂鸦字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“声音失控”，爆裂摇滚涂鸦体，字形像被音浪震碎后重新拼成，笔画粗暴破碎，边缘有撕裂毛刺和碎片感，文字采用上下错位的爆炸式构图，局部笔画向外冲出，整体像地下摇滚演出海报上的失控标题。黑底白字，纯字体设计，无装饰。`, event)" title="点击复制提示词">
+                                <span>方案 36：爆裂摇滚涂鸦字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“浑然天成”，抽象构成体，字形由几何块面和抽象线条重新组合，笔画结构打破常规但保持可读，局部笔画像图形元素一样错位拼接，整体像现代艺术海报中的构成主义标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-dad6ac20274bb8d0358511a7ccc29e52.jpeg" alt="10｜艺术字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">10｜艺术字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“浑然天成”，抽象构成体，字形由几何块面和抽象线条重新组合，笔画结构打破常规但保持可读，局部笔画像图形元素一样错位拼接，整体像现代艺术海报中的构成主义标题。`, event)" title="点击复制提示词">
+                                <span>方案 37：抽象艺术字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“视觉实验”，展览海报体，字形克制而有设计感，笔画结构被轻微拉伸和切分，线条干净，字距舒展，整体像艺术馆、设计展或美术馆海报中的高级标题。`, event)" title="点击复制提示词">
+                                <span>方案 38：展览字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“意识流动”，概念实验体，字形结构不规则，笔画像被拆解后重新排列，局部线条断开、漂移和错层，整体保持可读但充满先锋实验感，像概念艺术展的标题字。`, event)" title="点击复制提示词">
+                                <span>方案 39：概念实验字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“灵感爆炸”，创作者爆发体，字形夸张有张力，笔画向外扩张，局部结构放大、扭转和冲出边界，整体像创作者灵感喷发时形成的强视觉标题。`, event)" title="点击复制提示词">
+                                <span>方案 40：创作者标题字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“巨大反差”，强冲击夸张体，字形极度放大，笔画粗壮厚重，结构被压缩得紧密有力量，局部笔画夸张加宽，整体像强冲击海报中的重磅标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-a3a7fc7040f867de86b1df674ed3fb82.jpeg" alt="11｜夸张体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">11｜夸张体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“巨大反差”，强冲击夸张体，字形极度放大，笔画粗壮厚重，结构被压缩得紧密有力量，局部笔画夸张加宽，整体像强冲击海报中的重磅标题。`, event)" title="点击复制提示词">
+                                <span>方案 41：强冲击标题字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“一眼看懂”，爆款封面体，字形粗黑醒目，笔画饱满直接，结构清晰紧凑，字与字之间排列有强烈标题节奏，整体像短视频封面或爆款文章封面上的大标题。`, event)" title="点击复制提示词">
+                                <span>方案 42：爆款封面字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“离谱现场”，表情包夸张体，字形故意变形放大，笔画圆胖又不规则，结构带夸张扭动和表情感，字与字大小错落，整体像搞笑表情包里的情绪标题。`, event)" title="点击复制提示词">
+                                <span>方案 43：表情包标题字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“别再内耗”，强观点夸张体，字形锋利紧绷，笔画粗硬有力量，结构向前倾斜，横竖转折带明显冲撞感，整体像观点海报中一句掷地有声的强表达标题。`, event)" title="点击复制提示词">
+                                <span>方案 44：强观点夸张字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“未来入口”，科技标题体，字形硬朗几何，笔画平直有力，横竖转折接近直角，局部结构带轻微切角，字距克制，整体像未来科技产品发布会的大标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-0a3f43749b2a9656f80574cf99b99301.jpeg" alt="12｜未来感字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">12｜未来感字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“未来入口”，科技标题体，字形硬朗几何，笔画平直有力，横竖转折接近直角，局部结构带轻微切角，字距克制，整体像未来科技产品发布会的大标题。`, event)" title="点击复制提示词">
+                                <span>方案 45：科技标题字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“流动智能”，液态未来体，字形像被柔性材料生成，笔画有流体般的弯折和拉伸，边缘顺滑，结构在稳定和变形之间保持平衡，整体像未来材料、AI 生命体或新科技品牌标题。`, event)" title="点击复制提示词">
+                                <span>方案 46：液态未来字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“虚拟边界”，虚拟空间体，字形带空间透视和折叠感，笔画像立体平面被切开后重新组合，结构有前后层次和空间错位，整体像虚拟现实、元宇宙或空间计算系统标题。`, event)" title="点击复制提示词">
+                                <span>方案 47：虚拟空间字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“量化信号”，赛博断裂体，字形冷峻锋利，笔画被数字故障切成错位片段，局部结构有横向漂移、断裂和重组感，整体像高强度赛博世界、未来交易系统或数字战场标题。`, event)" title="点击复制提示词">
+                                <span>方案 48：赛博断裂字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“脑洞打开”，趣味标题体，字形轻微变形，笔画圆润有弹性，结构大小略有错落，局部笔画像被轻轻拉伸，整体轻松、有趣、像创意内容栏目的标题字。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-19cc82bcf3908b72d6586d2893dd422f.jpeg" alt="13｜趣味变形体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">13｜趣味变形体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“脑洞打开”，趣味标题体，字形轻微变形，笔画圆润有弹性，结构大小略有错落，局部笔画像被轻轻拉伸，整体轻松、有趣、像创意内容栏目的标题字。`, event)" title="点击复制提示词">
+                                <span>方案 49：趣味标题字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“笑到离谱”，搞笑封面体，字形夸张扭动，笔画圆胖不规则，结构像被笑声挤压变形，字与字大小错落，整体像搞笑视频封面或热梗表情标题。`, event)" title="点击复制提示词">
+                                <span>方案 50：搞笑封面字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“一学就会”，模块课程标题体，字形清晰规整，笔画饱满厚实，局部结构像卡片模块一样拼接组合，横画和竖画带轻微错位层次，转角柔和但不圆滑，整体像创意课程、知识卡片或教程封面中的现代标题字。`, event)" title="点击复制提示词">
+                                <span>方案 51：创意课程字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“快乐出发”，气球童趣体，字形圆润鼓起，笔画像充气气球一样饱满柔软，结构高低跳跃，局部笔画带轻微膨胀和收束感，整体轻快、天真、像儿童活动海报里的欢乐标题字。`, event)" title="点击复制提示词">
+                                <span>方案 52：儿童活动字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“像素人生”，复古像素体，字形由清晰的小方块像素拼成，横竖结构规整，边缘呈阶梯状锯齿感，整体像 8bit 复古游戏里的标题字。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-e91844bf207a08b6f2cc98e652dc50c9.jpeg" alt="14｜像素风格体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">14｜像素风格体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“像素人生”，复古像素体，字形由清晰的小方块像素拼成，横竖结构规整，边缘呈阶梯状锯齿感，整体像 8bit 复古游戏里的标题字。`, event)" title="点击复制提示词">
+                                <span>方案 53：复古游戏字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“开局暴击”，街机游戏体，字形厚重紧凑，笔画由大块像素组成，结构方正有力量，边缘带明显像素台阶，整体像街机游戏或游戏封面里的高能标题字。`, event)" title="点击复制提示词">
+                                <span>方案 54：街机游戏字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“信号丢失”，像素故障体，字形由方块像素组成，局部笔画出现横向错位、缺块和断裂，结构保持可读但带明显数字故障感，整体像复古屏幕出现干扰时的标题字。`, event)" title="点击复制提示词">
+                                <span>方案 55：像素字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“模块世界”，方块模块体，字形由规整方形模块拼接而成，笔画方正厚实，结构像网格系统中搭建出来的文字，整体清晰、秩序、像像素化系统标题。`, event)" title="点击复制提示词">
+                                <span>方案 56：方块模块字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“旧梦重温”，老电影字幕体，字形端正克制，笔画粗细适中，结构清晰稳定，边缘带轻微旧胶片字幕的印刷颗粒感，整体像上世纪电影片头或老字幕里的怀旧标题字。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-35d5f5632fba118435a1a590a6740dba.jpeg" alt="15｜复古字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">15｜复古字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“旧梦重温”，老电影字幕体，字形端正克制，笔画粗细适中，结构清晰稳定，边缘带轻微旧胶片字幕的印刷颗粒感，整体像上世纪电影片头或老字幕里的怀旧标题字。`, event)" title="点击复制提示词">
+                                <span>方案 57：老电影字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`霓虹旧街”，港式旧招牌体，字形厚重醒目，结构紧凑饱满，笔画带老式商号招牌的方正骨架和手工刻字感，转折处略带复古圆角，整体像八九十年代港式老街店招、旧茶餐厅或传统商铺牌匾标题。`, event)" title="点击复制提示词">
+                                <span>方案 58：霓虹旧街</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“省钱才是硬道理”，复古字体，笔画粗壮，字形带老式招牌感，整体怀旧、接地气。`, event)" title="点击复制提示词">
+                                <span>方案 59：复古广告字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“纸上年华”，怀旧出版体，字形端庄清晰，笔画带传统印刷标题字的稳重感，结构舒展有书卷气，横竖比例均衡，整体像旧杂志、老书封面或怀旧刊物中的标题字。`, event)" title="点击复制提示词">
+                                <span>方案 60：复古故事字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“哈利波特”，哥特风格字体，线条尖锐细长，笔画粗细对比鲜明，整体神秘、冷峻。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-3e7da87b63598c4a5a5325e0af891f06.jpeg" alt="16｜哥特风格字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">16｜哥特风格字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“哈利波特”，哥特风格字体，线条尖锐细长，笔画粗细对比鲜明，整体神秘、冷峻。`, event)" title="点击复制提示词">
+                                <span>方案 61：暗黑标题字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“魔兽世界”，哥特风格字体，笔画尖锐，字形像铁刺延展，结构复杂但清晰，整体奇幻、危险。`, event)" title="点击复制提示词">
+                                <span>方案 62：中世纪字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“深渊回声”，黑金属尖刺体，字形极度尖锐，笔画向上下延伸成刺状结构，转折处带锋利裂口，整体紧密、凌厉、攻击性强，像黑金属乐队 Logo 或暗黑演出海报标题。`, event)" title="点击复制提示词">
+                                <span>方案 63：黑金属尖刺字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“秘银王冠”，华丽哥特装饰体，字形高挑纤长，笔画带尖细起收笔和优雅弯折，局部结构有克制的哥特花体装饰感，整体神秘、精致、像暗黑宫廷或哥特珠宝品牌标题。`, event)" title="点击复制提示词">
+                                <span>方案 64：华丽哥特饰字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“人民日报”，报头题字毛笔体，字形庄重开阔，笔画厚实有墨色重量，带传统毛笔题词的顿挫和筋骨，横画沉稳，竖画有力，结构端正大气。根据书法气质自动采用更适合的传统字形或繁体写法，但保持文字含义准确可读。整体像中文主流报纸报头、时代刊物封面或重要题词中的权威标题字。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-5fc86ba0ff82e14cfa9297964b8d71da.jpeg" alt="17｜毛笔字" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">17｜毛笔字</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“人民日报”，报头题字毛笔体，字形庄重开阔，笔画厚实有墨色重量，带传统毛笔题词的顿挫和筋骨，横画沉稳，竖画有力，结构端正大气。根据书法气质自动采用更适合的传统字形或繁体写法，但保持文字含义准确可读。整体像中文主流报纸报头、时代刊物封面或重要题词中的权威标题字。`, event)" title="点击复制提示词">
+                                <span>方案 65：报头提题体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“山海之间”，高级狂草毛笔字 Logo，黑色纯背景，白色水墨书法，纯字体设计。要求字体极具狂草气势，笔画连绵飞动，粗细强烈对比，起笔有顿挫，行笔迅疾，收笔带锋。整体像书法大师一气呵成，带有山势起伏、海浪流动的抽象节奏。保留可读性，但结构不必工整，允许适度变形、连笔、飞白、断墨、墨迹晕染。`, event)" title="点击复制提示词">
+                                <span>方案 66：狂草书法体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“行云流水”，潇洒行书练笔体，字形飘逸流动，笔画带真实行书练笔的提按、转腕、连带和细微牵丝，线条粗细灵活变化，部分笔画轻盈游走，部分笔画沉稳压住，字与字之间气脉连续但保持清晰可读。整体随性、有功力，像书法家在宣纸上一气呵成写下的文化品牌题字。根据书法气质自动采用更适合的传统字形或繁体写法，但保持文字含义准确可读。`, event)" title="点击复制提示词">
+                                <span>方案 67：行书体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“难得糊涂”，老先生禅意题字体，字形松弛随性，笔画像毛笔蘸墨后慢慢写下，起笔有停顿，行笔有自然抖动和提按变化，收笔不刻意修饰，线条有粗有细、有圆有扁，结构不完全对齐，字与字之间有手写呼吸感。整体随意中带功力，温和中有识别度，像民宿招牌、茶室题字、山居民宿 Logo、东方生活方式品牌题字。根据书法气质自动采用更适合的传统字形或繁体写法，但保持文字含义准确可读。`, event)" title="点击复制提示词">
+                                <span>方案 68：禅意体</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“荒野来信”，西部牛仔标题体，字形粗犷硬朗，笔画厚重有力量，结构带美式西部木牌招牌的方正感，转角略带粗糙切削痕迹，边缘有轻微旧印刷磨损，整体像牛仔酒馆、荒野小镇或西部电影海报中的中文标题字。黑底白字，纯字体设计，无装饰。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-982e387ea3a7d0eff9692e2e19947fa4.jpeg" alt="18｜西部手写字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">18｜西部手写字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“荒野来信”，西部牛仔标题体，字形粗犷硬朗，笔画厚重有力量，结构带美式西部木牌招牌的方正感，转角略带粗糙切削痕迹，边缘有轻微旧印刷磨损，整体像牛仔酒馆、荒野小镇或西部电影海报中的中文标题字。黑底白字，纯字体设计，无装饰。`, event)" title="点击复制提示词">
+                                <span>方案 69：西部牛仔标题体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“落日公路”，美式公路字体，字形横向舒展，笔画干净有速度感，结构像复古公路路牌和汽车旅馆招牌的中文标题，线条稳重但不笨重，边缘带轻微旧漆脱落和风吹日晒的磨损感，整体像 66 号公路、落日旅行或复古公路海报标题。`, event)" title="点击复制提示词">
+                                <span>方案 70：通缉令字体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“赏金猎人”，荒野通缉令标题体，字形粗犷压缩，笔画像西部 WANTED 海报中的木刻粗衬线字体，横竖厚重，转角带刀削感和木牌刻痕，结构紧凑有压迫感，整体像牛仔小镇、赏金通缉令、酒馆公告或荒漠故事封面标题。边缘有沙尘颗粒、纸张破旧和印刷缺墨，但避免中国复古海报、旧报刊、老广告标题感。`, event)" title="点击复制提示词">
+                                <span>方案 71：赏金字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“自由骑士”，机车西部体，字形锋利硬派，笔画粗壮有冲击力，结构带复古机车俱乐部、皮革徽章和西部酒馆招牌的混合气质，转折处有尖角、金属刻印感和粗犷切削边缘，边缘带轻微磨损。整体像机车文化、荒野骑行、牛仔公路或硬派复古品牌标题。`, event)" title="点击复制提示词">
+                                <span>方案 72：机车西部字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“东方醒来”，东方瘦金标题体，字形高挑清峻，笔画细而有锋芒，横画舒展如弦，竖画挺拔如骨，转折处带瘦金体的尖锐顿挫和书法筋骨，结构疏朗有贵气，整体像高级国风海报、新中式品牌或东方美学展览标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-510d1444ef465edd8933b939224c935f.jpeg" alt="19｜国潮体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">19｜国潮体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“东方醒来”，东方瘦金标题体，字形高挑清峻，笔画细而有锋芒，横画舒展如弦，竖画挺拔如骨，转折处带瘦金体的尖锐顿挫和书法筋骨，结构疏朗有贵气，整体像高级国风海报、新中式品牌或东方美学展览标题。`, event)" title="点击复制提示词">
+                                <span>方案 73：东方瘦金体体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“山河入梦”，国风牌匾体，字形厚重饱满，笔画带传统牌匾字的稳重骨架，横画宽阔沉着，竖画有力，起收笔带手工刻字般的方圆顿挫，结构紧凑端庄，整体像老字号牌匾、国风店招或传统文化品牌标题。`, event)" title="点击复制提示词">
+                                <span>方案 74：国风牌匾体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“万象更新”，潮流篆意体，字形吸收篆书的圆转结构和对称秩序，笔画被现代化简化重组，线条厚实流畅，结构带图腾感和潮流视觉张力，整体像国潮品牌或东方潮流海报标题。`, event)" title="点击复制提示词">
+                                <span>方案 75：潮流篆意体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“伯牙绝弦”，东方海报体，字形大气张扬，笔画带书法飞白和现代海报的块面冲击，结构舒展有势，横竖转折富有力量，整体像国风电影、东方美学展览或新国潮海报中的主标题。`, event)" title="点击复制提示词">
+                                <span>方案 76：东方海报</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“云朵小孩”，儿童绘本蜡笔手绘体，字形圆润自然，笔画像儿童绘本封面里的蜡笔或彩铅手绘标题，线条柔和但不膨胀，边缘有轻微手绘颗粒和不均匀感，结构高低错落但清楚可读，整体温暖、天真、有故事感，像儿童绘本封面、亲子阅读栏目或儿童故事标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-e98d604bc26a9ef8d96e5bb9c8e99ecf.jpeg" alt="20｜童趣商业字体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">20｜童趣商业字体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“云朵小孩”，儿童绘本蜡笔手绘体，字形圆润自然，笔画像儿童绘本封面里的蜡笔或彩铅手绘标题，线条柔和但不膨胀，边缘有轻微手绘颗粒和不均匀感，结构高低错落但清楚可读，整体温暖、天真、有故事感，像儿童绘本封面、亲子阅读栏目或儿童故事标题。`, event)" title="点击复制提示词">
+                                <span>方案 77：儿童绘本体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“快乐开箱”，积木拼装标题体，字形由大块圆角积木模块组合而成，笔画像玩具积木一样厚实、平整、有卡扣感，结构轻微错位堆叠，字与字之间有拼装玩具的节奏感，但保持每个汉字清楚可读。整体像积木玩具盒、儿童益智产品包装或拼装游戏 Logo。`, event)" title="点击复制提示词">
+                                <span>方案 78：乐高玩具体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“糖果派对”，零食包装跳跳体，字形活泼醒目，笔画厚实但不圆胖膨胀，结构像儿童零食袋上的中文大标题，字与字之间有轻微弹跳和错位节奏，局部笔画带手绘包装字的俏皮切角和轻快弧度。不要爱心、星星、表情、糖果图案或任何额外装饰。`, event)" title="点击复制提示词">
+                                <span>方案 79：零食包装字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“手工时间”，手剪纸片拼贴字体，字形由白色剪纸碎片拼接成中文标题，每个笔画都像独立纸片贴上去，纸片之间保留细小黑色缝隙，局部有重叠压住的层次、轻微翘边和错位。边缘有手剪毛边、纸纤维粗糙感和不均匀切口，整体童真、手作、像儿童手工课剪贴出来的标题字。保持文字清楚可读。`, event)" title="点击复制提示词">
+                                <span>方案 80：剪纸拼贴字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`夜里开门”，城市霓虹门店字，字形像现代街区小店的发光招牌标题，笔画简洁醒目，结构规整但带轻微霓虹灯管的圆角转折感，线条像灯管弯折组成，但保持纯白字体效果。整体像夜晚便利店、酒吧、小餐馆或城市街角门店招牌。不要国风牌匾、不要老报刊、不要复古海报、不要普通粗黑字。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026 文字类提示词设计指南（上册）-763d84497e50037f7d3eff0a698d8069.jpeg" alt="21｜城市商业招牌体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">21｜城市商业招牌体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`夜里开门”，城市霓虹门店字，字形像现代街区小店的发光招牌标题，笔画简洁醒目，结构规整但带轻微霓虹灯管的圆角转折感，线条像灯管弯折组成，但保持纯白字体效果。整体像夜晚便利店、酒吧、小餐馆或城市街角门店招牌。不要国风牌匾、不要老报刊、不要复古海报、不要普通粗黑字。`, event)" title="点击复制提示词">
+                                <span>方案 81：灯管字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“夜宵上桌”，夜市菜单牌字体，字形像街边烧烤摊、砂锅店、深夜食堂菜单牌上的中文标题字，笔画厚实直接，结构紧凑醒目，转角带手写招牌的圆钝变化，字面有热闹市井感和夜宵烟火气，整体像夜市价目牌、快餐菜单大字或深夜餐饮海报标题。`, event)" title="点击复制提示词">
+                                <span>方案 82：夜市菜单字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“随手买点”，便利店宽头马克笔标签体，字形像便利店货架价签和促销贴纸上用宽头油性马克笔手写出来的中文标题，笔画直接有力，线条粗实平涂，起收笔带宽头马克笔的钝角切面，边缘有轻微墨水渗透和纸面洇开感。部首交界处、笔画重叠处和转折处有明显叠墨变深效果，结构清楚但不完全工整，整体明快、真实，像社区便利店、零食货架或临时促销牌上的手写标签字。`, event)" title="点击复制提示词">
+                                <span>方案 83：便利贴字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“劲爆特价”，暴走漫画促销体，字形极度夸张，笔画巨大厚实，结构被挤压、拉扯和爆裂变形，字与字之间紧密堆叠，像促销海报上冲出来的叫卖大字。整体有暴走漫画式怒吼感、超市清仓感和限时特价冲击力，视觉直接、粗暴、夸张、让人一眼停住。`, event)" title="点击复制提示词">
+                                <span>方案 84：电商促销字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“硬笔书法”，钢笔硬笔行楷标题字，字形清秀挺拔，结构像学生钢笔字帖里的行楷，横画略有起伏，竖画干净挺直，撇捺舒展，转折处有轻微顿笔，收笔带细小尖锋。线条细劲清楚，不能像毛笔字，不能有水墨晕染，要像钢笔或中性笔在纸上写出来的真实硬笔字。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-14.png" alt="22｜硬笔书写体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">22｜硬笔书写体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“硬笔书法”，钢笔硬笔行楷标题字，字形清秀挺拔，结构像学生钢笔字帖里的行楷，横画略有起伏，竖画干净挺直，撇捺舒展，转折处有轻微顿笔，收笔带细小尖锋。线条细劲清楚，不能像毛笔字，不能有水墨晕染，要像钢笔或中性笔在纸上写出来的真实硬笔字。`, event)" title="点击复制提示词">
+                                <span>方案 85：钢笔楷书字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“高考真题”，衡水中文硬笔体，字形端正方正，结构接近中高考满分作文里的规范中文书写。横画平稳，竖画挺直，撇捺克制，点画清楚，每个字大小一致、重心一致、间距一致。线条像 0.5mm 黑色中性笔写在作文纸上，干净、规整、认真、稳定，整体有标准考试书写感。`, event)" title="点击复制提示词">
+                                <span>方案 86：学生衡水体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“重点来了”，老师试卷批注行楷字，字形像老师用 0.5mm 黑色中性笔在试卷空白处快速写下的中文批注。整体为硬笔行楷风格，笔画清楚、干脆、有力度，字形略微右倾，部分笔画自然连带，转折处有真实书写的停顿和提笔感。整体有课堂讲解、试卷批注、重点提醒的感觉，清晰、自然、真实。`, event)" title="点击复制提示词">
+                                <span>方案 87：批注手写体</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“立即执行”，商务签批手写体，字形利落果断，笔画略带连写，起笔轻、收笔有锋，整体像领导签批、文件批示或会议纪要上的手写标题。风格成熟、直接、干练，有决策感和行动感。`, event)" title="点击复制提示词">
+                                <span>方案 88：商务签批体</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“钢铁意志”，重工机械字，字形厚重方正，结构像工业设备铭牌、机械厂牌、重型装备标识上的中文标题。笔画粗壮坚硬，转角利落，字面稳定有力量，整体有钢铁、机械、制造、工程感。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-13.png" alt="23｜机械工业体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">23｜机械工业体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“钢铁意志”，重工机械字，字形厚重方正，结构像工业设备铭牌、机械厂牌、重型装备标识上的中文标题。笔画粗壮坚硬，转角利落，字面稳定有力量，整体有钢铁、机械、制造、工程感。`, event)" title="点击复制提示词">
+                                <span>方案 89：重工机械字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“未来装甲”，机甲装甲字，字形像由机械外壳和装甲切面组成，结构硬朗紧凑，笔画带有块面分割和金属零件感。整体有机器人、机甲、科幻装备、硬核科技标题的视觉气质。`, event)" title="点击复制提示词">
+                                <span>方案 90：机甲装甲字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“系统启动”，工业铭牌窄体字，字形像机器设备铭牌、控制柜标签、工厂编号牌上的中文印刷字。整体为窄长方正结构，笔画平直均匀，字面紧凑，边角干净，比例理性，像设备型号、操作标签、工业编号上的标准字体。`, event)" title="点击复制提示词">
+                                <span>方案 91：工业铭牌字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“精准切割”，机械切割字，字形锋利硬朗，笔画像被数控机床或激光切割出的金属块面。整体结构紧凑有张力，边缘干净，转角锐利，局部带斜切刀口和切割断面，视觉上有精密制造、工业加工、硬核机械设计感。`, event)" title="点击复制提示词">
+                                <span>方案 92：机械切割字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“美加墨世界杯”，球衣背号字，字形像足球队服、篮球球衣背后的中文队名和背号字体。笔画厚重醒目，带有运动号码的切角块面、队服印号的硬朗边缘和冠军标识感。整体紧凑有力量，像印在赛事队服上的中文标题。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image.png" alt="24｜运动竞技体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">24｜运动竞技体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“美加墨世界杯”，球衣背号字，字形像足球队服、篮球球衣背后的中文队名和背号字体。笔画厚重醒目，带有运动号码的切角块面、队服印号的硬朗边缘和冠军标识感。整体紧凑有力量，像印在赛事队服上的中文标题。`, event)" title="点击复制提示词">
+                                <span>方案 93：球衣号码字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“极速冲刺”，赛车速度字，字形像赛车涂装、赛道标识和竞速海报里的中文运动字体。整体前倾拉伸，笔画锐利流畅，横向速度感强，局部带有风阻切面和冲刺线条，字面有加速、漂移、竞速、冲线的动势。`, event)" title="点击复制提示词">
+                                <span>方案 94：赛车速度字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“重拳出击”，搏击爆发字，字形像拳击、格斗、搏击赛事海报里的中文标题。笔画粗壮厚实，结构紧咬有压迫感，边缘带有重击后的爆裂切口和力量撕裂感，整体像拳头击中瞬间迸发出来的标题字。视觉上有肌肉、对抗、冲撞、爆发的运动气质。`, event)" title="点击复制提示词">
+                                <span>方案 95：格斗力量字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“全员开战”，电竞战队字，字形像电竞战队 Logo、游戏赛事标题和战队队服上的中文字体。整体结构锋利紧凑，笔画带有战术徽章感、游戏 UI 感和团队对抗的攻击性，字面像战队标识一样集中、有冲突感、有开战气势。`, event)" title="点击复制提示词">
+                                <span>方案 96：电竞战队字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“城市界面”，建筑立面字，字形像现代建筑外立面、城市玻璃幕墙和高层楼体网格组成的中文标题。笔画方正理性，结构带有建筑网格、窗格切分和立面秩序感，整体像城市规划、空间设计、建筑展览中的视觉字体。`, event)" title="点击复制第一个提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-1.png" alt="25｜建筑空间体" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title">25｜建筑空间体</div>
+                        <div class="schemes-list">
+                            
+                            <div class="scheme-item" onclick="copyText(`“城市界面”，建筑立面字，字形像现代建筑外立面、城市玻璃幕墙和高层楼体网格组成的中文标题。笔画方正理性，结构带有建筑网格、窗格切分和立面秩序感，整体像城市规划、空间设计、建筑展览中的视觉字体。`, event)" title="点击复制提示词">
+                                <span>方案 97：建筑立面字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“钢筋水泥”，水泥构筑字，字形像由混凝土墙体、建筑梁柱和空间构件搭建出来的中文字体。笔画厚实克制，结构稳定，边缘干净，整体有建筑材料、空间秩序、现代构筑物和粗野主义建筑的沉稳气质。`, event)" title="点击复制提示词">
+                                <span>方案 98：水泥构筑字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“入口方向”，空间导视字，字形像机场、地铁、美术馆、商业空间里的现代中文导视系统字体。整体为理性几何结构，笔画清晰、转角干净、比例稳定，字距开阔，字面有方向指引、公共空间、现代建筑和信息系统的秩序感。`, event)" title="点击复制提示词">
+                                <span>方案 99：空间导视字</span>
+                                <span>+</span>
+                            </div>
+                            <div class="scheme-item" onclick="copyText(`“墓志铭”，碑额铭文字，字形像纪念碑、墓志碑额、公共建筑墙面上的中文铭文字体。结构方正庄重，笔画厚重平稳，字面宽博，横竖关系严谨，整体有传统碑刻题字、历史留痕和纪念建筑的肃穆气质。`, event)" title="点击复制提示词">
+                                <span>方案 100：纪念碑刻字</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="effects">
+            <h2 class="section-title">2026 常用字效提示词 20+</h2>
+            <div class="grid">
+
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“Punk”，赛博光栅霓虹字效，文字由大量等距垂直发光条带组成，条带像半透明霓虹光柱，沿着字母轮廓内部排列，不改变原本字形结构。通过不同长度、明暗和排列密度塑造完整字母形态，字形内部保留清晰负空间。颜色从电光蓝、青蓝过渡到橙红、暖白和银白，形成冷暖对比强烈的科技渐变。整体有未来城市、数字界面、赛博艺术和高级科技海报的视觉气质。深黑背景，画面重点突出文字本身，文字保持清晰可读`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-2.png" alt="01｜赛博光栅霓虹字效（英文版适配度更高）" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">01｜赛博光栅霓虹字效（英文版适配度更高）</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“Punk Space”，复古透视流体融化字效，文字采用轻盈拉伸的复古标题字结构，不是厚重块面字。字形整体带明显透视变形、弧形弯曲和轻微波浪扭曲，文字上半部分仍可识别，但笔画边缘已经开始被液体溶解、拉丝和下坠。
+
+文字与下方流体拖影自然融合，像整组字正在被重力缓慢融化，而不是字和拖影分离。部分笔画向下延展成柔软的液态彩带，局部出现被拉长、变窄、弯曲、流动和半透明溶解的状态。拖影沿透视方向向下延伸，形成纵深、速度感和迷幻流动感。
+
+色彩使用复古霓虹光谱，不要过度荧光刺眼，颜色偏旧胶片质感：靛蓝、孔雀蓝、湖绿、洋红、橘红、暖黄、奶白之间自然流动。整体带轻微颗粒、胶片感、Y2K 复古音乐海报、迷幻唱片封面、地下派对视觉和潮流实验设计感。文字保持基本可读，画面重点突出文字与流体融合的字效本身，纯文字设计。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-3.png" alt="02｜复古透视流体融化字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">02｜复古透视流体融化字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“哈利波特”，抛光金属字效，文字为银白色镜面金属材质，表面有冷冽高光、清晰反射和金属明暗层次，边缘硬朗干净，整体有坚硬、精密、科技、商业工业的视觉气质。背景为深黑色，突出金属反光和立体轮廓。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-4.png" alt="03｜金属字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">03｜金属字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“无限循环”，无限深渊透视字效，文字围绕画面中心组成一层层向内递进的矩形通道，每一层文字沿着透视边框重复排列，逐渐缩小、变暗、远去，形成无限嵌套的深渊空间。文字颜色可使用高对比红黑、蓝黑或黑白配色，字形带有强烈透视拉伸和空间压缩感，整体像地下视觉海报、心理迷宫、无限回廊和先锋实验排版。画面重点突出文字形成的空间结构，文字保持清晰可读，纯文字设计。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-5.png" alt="04｜无限深渊透视字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">04｜无限深渊透视字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“拒绝躺平”，黑白卷纸环绕字效，画面由一条宽大的浅灰色纸带构成，纸带像卷轴一样在黑色空间中旋转、弯曲、穿插，形成环形通道和强烈纵深。纸带表面反复印刷“拒绝躺平”四个中文，文字沿纸带表面贴合排布，随着纸带转折产生自然透视、弯曲和遮挡。
+
+纸带正面为浅灰色，侧面有深灰阴影，表面带轻微纸张纹理和印刷质感。黑色文字与灰白纸带形成强烈对比，整体有 3D 旋转贴图、空间海报、先锋排版、现代中文字体实验和高级黑白视觉的气质。深黑背景，画面重点突出卷纸空间结构，文字保持清晰可读，纯文字设计。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-6.png" alt="05｜卷纸环绕立体字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">05｜卷纸环绕立体字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“庞克”，偏旁光影拆解字效，文字将中文偏旁部首拆解成独立笔画组件，部分组件清晰锐利，部分组件像被柔焦拉伸成白色光影残像。竖画和长笔画带有明显纵向虚化、发光拖影和朦胧扩散，短笔画保持干净锐利，形成清晰结构与模糊情绪之间的对比。字形整体仍能识别为原中文，但偏旁之间有轻微错位、分离和空间留白。黑色背景，白色文字，整体有中式极简海报、情绪字体、现代诗意、失焦记忆和高级设计感。纯文字设计。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-7.png" alt="06｜偏旁拆解虚化字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">06｜偏旁拆解虚化字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“霓虹甜心”，彩色电流霓虹字效，文字由细腻的多色发光线条构成，蓝紫、玫红、青绿光色在字形边缘自然过渡。光线贴合笔画轮廓，局部像电流一样流动，边缘带轻微柔光，整体有高级潮流、电子音乐、未来品牌视觉的霓虹质感。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-8.png" alt="07｜3D甜甜圈环绕" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">07｜3D甜甜圈环绕</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“Punk”，膨胀软体字效，文字像由柔软充气材质膨胀形成，字形圆润饱满，笔画厚实鼓起，边缘无锐角，整体像 3D 软体雕塑。表面带有高亮釉面反光、白色高光点、柔和渐变和深色侧面阴影，呈现强烈体积感和光滑软胶质感。整体有 AIGC 设计海报、潮流视觉、创意字体、年轻品牌和 3D 字体实验感。画面重点突出文字本身，文字保持清晰可读，纯文字设计。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-9.png" alt="08｜墙裂地震字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">08｜墙裂地震字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“瞬间爆破”，爆破碎片字效，文字像被强烈冲击力从内部炸开，笔画边缘出现爆裂缺口、飞散碎片和撕开的块面。部分字形仍保持主体完整，周围有碎块向外喷发的动势，局部带有炽热火光和冲击波能量感，整体有爆炸、破坏现场和强视觉冲击力。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-10.png" alt="09｜爆破碎片字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">09｜爆破碎片字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“枯木逢春”，木雕字效，文字像从深色原木中雕刻出来，表面有清晰自然木纹、手工刻刀痕迹和木质明暗层次，笔画边缘带有雕刻形成的立体起伏。整体有传统木作、东方匠心、自然材料和时间沉淀感。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-11.png" alt="10｜木雕字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">10｜木雕字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“坚如磐石”，石雕浮雕字效，文字像在浅灰色石碑或石墙表面雕刻出的立体铭文。字形厚重庄重，笔画有浮雕凸起感，边缘有清晰凿刻层次，表面保留细腻石材颗粒和自然明暗。整体有古建筑石刻、纪念碑铭文、石雕牌匾的厚重质感。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-15.png" alt="11｜石雕字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">11｜石雕字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“东方器物”，碎瓷汝窑字效，文字由浅青灰色汝窑碎瓷片拼合成完整字形。瓷片表面带温润釉面、细密开片纹和淡淡玉质光泽，碎片之间保留自然拼接缝，边缘有真实瓷片断口。整体有宋代器物、东方审美、残缺重组和高级工艺感。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-16.png" alt="12｜碎瓷汝窑字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">12｜碎瓷汝窑字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“水波残影”，涟漪水波纹字效，文字主体保持清晰可读，笔画边缘像被水滴激起的圆形涟漪轻轻扰动。局部出现同心圆波纹、水面折射、柔性弯折和轻微液态晕开，形成一圈圈向外扩散的水波纹理。整体为黑底白字，干净克制，有中式极简海报、情绪字体、现代实验排版和高级留白感。纯文字设计。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-17.png" alt="13｜水波纹扭曲字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">13｜水波纹扭曲字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“非礼勿视”，局部马赛克字效，文字采用黑白高对比的中文标题字结构，字形厚重醒目，主体保持纯白实心。局部笔画被规则马赛克块、半调点阵块或像素遮挡替换，形成部分被打码、被遮蔽、被信息干扰的视觉效果。马赛克区域与原文字轻微错位拼接，但整体仍保持清晰可读。黑色背景，白色文字，整体有悬疑片名、影视海报、信息遮蔽、审查打码和实验排版的视觉气质。纯文字设计。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-18.png" alt="14｜局部马赛克字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">14｜局部马赛克字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“光谱玩家”，镭射渐变字效，文字表面像彩虹镭射膜和偏光金属材质，随着笔画角度呈现蓝紫、玫红、青绿、银白等渐变反光。边缘清晰，表面有流动高光和细腻光谱层次，整体有未来潮流、电子音乐、潮牌包装和高级视觉设计感。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-19.png" alt="15｜镭射渐变字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">15｜镭射渐变字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“老钱风”，皮革压印字效，文字像被压印在深色皮革表面，笔画边缘形成细腻凹陷和柔和高光，表面保留真实皮革纹理、细小颗粒和低调光泽。整体有奢侈品包装、商务礼盒、高级笔记本封面和低调品牌质感。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-20.png" alt="16｜皮革压印字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">16｜皮革压印字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“未来潮流”，液态铬彩字效，文字像流动的彩色液态金属，表面有镜面反射、柔和弯曲和高光流动。颜色呈现银色、粉紫、蓝绿、玫红的偏光变化，整体有未来时装、电子音乐、潮牌海报和高级科技视觉感。纯文字设计。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-21.png" alt="17｜液态铬彩字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">17｜液态铬彩字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“信息过载”，报纸拼贴字效，文字像由不同报纸标题、杂志纸片、旧印刷字块拼贴组合而成。每个笔画由黑白灰纸张碎片、印刷纹理、剪贴边缘和轻微错位层次构成，局部带少量红色标记和旧纸颗粒。整体有先锋杂志、街头海报、独立出版物、信息爆炸和编辑设计感。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-22.png" alt="18｜报纸拼接字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">18｜报纸拼接字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“信号中断”，高级故障撕裂字效，文字主体保持清晰可读，局部像被数字信号切割成横向碎片。笔画边缘有轻微 RGB 偏移、扫描线错位、数据噪点和电子撕裂痕迹，整体像未来系统界面崩坏瞬间的标题字。视觉上有 AI、网络、加密、赛博故障和数字危机感。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-23.png" alt="19｜高级故障撕裂字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">19｜高级故障撕裂字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“复古咖啡”，点状颗粒半调字效，文字采用超粗黑体标题字结构，字形厚重方正，笔画宽大饱满。文字表面由密集圆点颗粒组成，圆点按明暗层次排列，形成类似老式印刷半调网点、复古丝网印刷和报纸颗粒的视觉效果。字形边缘由点阵自然过渡，远看是完整粗体大字，近看能看到清晰圆点颗粒。整体有复古海报、咖啡包装、独立杂志和艺术印刷质感。画面重点突出文字本身，文字保持清晰可读。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-24.png" alt="20｜点状颗粒半调字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">20｜点状颗粒半调字效</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-image-container" onclick="copyText(`“欢迎来到Punk的空间”，横线切割条纹字效，文字采用倾斜加粗的现代标题字结构，字形横向拉伸，整体有速度感和复古科技感。文字内部由大量平行横线切割形成，黑色实心笔画与细密白色横线交替出现，局部保留完整黑色块面，形成扫描线、电视信号、复古光栅和高速运动残影的视觉效果。字形边缘干净锐利，整体像 80 年代科幻海报、复古电子音乐封面、赛车视觉和夜晚霓虹标题字。画面重点突出文字本身，文字保持清晰可读。`, event)" title="点击复制字效提示词">
+                        <img src="images/2026文字类提示词设计指南（下册）-image-25.png" alt="21｜横线切割条纹字效" loading="lazy">
+                        <div class="card-image-overlay"><span class="copy-icon">点击复制</span></div>
+                    </div>
+                    <div class="card-content">
+                        <div class="card-title" style="margin-bottom: 0;">21｜横线切割条纹字效</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="reverse">
+            <h2 class="section-title">图像反推提示词</h2>
+            <div class="reverse-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="card-title" style="margin-bottom: 0;">专业反推模板</div>
+                    <button class="btn-copy-lg" onclick="copyText(`你是一名顶级视觉提示词反推专家、字体设计分析师、字效设计师、平面设计总监和 AI 生图提示词工程师。
+
+我会上传一张字体、字效、标题字、Logo 字或文字海报图片。  
+请你根据图片内容，反向拆解它的视觉设计逻辑，并生成一条可以直接用于 AI 生图的中文提示词。
+
+你的目标不是简单描述图片，而是把图片拆成“AI 能听懂、能复现、能迁移”的提示词。
+
+请严格按以下步骤分析：
+
+一、识别文字内容
+请尽量准确识别图片中出现的主要文字。
+如果文字无法完全识别，请根据字形结构合理判断。
+如果图片是英文、数字、中英混排，也要保留原始文字形式。
+如果用户指定了新文字，请以用户指定文字为准。
+
+二、判断字体类型
+请判断它属于哪种字体方向，例如：
+重型标题字、无衬线字、衬线字、手写字、毛笔字、涂鸦字、泡泡字、机械字、未来科技字、复古字、国潮字、哥特字、像素字、书法字、街头字、杂志标题字、品牌 Logo 字等。
+
+不要只写“好看”“高级”“有设计感”，必须说清楚它的字体类型。
+
+三、拆解字形结构
+请分析字形本身的结构，而不是只看表面效果。
+重点观察：
+笔画是粗还是细；
+结构是紧凑还是舒展；
+字形是方正、圆润、锋利、拉伸、压缩、倾斜还是变形；
+边角是锐利、圆角、切角、毛边还是手绘边；
+字距是紧密、正常还是开阔；
+整体是稳定、夸张、轻盈、厚重、速度感还是力量感。
+
+四、拆解字效材质
+请分析文字表面的视觉效果。
+重点观察：
+是否有立体厚度；
+是否有金属、玻璃、塑料、木雕、石雕、瓷器、皮革、布料、纸张、喷漆、火焰、冰霜、水墨、霓虹、故障、拼贴、裂纹、浮雕、压印等材质；
+表面是否有反光、高光、阴影、颗粒、纹理、裂缝、磨损、折射、透明、发光、破碎、滴落、飞溅等细节。
+
+五、拆解颜色关系
+请分析文字的主色、辅色和整体配色。
+重点观察：
+是黑白、单色、双色、渐变、多色撞色还是偏光变色；
+颜色是冷色、暖色、高饱和、低饱和、复古、未来、甜酷、暗黑还是高级商业；
+颜色如何分布在文字正面、边缘、阴影、描边或材质表面。
+
+六、拆解光影与空间
+请判断图中光影是否重要。
+重点观察：
+文字是否有正面光、侧光、背光、边缘光、投影、阴影、反射、环境光；
+文字是平面、浮雕、立体、悬浮、厚切、压印还是嵌入；
+画面是否有明显空间感。
+如果背景不重要，请弱化背景，强调“纯文字设计”。
+如果背景对字效很重要，请只保留必要描述，不要让背景抢走文字主体。
+
+七、总结视觉气质
+请用准确的设计语言总结整体气质，例如：
+高级、潮流、街头、复古、科技、未来、东方、奢华、手工、工业、杂志感、电影感、游戏感、商业品牌感、社交媒体封面感、先锋实验感等。
+不要堆形容词，要选最准确的 3 到 5 个。
+
+八、生成可复用提示词
+最后请生成一条完整、可直接复制使用的中文 AI 生图提示词。
+这条提示词必须满足：
+1. 可以替换文字内容继续复用；
+2. 描述具体，不空泛；
+3. 重点放在字体和字效本身；
+4. 保持文字清晰可读；
+5. 不过度描述无关背景；
+6. 不使用大量否定句；
+7. 不写成解释说明，而是写成真正的生图提示词。
+
+请按以下格式输出：
+
+【反推分析】
+文字内容：
+字体类型：
+字形结构：
+字效材质：
+颜色关系：
+光影空间：
+视觉气质：
+适合用途：
+
+【可复制提示词】
+“文字内容”，具体字体/字效名称，文字采用……字形结构，笔画……，边缘……，表面呈现……材质，颜色……，光影……，纹理细节……，整体有……视觉气质。画面重点突出文字本身，文字保持清晰可读，纯文字设计。
+
+【可替换模板】
+“替换成你的文字”，具体字体/字效名称，文字采用……字形结构，笔画……，边缘……，表面呈现……材质，颜色……，光影……，纹理细节……，整体有……视觉气质。画面重点突出文字本身，文字保持清晰可读，纯文字设计。`, event)">复制模板</button>
+                </div>
+                <pre><code>你是一名顶级视觉提示词反推专家、字体设计分析师、字效设计师、平面设计总监和 AI 生图提示词工程师。
+
+我会上传一张字体、字效、标题字、Logo 字或文字海报图片。  
+请你根据图片内容，反向拆解它的视觉设计逻辑，并生成一条可以直接用于 AI 生图的中文提示词。
+
+你的目标不是简单描述图片，而是把图片拆成“AI 能听懂、能复现、能迁移”的提示词。
+
+请严格按以下步骤分析：
+
+一、识别文字内容
+请尽量准确识别图片中出现的主要文字。
+如果文字无法完全识别，请根据字形结构合理判断。
+如果图片是英文、数字、中英混排，也要保留原始文字形式。
+如果用户指定了新文字，请以用户指定文字为准。
+
+二、判断字体类型
+请判断它属于哪种字体方向，例如：
+重型标题字、无衬线字、衬线字、手写字、毛笔字、涂鸦字、泡泡字、机械字、未来科技字、复古字、国潮字、哥特字、像素字、书法字、街头字、杂志标题字、品牌 Logo 字等。
+
+不要只写“好看”“高级”“有设计感”，必须说清楚它的字体类型。
+
+三、拆解字形结构
+请分析字形本身的结构，而不是只看表面效果。
+重点观察：
+笔画是粗还是细；
+结构是紧凑还是舒展；
+字形是方正、圆润、锋利、拉伸、压缩、倾斜还是变形；
+边角是锐利、圆角、切角、毛边还是手绘边；
+字距是紧密、正常还是开阔；
+整体是稳定、夸张、轻盈、厚重、速度感还是力量感。
+
+四、拆解字效材质
+请分析文字表面的视觉效果。
+重点观察：
+是否有立体厚度；
+是否有金属、玻璃、塑料、木雕、石雕、瓷器、皮革、布料、纸张、喷漆、火焰、冰霜、水墨、霓虹、故障、拼贴、裂纹、浮雕、压印等材质；
+表面是否有反光、高光、阴影、颗粒、纹理、裂缝、磨损、折射、透明、发光、破碎、滴落、飞溅等细节。
+
+五、拆解颜色关系
+请分析文字的主色、辅色和整体配色。
+重点观察：
+是黑白、单色、双色、渐变、多色撞色还是偏光变色；
+颜色是冷色、暖色、高饱和、低饱和、复古、未来、甜酷、暗黑还是高级商业；
+颜色如何分布在文字正面、边缘、阴影、描边或材质表面。
+
+六、拆解光影与空间
+请判断图中光影是否重要。
+重点观察：
+文字是否有正面光、侧光、背光、边缘光、投影、阴影、反射、环境光；
+文字是平面、浮雕、立体、悬浮、厚切、压印还是嵌入；
+画面是否有明显空间感。
+如果背景不重要，请弱化背景，强调“纯文字设计”。
+如果背景对字效很重要，请只保留必要描述，不要让背景抢走文字主体。
+
+七、总结视觉气质
+请用准确的设计语言总结整体气质，例如：
+高级、潮流、街头、复古、科技、未来、东方、奢华、手工、工业、杂志感、电影感、游戏感、商业品牌感、社交媒体封面感、先锋实验感等。
+不要堆形容词，要选最准确的 3 到 5 个。
+
+八、生成可复用提示词
+最后请生成一条完整、可直接复制使用的中文 AI 生图提示词。
+这条提示词必须满足：
+1. 可以替换文字内容继续复用；
+2. 描述具体，不空泛；
+3. 重点放在字体和字效本身；
+4. 保持文字清晰可读；
+5. 不过度描述无关背景；
+6. 不使用大量否定句；
+7. 不写成解释说明，而是写成真正的生图提示词。
+
+请按以下格式输出：
+
+【反推分析】
+文字内容：
+字体类型：
+字形结构：
+字效材质：
+颜色关系：
+光影空间：
+视觉气质：
+适合用途：
+
+【可复制提示词】
+“文字内容”，具体字体/字效名称，文字采用……字形结构，笔画……，边缘……，表面呈现……材质，颜色……，光影……，纹理细节……，整体有……视觉气质。画面重点突出文字本身，文字保持清晰可读，纯文字设计。
+
+【可替换模板】
+“替换成你的文字”，具体字体/字效名称，文字采用……字形结构，笔画……，边缘……，表面呈现……材质，颜色……，光影……，纹理细节……，整体有……视觉气质。画面重点突出文字本身，文字保持清晰可读，纯文字设计。</code></pre>
+            </div>
+        </div>
+    </main>
+    
+    <div class="toast" id="toast">已复制到剪贴板</div>
+
+    <footer style="text-align: center; padding: 40px 20px; margin-top: 40px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.9rem;">
+        <p style="margin-bottom: 8px;">2026 文字类提示词设计指南</p>
+        <p>原作者：<a href="https://waytoagi.feishu.cn/wiki/OpxpwRsrYiaWs3kNUqbc2hhnngg" target="_blank" style="color: var(--text); text-decoration: underline;">@Punk</a></p>
+    </footer>
+    
+    <script>
+        function copyText(text, event) {
+            if (event) {
+                event.stopPropagation();
+            }
+            navigator.clipboard.writeText(text).then(() => {
+                const toast = document.getElementById('toast');
+                toast.classList.add('show');
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                alert('复制失败，请手动复制。');
+            });
+        }
+
+        const sections = document.querySelectorAll('main > div');
+        const navLinks = document.querySelectorAll('nav a');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            const scrollY = window.scrollY + 50;
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (scrollY >= sectionTop) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').includes(current)) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
