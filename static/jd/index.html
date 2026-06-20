@@ -325,57 +325,65 @@
 
         function appendLog(msg) {
             if (!conslog) return;
-            const timeStr = new Date().toLocaleTimeString();
-            conslog.innerHTML += `<div>[${timeStr}] ${msg}</div>`;
+            // 改为替换内容而不是无限制追加，保持界面简洁
+            conslog.innerHTML = `<div>${msg}</div>`;
         }
 
         let timeOffset = 0;
 
         // 在线时间校准
         async function calibrateTime() {
-            try {
-                // 使用淘宝时间 API (高可用)
-                const startTime = Date.now();
-                const response = await fetch('https://api.m.taobao.com/rest/api3.do?api=mtop.common.getTimestamp');
-                const data = await response.json();
-                const endTime = Date.now();
-                const latency = (endTime - startTime) / 2;
-
-                if (data && data.data && data.data.t) {
-                    const remoteTime = parseInt(data.data.t, 10);
-                    timeOffset = (remoteTime + latency) - endTime;
-                    console.log('时间校准成功 (淘宝API)，偏差值 (ms):', timeOffset);
-                    appendLog(`时间校准成功 (淘宝API)，偏差值: ${timeOffset}ms`);
-                    return;
+            const apis = [
+                {
+                    name: '京东API(Header)',
+                    url: 'https://api.m.jd.com',
+                    extract: async (response) => {
+                        const reqId = response.headers.get('x-api-request-id');
+                        if (reqId && reqId.length >= 13) {
+                            return parseInt(reqId.slice(-13), 10);
+                        }
+                        return null;
+                    }
                 }
-            } catch (error) {
-                console.warn('淘宝API校准失败，尝试备用API...', error);
-                appendLog('淘宝API校准失败，尝试备用API...');
+            ];
+
+            for (const api of apis) {
+                try {
+                    const startTime = Date.now();
+                    // 添加时间戳防止缓存
+                    const url = api.url + (api.url.includes('?') ? '&' : '?') + '_t=' + startTime;
+                    const response = await fetch(url, { cache: 'no-store' });
+
+                    if (!response.ok && api.name !== '京东API(Header)') {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const endTime = Date.now();
+                    const latency = (endTime - startTime) / 2;
+
+                    const remoteTime = await api.extract(response);
+                    if (remoteTime && !isNaN(remoteTime)) {
+                        timeOffset = (remoteTime + latency) - endTime;
+                        // 控制台依然输出详细信息供调试
+                        console.log(`时间校准成功 (${api.name})，偏差值 (ms):`, timeOffset);
+                        // UI 仅展示精简后的成功信息
+                        appendLog(`✅ 时间校准成功`);
+                        return; // 成功即返回
+                    } else {
+                        throw new Error("格式解析错误");
+                    }
+                } catch (error) {
+                    console.warn(`${api.name} 校准失败:`, error.message || error);
+                }
             }
 
-            try {
-                // 备用：World Time API
-                const startTime = Date.now();
-                const response = await fetch('https://worldtimeapi.org/api/timezone/Asia/Shanghai');
-                const data = await response.json();
-                const endTime = Date.now();
-                const latency = (endTime - startTime) / 2;
-
-                if (data && data.datetime) {
-                    const remoteTime = new Date(data.datetime).getTime();
-                    timeOffset = (remoteTime + latency) - endTime;
-                    console.log('时间校准成功 (WorldTimeAPI)，偏差值 (ms):', timeOffset);
-                    appendLog(`时间校准成功 (WorldTimeAPI)，偏差值: ${timeOffset}ms`);
-                }
-            } catch (e) {
-                console.error('时间校准均失败，将使用本地时间。', e);
-                appendLog('时间校准均失败，将使用本地时间。');
-            }
+            console.error('所有接口时间校准均失败，将使用本地时间。');
+            appendLog('❌ 时间校准失败');
         }
 
-        // 初始校准，并每小时重新校准一次
+        // 初始校准，并每10分钟重新校准一次
         calibrateTime();
-        setInterval(calibrateTime, 3600000);
+        setInterval(calibrateTime, 600000);
 
         function updateClock() {
             // 使用加上偏差值后的时间
