@@ -1182,6 +1182,13 @@
       border-color: #d74d47
     }
 
+    .option.selected {
+      background: #e0f2fe;
+      border-color: #0284c7;
+      color: #0369a1;
+      box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.2);
+    }
+
     .hint {
       margin-top: 10px;
       border-radius: 12px;
@@ -2840,7 +2847,7 @@
               <p class="m-0 mt-1 text-xs font-bold text-slate-500">一个 Demo，看懂 HTML 课件的第一性原理</p>
             </div>
           </div>
-          <div class="text-center font-black text-orange-500 text-lg w-full line-clamp-2 h-14" id="progressTitle">
+          <div class="flex items-center justify-center text-center font-black text-orange-500 text-lg w-full h-14" id="progressTitle">
             先让学习目标可见</div>
           <div class="tour-progress justify-self-end flex flex-col items-end gap-1 w-48"
             style="text-align: right; justify-content: flex-end;">
@@ -3695,8 +3702,7 @@
       }
       ,
       {
-        title: '外部教育资源', icon: '🌐', name: '拓展延伸', meta: '资源库接入', scene: 'iframeScene',
-        left: { title: '无缝集成', text: '通过 iframe 可以轻松接入优质的外部教育工具与资源库，丰富课件内容。', tag: '生态接入', target: 'iframe' }
+        title: '更多教育案例', icon: '🌐', name: '拓展延伸', meta: '资源库接入', scene: 'iframeScene'
       }
 
     ];
@@ -3729,7 +3735,9 @@
     const initialStep = Math.max(0, Math.min(tour.length - 1, (Number(new URLSearchParams(location.hash.slice(1)).get('step')) || 1) - 1));
     const state = {
       step: initialStep, numerator: 3, denominator: 4, fractionSelected: new Set([0, 1, 2]), geoW: 6, geoH: 4, prediction: '', votes: [4, 7, 3, 5], divisionGroups: [0, 0, 0, 0, 0], divisionRemaining: 23,
-      practice: null, attempts: 0, manipAngle: 0, manipMirror: 1, manipScale: 1,
+      practiceLevel: 1, practiceQuestions: null, practiceAnswers: [null, null, null], practiceSubmitted: false, practiceResult: null,
+      practiceStats: { totalQuestions: 0, totalCorrect: 0, totalRounds: 0, fullRounds: 0, highestLevel: 1 },
+      attempts: 0, manipAngle: 0, manipMirror: 1, manipScale: 1,
       mediaTime: 0, mediaDuration: 24, mediaPlaying: false, mediaMarkers: [], mediaCaptures: [], mediaTimer: null, mediaObjectUrl: null, threeRaf: null,
       activeNotes: [], collabChannel: null, collabClientId: `demo-${Math.random().toString(36).slice(2, 8)}`
     };
@@ -3759,7 +3767,11 @@
         $('#lessonMeta').textContent = 'https://edui123.com/';
         $('#lessonIcon').textContent = '🌐';
       }
-      const notes = [{ ...item.left, side: 'left' }, { ...item.right, side: 'right' }, ...(extraNotes[item.scene] || [])];
+      const notes = [
+        ...(item.left ? [{ ...item.left, side: 'left' }] : []),
+        ...(item.right ? [{ ...item.right, side: 'right' }] : []),
+        ...(extraNotes[item.scene] || [])
+      ];
       state.activeNotes = notes.map((note, i) => ({ ...note, index: i + 1 }));
       const renderSide = side => state.activeNotes.filter(n => n.side === side).map((n, slot) => noteHTML(side, n, String(n.index).padStart(2, '0'), slot)).join('');
       $('#leftNote').innerHTML = renderSide('left');
@@ -3910,7 +3922,179 @@
 </div>
 </div></div><div class="flex flex-col gap-3"><div class="card" id="divisionBoard"><div class="card-title">动手平均分糖<span class="tiny-label">先操作后列式</span></div><div class="share-pool"><span>待分糖果</span><b><span id="remainingCandy">${state.divisionRemaining}</span> 颗</b></div><div class="share-groups" id="shareGroups">${divisionGroupsHTML()}</div><div class="share-actions"><button id="shareRound" class="tool-btn">每人发 1 颗</button><button id="resetShare" class="tool-btn">重新分配</button></div><div class="share-status" id="shareStatus">点击某个小朋友发 1 颗，或按“每人发 1 颗”。想一想：什么叫平均分？</div></div><div class="feedback" id="feedbackBox"><b>等待你的答案……</b><br>先用上方的分糖工具找到商和余数，再填入算式。</div></div></div>`,
       statistics: () => `<div class="scene scene-grid"><div class="card flex flex-col"><div class="card-title">最喜欢的课间活动调查<span class="tiny-label">点击投票</span></div><div class="bar-chart" id="chartArea">${chartBars()}</div><div class="vote-row mt-4" id="voteArea">${['跳绳', '踢球', '阅读', '画画'].map((x, i) => `<button class="vote-btn" data-vote="${i}">${['🪢', '⚽', '📚', '🎨'][i]} ${x} +1</button>`).join('')}</div></div><div class="flex flex-col gap-3"><div class="card"><div class="card-title">数据会说话<span class="tiny-label">自动观察</span></div><div class="insight" id="insight">${dataInsight()}</div></div><div class="card"><div class="card-title">提出一个数学问题</div><div class="space-y-2 text-xs font-bold"><button class="type-chip w-full" data-statq="最多">哪项活动人数最多？</button><button class="type-chip w-full" data-statq="相差">最多与最少相差几人？</button><button class="type-chip w-full" data-statq="总数">一共调查了多少人？</button></div><div id="statAnswer" class="explain-box mt-3">点击问题，系统会根据当前数据作答。</div></div></div></div>`,
-      practice: () => `<div class="scene scene-grid"><div class="question-card" id="questionCard">${practiceQuestionHTML()}</div><div class="flex flex-col gap-3"><div class="card"><div class="card-title">当前掌握度<span class="tiny-label">过程记录</span></div><div class="mastery">${Array.from({ length: 5 }, (_, i) => `<i class="${i < Math.min(5, 2 + state.attempts) ? 'on' : ''}"></i>`).join('')}</div><p class="mt-3 text-xs font-bold text-slate-500">系统依据正确率与尝试次数调整下一题难度。</p></div><div class="card flex-1" id="hintArea"><div class="card-title">按需支架<span class="tiny-label">不抢先给答案</span></div><div id="practiceFeedback" class="text-xs font-bold leading-6 text-slate-500">先独立作答。答错后，这里只给一条线索；再次尝试仍有困难，才展示分步过程。</div><button id="newQuestion" class="primary-btn mt-4 w-full">🎲 换一道同类题</button></div></div></div>`,
+      practice: () => {
+        ensurePracticeQuestions();
+        const qList = state.practiceQuestions;
+        const answers = state.practiceAnswers;
+        const answeredCount = answers.filter(a => a !== null).length;
+        const allAnswered = answeredCount === 3;
+        const isSubmitted = state.practiceSubmitted;
+        const res = state.practiceResult;
+        const stats = state.practiceStats;
+
+        return `<div class="scene scene-grid">
+          <div class="question-card flex flex-col h-full overflow-hidden" id="questionCard">
+            <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-200 shrink-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xl">🎲</span>
+                <div>
+                  <div class="font-black text-slate-800 text-sm m-0">自适应多维挑战站</div>
+                  <div class="text-[11px] text-slate-500 font-bold m-0">第 ${state.practiceLevel} 关 · 默认 3 道不同难度题目</div>
+                </div>
+              </div>
+              <div class="px-2.5 py-0.5 bg-teal-50 border border-teal-200 text-teal-700 rounded-full font-black text-xs">
+                关卡 ${state.practiceLevel}
+              </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto pr-1 space-y-3">
+              ${qList.map((q, qIdx) => {
+                const userSel = answers[qIdx];
+                const isRight = userSel === q.ans;
+                const tagBg = qIdx === 0 ? 'bg-teal-100 text-teal-800' : qIdx === 1 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800';
+                const levelName = qIdx === 0 ? '★☆☆ 基础' : qIdx === 1 ? '★★☆ 进阶' : '★★★ 拓展';
+                
+                return `<div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="inline-flex items-center gap-1 font-black px-2 py-0.5 rounded ${tagBg}">
+                      第 ${qIdx + 1} 题 · ${levelName} (${q.k})
+                    </span>
+                    <span class="font-black text-amber-500">
+                      难度: ${'★'.repeat(q.diff)}${'☆'.repeat(3 - q.diff)}
+                    </span>
+                  </div>
+                  <div class="text-sm font-black text-slate-800 leading-snug">
+                    ${q.q}
+                  </div>
+                  <div class="options grid grid-cols-2 gap-2 mt-1">
+                    ${q.opts.map((optText, optIdx) => {
+                      const isSelected = userSel === optIdx;
+                      let optClass = "option text-xs font-bold p-2.5 rounded-lg border transition-all text-left flex items-center justify-between cursor-pointer";
+                      
+                      if (isSubmitted) {
+                        if (optIdx === q.ans) {
+                          optClass += " correct bg-teal-50 border-teal-600 text-teal-900 font-black";
+                        } else if (isSelected) {
+                          optClass += " wrong bg-rose-50 border-rose-500 text-rose-900 font-black";
+                        } else {
+                          optClass += " opacity-50 border-slate-200";
+                        }
+                      } else {
+                        if (isSelected) {
+                          optClass += " selected bg-sky-50 border-sky-600 text-sky-900 font-black shadow-sm ring-2 ring-sky-300";
+                        } else {
+                          optClass += " hover:border-slate-400 bg-white border-slate-300";
+                        }
+                      }
+
+                      return `<button class="${optClass}" data-qidx="${qIdx}" data-optidx="${optIdx}" ${isSubmitted ? 'disabled' : ''}>
+                        <span>${String.fromCharCode(65 + optIdx)}. ${optText}</span>
+                        ${isSubmitted && optIdx === q.ans ? '<span class="text-teal-600 font-black ml-1">✓</span>' : ''}
+                        ${isSubmitted && isSelected && optIdx !== q.ans ? '<span class="text-rose-500 font-black ml-1">✗</span>' : ''}
+                      </button>`;
+                    }).join('')}
+                  </div>
+
+                  ${isSubmitted ? `
+                    <div class="mt-2 p-2 rounded-lg text-xs leading-relaxed ${isRight ? 'bg-teal-50 border border-teal-200 text-teal-800' : 'bg-rose-50 border border-rose-200 text-rose-800'}">
+                      <div class="font-black">${isRight ? '✅ 解答正确！' : '❌ 解析与思路指导：'}</div>
+                      <div class="mt-0.5 text-slate-700"><b>解题步骤：</b>${q.steps}</div>
+                    </div>
+                  ` : ''}
+                </div>`;
+              }).join('')}
+            </div>
+
+            <div class="pt-2 mt-2 border-t border-slate-200 shrink-0 flex flex-col gap-2">
+              ${!isSubmitted ? `
+                <button id="submitPracticeBtn" class="primary-btn w-full py-2.5 font-black text-sm ${allAnswered ? 'bg-teal-600 hover:bg-teal-700 text-white' : 'opacity-60 cursor-not-allowed bg-slate-300 text-slate-600'}" ${allAnswered ? '' : 'disabled'}>
+                  ${allAnswered ? '✅ 提交 3 题答案并统计正确率' : `📝 请完成全部 3 题作答 (${answeredCount}/3 已选)`}
+                </button>
+              ` : `
+                <button id="nextChallengeBtn" class="primary-btn w-full py-2.5 font-black text-sm shadow-md ${res && res.isFull ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-teal-600 hover:bg-teal-700 text-white'}">
+                  ${res && res.isFull ? `🚀 全对通关！进入 第 ${state.practiceLevel + 1} 关 挑战 →` : `🔄 继续挑战 第 ${state.practiceLevel} 关 (换 3 道新题) →`}
+                </button>
+              `}
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3">
+            <div class="card flex flex-col gap-2">
+              <div class="card-title flex justify-between items-center">
+                <span>正确率统计</span>
+                <span class="tiny-label">第 ${state.practiceLevel} 关</span>
+              </div>
+
+              ${isSubmitted && res ? `
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center justify-center text-center">
+                  <div class="text-xs font-bold text-slate-500">本轮正确率</div>
+                  <div class="text-3xl font-black ${res.accuracy === 100 ? 'text-teal-600' : res.accuracy >= 66 ? 'text-amber-500' : 'text-rose-500'} my-1">
+                    ${res.accuracy}%
+                  </div>
+                  <div class="text-xs font-black text-slate-700">
+                    答对 ${res.roundCorrect} / 3 题
+                  </div>
+
+                  <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-2 relative">
+                    <div class="h-full ${res.accuracy === 100 ? 'bg-teal-500' : res.accuracy >= 66 ? 'bg-amber-500' : 'bg-rose-500'} transition-all duration-500" style="width: ${res.accuracy}%"></div>
+                  </div>
+
+                  <div class="mt-2 text-xs font-black px-2.5 py-1 rounded-full ${res.isFull ? 'text-teal-800 bg-teal-100' : 'text-amber-800 bg-amber-100'}">
+                    ${res.isFull ? '🎉 全对！点击“继续挑战”提升难度！' : res.roundCorrect === 2 ? '👍 答对 2 题，离全对只差 1 步！' : '💪 继续加油，全对即可升关！'}
+                  </div>
+                </div>
+
+                <div class="space-y-1 text-xs font-bold">
+                  ${qList.map((q, idx) => {
+                    const isRight = answers[idx] === q.ans;
+                    return `<div class="flex items-center justify-between p-1.5 rounded-lg ${isRight ? 'bg-teal-50 text-teal-800' : 'bg-rose-50 text-rose-800'}">
+                      <span>第 ${idx + 1} 题 (${idx===0?'★☆☆ 基础':idx===1?'★★☆ 进阶':'★★★ 拓展'})</span>
+                      <span class="font-black">${isRight ? '✅ 正确' : '❌ 错误'}</span>
+                    </div>`;
+                  }).join('')}
+                </div>
+              ` : `
+                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center justify-center text-center text-slate-500 space-y-1.5">
+                  <div class="text-2xl">📊</div>
+                  <div class="text-xs font-bold leading-relaxed">
+                    做完左侧 <b>3 道不同难度题目</b> 后，<br>点击“提交”在此统计正确率。
+                  </div>
+                  <div class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[11px] font-black mt-1">
+                    全对即可触发难度提升
+                  </div>
+                </div>
+              `}
+            </div>
+
+            <div class="card flex-1 flex flex-col justify-between" id="hintArea">
+              <div>
+                <div class="card-title">累计挑战档案<span class="tiny-label">数据看板</span></div>
+                <div class="grid grid-cols-2 gap-2 my-2 text-center">
+                  <div class="p-2 bg-teal-50 border border-teal-100 rounded-xl">
+                    <div class="text-[11px] text-teal-600 font-bold">累计做题</div>
+                    <div class="text-lg font-black text-teal-800">${stats.totalQuestions} 道</div>
+                  </div>
+                  <div class="p-2 bg-amber-50 border border-amber-100 rounded-xl">
+                    <div class="text-[11px] text-amber-600 font-bold">累计正确率</div>
+                    <div class="text-lg font-black text-amber-800">${stats.totalQuestions ? Math.round(stats.totalCorrect / stats.totalQuestions * 100) : 0}%</div>
+                  </div>
+                  <div class="p-2 bg-sky-50 border border-sky-100 rounded-xl">
+                    <div class="text-[11px] text-sky-600 font-bold">全对通关</div>
+                    <div class="text-lg font-black text-sky-800">${stats.fullRounds} 次</div>
+                  </div>
+                  <div class="p-2 bg-purple-50 border border-purple-100 rounded-xl">
+                    <div class="text-[11px] text-purple-600 font-bold">最高关卡</div>
+                    <div class="text-lg font-black text-purple-800">第 ${stats.highestLevel || 1} 关</div>
+                  </div>
+                </div>
+              </div>
+              <div class="text-xs text-slate-500 font-bold leading-relaxed border-t border-slate-100 pt-2">
+                💡 规则：每次包含 3 道不同难度（★☆☆ / ★★☆ / ★★★）题目。全部答对后点击“继续挑战”，难度自动提升！
+              </div>
+            </div>
+          </div>
+        </div>`;
+      },
       manipulator: () => `<div class="scene manipulator"><div class="canvas-shell" id="objectCanvas"><canvas id="geometryCanvas"></canvas><canvas id="inkCanvas"></canvas></div><div class="toolbox card" id="objectTools"><div class="card-title">对象与笔迹工具<span class="tiny-label">Pointer Events</span></div><div class="tool-row"><button class="tool-btn active" data-mode="drag">👆 拖顶点</button><button class="tool-btn" data-mode="pen">✍️ 圈画笔</button><button class="tool-btn" data-transform="rotate">↻ 旋转 30°</button><button class="tool-btn" data-transform="mirror">⇆ 左右镜像</button><button class="tool-btn" data-transform="zoomIn">＋ 放大</button><button class="tool-btn" data-transform="zoomOut">− 缩小</button><button class="tool-btn" data-transform="undo">↶ 撤销笔迹</button><button class="tool-btn" data-transform="clear">⌫ 清空笔迹</button></div><input id="objectNote" class="note-input" value="拖动 A 点，观察面积变化" aria-label="对象文字标注"><button id="addObjectNote" class="tool-btn">T 添加文字标注</button><div class="object-readout" id="objectReadout">拖动任一顶点，实时计算几何量。</div></div></div>`,
       media: () => `<div class="scene media-grid"><div class="card media-player"><div class="card-title">变化中的三角形：底不变，高改变<span class="tiny-label">内置演示 / 可载入本地视频</span></div><div class="media-stage" id="mediaStage"><span class="media-badge" id="mediaBadge">▶ 动态演示</span><canvas id="demoMedia"></canvas><video id="lessonVideo" playsinline></video><canvas id="mediaInk"></canvas></div><div class="media-controls"><button id="mediaPlay" class="tool-btn">▶</button><input id="mediaSeek" type="range" min="0" max="24" step="0.1" value="${state.mediaTime}"><span class="media-time" id="mediaTime">${formatTime(state.mediaTime)} / ${formatTime(state.mediaDuration)}</span><label class="tool-btn cursor-pointer">载入视频<input id="mediaFile" type="file" accept="video/*,audio/*" hidden></label></div><div class="timeline" id="mediaTimeline">${markerHTML()}</div><div class="mt-2 flex gap-2"><button id="addMarker" class="tool-btn">📍 当前时刻打点</button><button id="toggleMediaInk" class="tool-btn">✍️ 画面批注</button><button id="clearMediaInk" class="tool-btn">清除批注</button></div></div><div class="flex min-h-0 flex-col gap-2" id="capturePanel"><div class="card"><div class="card-title">知识点标记<span class="tiny-label">点击可跳转</span></div><div class="marker-list" id="markerList">${markerListHTML()}</div></div><div class="card flex-1 min-h-0 flex flex-col"><div class="card-title">截图证据卡<span class="tiny-label">保存在当前页面</span></div><button id="captureFrame" class="primary-btn mb-2 w-full shrink-0">📸 截取当前画面</button><div class="capture-grid overflow-y-auto flex-1 min-h-0 pr-1" id="captureGrid">${captureHTML()}</div></div></div></div>`,
       webapis: () => `<div class="scene flex h-full flex-col gap-3"><div class="objective"><span class="text-2xl">🌐</span><div><b>浏览器本身就是跨设备学习平台</b><p>无需安装客户端，也能连接声音、图像、文件、传感器、存储与导出能力。</p></div></div><div class="api-grid" id="inputApis">${[['🎙️', '麦克风/语音识别', '口述解题、朗读评测', '可记录学生的解释过程，并转成文字用于关键词与策略分析。'], ['📷', '摄像头/WebRTC', '拍题、实物测量、远程协作', '将相纸、积木、钟表等真实对象带入数学实验。'], ['✍️', '触控/压感笔', '笔迹、力度、倾斜角', 'Pointer Events 统一鼠标、手指与手写笔，可保留完整作答轨迹。'], ['🧭', '方向与运动传感器', '角度、水平、运动数据', '可把平板倾斜角、旋转和加速度变成可计算的探究数据。']].map(x => `<div class="api-card"><span>${x[0]}</span><b>${x[1]}</b><small>${x[2]}<span class="api-more">${x[3]}</span></small></div>`).join('')}</div><div class="api-grid" id="outputApis">${[['🔊', '朗读题目', 'Speech Synthesis', 'speakDemo', '按学生节奏朗读题干、单位和分步提示。'], ['💾', '保存进度', 'localStorage / IndexedDB', 'saveDemo', '保留作答状态、尝试次数、笔迹与媒体证据。'], ['⛶', '课件全屏', 'Fullscreen API', 'fullDemo', '一键切换教室大屏模式，降低浏览器界面干扰。'], ['⬇️', '导出学情', 'File / Blob / Download', 'exportDemo', '将过程记录整理为 JSON、表格或学习报告。'], ['📋', '复制结论', 'Clipboard API', 'copyDemo', '将公式、解释或统计结论快速带入作业和笔记。'], ['🖨️', '打印讲义', 'Print CSS / PDF', 'printDemo', '自动隐藏交互控件，生成适合纸张的任务单。'], ['📴', '离线使用', 'Service Worker / PWA', 'offlineDemo', '缓存题库、资源和程序，无网络教室也可继续使用。'], ['🖥️', '录屏留证', 'Screen Capture API', 'recordDemo', '录下操作、语音解释与反馈过程，用于回放反思。']].map(x => `<button class="api-card demo" data-api="${x[3]}"><span>${x[0]}</span><b>${x[1]}</b><small>${x[2]}<span class="api-more">${x[4]}</span></small></button>`).join('')}</div><div class="api-status" id="apiStatus">点击带边框的能力卡，体验浏览器原生 API。设备类能力需要用户授权，部分接口要求 HTTPS 安全环境。</div></div>`,
@@ -4075,28 +4259,42 @@
       const labels = ['跳绳', '踢球', '阅读', '画画']; const max = Math.max(...state.votes), min = Math.min(...state.votes), mi = state.votes.indexOf(max), ni = state.votes.indexOf(min);
       return `目前 <b>${labels[mi]}</b> 最受欢迎（${max} 人），<b>${labels[ni]}</b> 最少（${min} 人），两者相差 <b>${max - min}</b> 人。共收集 <b>${state.votes.reduce((a, b) => a + b, 0)}</b> 票。`;
     }
-    function ensureQuestion() {
-      if (state.practice) return;
-      state.userStats = state.userStats || { total: 0, correct: 0, streak: 0 };
-      const bank = [
+    const PRACTICE_BANK = {
+      diff1: [
         { k: '小数', q: '3.6 元买 3 支同样的铅笔，每支多少元？', opts: ['0.12 元', '1.2 元', '12 元', '1.02 元'], ans: 1, diff: 1, hint: '把 3.6 看成 36 个 0.1，再平均分成 3 份。', steps: '3.6 ÷ 3 = 1.2（元）' },
         { k: '面积', q: '边长 6 厘米的正方形，面积是多少？', opts: ['12 平方厘米', '24 平方厘米', '36 平方厘米', '36 厘米'], ans: 2, diff: 1, hint: '面积单位是“平方厘米”，正方形面积＝边长×边长。', steps: '6 × 6 = 36（平方厘米）' },
+        { k: '应用', q: '小明有 12.5 元，买一本书用去 8.8 元，还剩多少元？', opts: ['3.7 元', '4.7 元', '4.3 元', '3.3 元'], ans: 0, diff: 1, hint: '用减法计算，注意小数点要对齐。', steps: '12.5 - 8.8 = 3.7（元）' },
+        { k: '运算', q: '25 × 4 ÷ 25 × 4 的计算结果是多少？', opts: ['1', '16', '100', '64'], ans: 1, diff: 1, hint: '从左往右依次计算。', steps: '25 × 4 = 100 → 100 ÷ 25 = 4 → 4 × 4 = 16' },
+        { k: '图形', q: '长方形有几条对称轴？', opts: ['1 条', '2 条', '4 条', '无数条'], ans: 1, diff: 1, hint: '沿长和宽的中线折叠重合。', steps: '长方形有 2 条对称轴。' }
+      ],
+      diff2: [
         { k: '分数', q: '一根绳子平均分成 8 段，取走 3 段，取走了几分之几？', opts: ['3/5', '5/8', '3/8', '8/3'], ans: 2, diff: 2, hint: '分母表示平均分的总份数，分子表示取走的份数。', steps: '总份数 8 作分母，取走 3 作分子：3/8' },
         { k: '周长', q: '长 7 米、宽 4 米的长方形，周长是多少？', opts: ['11 米', '22 米', '28 米', '44 米'], ans: 1, diff: 2, hint: '周长是四条边长度的总和。', steps: '(7 + 4) × 2 = 22（米）' },
-        { k: '综合', q: '一个长方形的周长是 20 厘米，长是 6 厘米，它的面积是多少？', opts: ['24 平方厘米', '14 平方厘米', '120 平方厘米', '16 平方厘米'], ans: 0, diff: 3, hint: '先用周长算出一组长宽的和，减去长得到宽，再算面积。', steps: '宽：20 ÷ 2 - 6 = 4（厘米）<br>面积：6 × 4 = 24（平方厘米）' },
+        { k: '计算', q: '450 ÷ (9 × 5) 的结果是多少？', opts: ['250', '25', '10', '1'], ans: 2, diff: 2, hint: '先算括号里面的乘法，再算除法。', steps: '9 × 5 = 45 → 450 ÷ 45 = 10' },
+        { k: '倍数', q: '甲数是 48，乙数是甲数的 3 倍，甲乙两数的和是多少？', opts: ['144', '192', '180', '140'], ans: 1, diff: 2, hint: '和 ＝ 甲数 × (1 + 3)。', steps: '48 × (1 + 3) = 48 × 4 = 192' },
+        { k: '概念', q: '3/5 米表示什么意思？', opts: ['把 1 米平均分成 5 份取 3 份', '把 3 米平均分成 5 份取 1 份', '以上两种说法都对', '以上都不对'], ans: 2, diff: 2, hint: '既可表示 1 米的 3/5，也可表示 3 米的 1/5。', steps: '1 米的 3/5 与 3 米的 1/5 长度相同，均为 0.6 米。' }
+      ],
+      diff3: [
+        { k: '综合', q: '一个长方形的周长是 20 厘米，长是 6 厘米，它的面积是多少？', opts: ['24 平方厘米', '14 平方厘米', '120 平方厘米', '16 平方厘米'], ans: 0, diff: 3, hint: '先用周长算出一组长宽的和，减去长得到宽，再算面积。', steps: '宽：20 ÷ 2 - 6 = 4（厘米）；面积：6 × 4 = 24（平方厘米）' },
         { k: '综合', q: '把 5 块月饼平均分给 4 个小朋友，每人分得几块？', opts: ['4/5 块', '1 块余1块', '5/4 块', '1.2 块'], ans: 2, diff: 3, hint: '总数除以份数，5 ÷ 4 用分数怎么表示？', steps: '5 ÷ 4 = 5/4（块）' },
-        { k: '计算', q: '450 ÷ (9 × 5) 的结果是多少？', opts: ['250', '25', '10', '1'], ans: 2, diff: 2, hint: '先算括号里面的乘法，再算除法。', steps: '9 × 5 = 45<br>450 ÷ 45 = 10' },
-        { k: '应用', q: '小明有 12.5 元，买一本书用去 8.8 元，还剩多少元？', opts: ['3.7 元', '4.7 元', '4.3 元', '3.3 元'], ans: 0, diff: 1, hint: '用减法计算，注意小数点要对齐。', steps: '12.5 - 8.8 = 3.7（元）' }
-      ];
-      let targetDiff = state.userStats.streak >= 2 ? 3 : state.userStats.streak === 1 ? 2 : 1;
-      let pool = bank.filter(q => q.diff === targetDiff);
-      if (pool.length === 0) pool = bank;
-      state.practice = pool[Math.floor(Math.random() * pool.length)];
-      state.attempts = 0;
-    }
-    function practiceQuestionHTML() {
-      ensureQuestion(); const q = state.practice;
-      return `<div class="question-kicker flex justify-between w-full"><span>${q.k} · 智能推荐</span><span class="text-orange-500">难度: ${'★'.repeat(q.diff)}${'☆'.repeat(3 - q.diff)}</span></div><div class="question-text">${q.q}</div><div class="options">${q.opts.map((x, i) => `<button class="option" data-option="${i}">${String.fromCharCode(65 + i)}. ${x}</button>`).join('')}</div>`;
+        { k: '思维', q: '鸡兔同笼共 10 个头，28 条腿，问兔子有多少只？', opts: ['4 只', '5 只', '6 只', '7 只'], ans: 0, diff: 3, hint: '假设全是鸡，比实际少 (28 - 20) 条腿。', steps: '(28 - 10 × 2) ÷ (4 - 2) = 4（只）' },
+        { k: '逻辑', q: '正方形边长增加 2 厘米，面积增加 20 平方厘米，原边长是多少？', opts: ['4 厘米', '4.5 厘米', '5 厘米', '6 厘米'], ans: 0, diff: 3, hint: '增加的面积 = 2 个 (2 × 边长) + 2 × 2。', steps: '4 × 边长 + 4 = 20 → 边长 = 4（厘米）' },
+        { k: '极值', q: '用长 12 厘米铁丝围成长宽均为整数的长方形，最大面积是多少？', opts: ['8 平方厘米', '9 平方厘米', '10 平方厘米', '12 平方厘米'], ans: 1, diff: 3, hint: '周长固定时，长宽越接近面积越大。', steps: '长+宽=6，长3宽3时面积最大：3 × 3 = 9（平方厘米）' }
+      ]
+    };
+
+    function ensurePracticeQuestions(forceNew = false) {
+      if (forceNew || !state.practiceQuestions || state.practiceQuestions.length !== 3) {
+        const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        state.practiceQuestions = [
+          pickRandom(PRACTICE_BANK.diff1),
+          pickRandom(PRACTICE_BANK.diff2),
+          pickRandom(PRACTICE_BANK.diff3)
+        ];
+        state.practiceAnswers = [null, null, null];
+        state.practiceSubmitted = false;
+        state.practiceResult = null;
+      }
     }
 
     function bindScene() {
@@ -4206,8 +4404,68 @@
         document.querySelectorAll('[data-statq]').forEach(b => b.onclick = () => { const kind = b.dataset.statq, labels = ['跳绳', '踢球', '阅读', '画画'], mx = Math.max(...state.votes), mn = Math.min(...state.votes); let a = kind === '最多' ? `${labels[state.votes.indexOf(mx)]}最多，有 ${mx} 人。` : kind === '相差' ? `最多与最少相差 ${mx - mn} 人。` : `一共调查了 ${state.votes.reduce((a, b) => a + b, 0)} 人次。`; $('#statAnswer').textContent = a });
       }
       if (scene === 'practice') {
-        document.querySelectorAll('[data-option]').forEach(b => b.onclick = () => checkPractice(Number(b.dataset.option), b));
-        $('#newQuestion').onclick = () => { state.practice = null; state.attempts = 0; render() };
+        document.querySelectorAll('[data-qidx]').forEach(btn => {
+          btn.onclick = () => {
+            if (state.practiceSubmitted) return;
+            const qIdx = Number(btn.dataset.qidx);
+            const optIdx = Number(btn.dataset.optidx);
+            state.practiceAnswers[qIdx] = optIdx;
+            render();
+          };
+        });
+
+        const submitBtn = document.getElementById('submitPracticeBtn');
+        if (submitBtn) {
+          submitBtn.onclick = () => {
+            const answers = state.practiceAnswers;
+            if (answers.includes(null)) return;
+
+            const qList = state.practiceQuestions;
+            const roundCorrect = qList.reduce((acc, q, i) => acc + (answers[i] === q.ans ? 1 : 0), 0);
+            const accuracy = Math.round(roundCorrect / 3 * 100);
+            const isFull = (roundCorrect === 3);
+
+            state.practiceSubmitted = true;
+            state.practiceResult = { roundCorrect, totalQuestions: 3, accuracy, isFull };
+
+            state.practiceStats = state.practiceStats || { totalQuestions: 0, totalCorrect: 0, totalRounds: 0, fullRounds: 0, highestLevel: 1 };
+            state.practiceStats.totalQuestions += 3;
+            state.practiceStats.totalCorrect += roundCorrect;
+            state.practiceStats.totalRounds += 1;
+            if (isFull) state.practiceStats.fullRounds += 1;
+            if (state.practiceLevel > state.practiceStats.highestLevel) {
+              state.practiceStats.highestLevel = state.practiceLevel;
+            }
+
+            if (isFull) {
+              confetti();
+              toast(`🎉 恭喜 3 题全对！点击“继续挑战”可升级难度！`);
+            } else {
+              toast(`本轮答对 ${roundCorrect}/3 题，正确率 ${accuracy}%`);
+            }
+
+            render();
+          };
+        }
+
+        const nextBtn = document.getElementById('nextChallengeBtn');
+        if (nextBtn) {
+          nextBtn.onclick = () => {
+            if (state.practiceResult && state.practiceResult.isFull) {
+              state.practiceLevel = (state.practiceLevel || 1) + 1;
+              state.practiceStats = state.practiceStats || { totalQuestions: 0, totalCorrect: 0, totalRounds: 0, fullRounds: 0, highestLevel: 1 };
+              if (state.practiceLevel > state.practiceStats.highestLevel) {
+                state.practiceStats.highestLevel = state.practiceLevel;
+              }
+              toast(`🚀 难度已提升至 第 ${state.practiceLevel} 关！`);
+            } else {
+              toast(`重新挑战 第 ${state.practiceLevel} 关（3 道新题）`);
+            }
+
+            ensurePracticeQuestions(true);
+            render();
+          };
+        }
       }
       if (scene === 'manipulator') initManipulator();
       if (scene === 'media') initMediaLab();
@@ -4362,29 +4620,7 @@
       if (qv === 4 && rv === 3) { q.classList.add('right'); r.classList.add('right'); box.className = 'feedback success'; box.innerHTML = '<b>✅ 正确！</b> 5 × 4 = 20，23 − 20 = 3，而且余数 3 小于除数 5。<div class="strategy-steps"><span>23</span><i>→</i><span>分成 5 组</span><i>→</i><span>每组 4</span><i>→</i><span>剩 3</span></div>'; confetti(); }
       else { q.classList.add('wrong'); r.classList.add('wrong'); box.className = 'feedback error'; let msg = rv >= 5 ? '余数不能大于或等于除数，否则还能继续分。' : qv === 5 ? '可能把“除数 5”直接写成了商。试试用乘法口诀找：5 × 几最接近 23？' : '先找 5 × 几小于且最接近 23，再用 23 减去这个积。'; box.innerHTML = `<b>🔎 暂时不对，但发现了有价值的线索：</b><br>${msg}`; }
     }
-    function checkPractice(choice, btn) {
-      state.userStats = state.userStats || { total: 0, correct: 0, streak: 0 };
-      const q = state.practice; state.attempts++; document.querySelectorAll('.option').forEach(x => x.disabled = true);
-      if (state.attempts === 1) state.userStats.total++;
-      if (choice === q.ans) {
-        if (state.attempts === 1) { state.userStats.correct++; state.userStats.streak++; }
-        btn.classList.add('correct');
-        $('#practiceFeedback').innerHTML = `<div class="feedback success"><b>✅ 挑战成功！</b><br>${q.steps}</div>`;
-        confetti();
-      }
-      else {
-        if (state.attempts === 1) state.userStats.streak = 0;
-        btn.classList.add('wrong');
-        document.querySelectorAll('.option')[q.ans].classList.add('correct');
-        $('#practiceFeedback').innerHTML = `<div class="feedback error"><b>思路遇到卡壳。</b><br>${state.attempts < 2 ? q.hint : '分步过程：' + q.steps}</div>`;
-      }
-      if ($('#statTotal')) $('#statTotal').textContent = state.userStats.total;
-      if ($('#statCorrect')) $('#statCorrect').textContent = state.userStats.correct;
-      if ($('#statStreak')) $('#statStreak').textContent = state.userStats.streak;
 
-      const stars = Array.from(document.querySelectorAll('.mastery i'));
-      stars.forEach((star, i) => { if (i < state.userStats.correct) star.classList.add('on'); else star.classList.remove('on'); });
-    }
     function confetti() {
       const host = $('#screen'); const box = document.createElement('div'); box.className = 'confetti'; box.innerHTML = Array.from({ length: 26 }, (_, i) => `<i style="left:${Math.random() * 100}%;animation-delay:${Math.random() * .4}s;background:${['#ffb703', '#ef6f6c', '#167d74', '#7293d4'][i % 4]}"></i>`).join(''); host.appendChild(box); setTimeout(() => box.remove(), 2100);
     }
