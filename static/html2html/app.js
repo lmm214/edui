@@ -234,6 +234,8 @@
   const floatingPanel = document.getElementById("floating-panel");
   const panelHeader = document.getElementById("panel-drag-handle");
   const toastContainer = document.getElementById("toast-container");
+  const linkContextMenu = document.getElementById("link-context-menu");
+  const btnPasteLink = document.getElementById("btn-paste-link");
 
   const btnSelectFile = document.getElementById("btn-select-file");
   const btnSelectDir = document.getElementById("btn-select-dir");
@@ -268,6 +270,50 @@
       toast.style.transition = "opacity 0.3s ease";
       setTimeout(() => toast.remove(), 300);
     }, 3000);
+  }
+
+  // =====================================================================
+  // Custom Context Menu
+  // =====================================================================
+  const contextMenuDocuments = new WeakSet();
+
+  function hideLinkContextMenu() {
+    linkContextMenu.hidden = true;
+  }
+
+  function showLinkContextMenu(clientX, clientY) {
+    linkContextMenu.hidden = false;
+    linkContextMenu.style.left = "0px";
+    linkContextMenu.style.top = "0px";
+
+    const edgeGap = 8;
+    const left = Math.max(edgeGap, Math.min(clientX, window.innerWidth - linkContextMenu.offsetWidth - edgeGap));
+    const top = Math.max(edgeGap, Math.min(clientY, window.innerHeight - linkContextMenu.offsetHeight - edgeGap));
+    linkContextMenu.style.left = left + "px";
+    linkContextMenu.style.top = top + "px";
+    btnPasteLink.focus({ preventScroll: true });
+  }
+
+  function bindLinkContextMenu(targetDocument, getOffset = () => ({ left: 0, top: 0 })) {
+    if (!targetDocument || contextMenuDocuments.has(targetDocument)) return;
+    contextMenuDocuments.add(targetDocument);
+
+    targetDocument.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const offset = getOffset();
+      showLinkContextMenu(e.clientX + offset.left, e.clientY + offset.top);
+    }, true);
+
+    targetDocument.addEventListener("pointerdown", (e) => {
+      if (targetDocument !== document || !linkContextMenu.contains(e.target)) {
+        hideLinkContextMenu();
+      }
+    }, true);
+    targetDocument.addEventListener("scroll", hideLinkContextMenu, true);
+    targetDocument.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hideLinkContextMenu();
+    }, true);
   }
 
   async function fetchFeixiangHtml(sourceUrl) {
@@ -553,6 +599,11 @@
     const iframeWin = previewIframe.contentWindow;
     const iframeDoc = previewIframe.contentDocument;
     if (!iframeWin || !iframeDoc || !iframeDoc.body) return;
+
+    bindLinkContextMenu(iframeDoc, () => {
+      const rect = previewIframe.getBoundingClientRect();
+      return { left: rect.left, top: rect.top };
+    });
 
     // ----- Inject styles -----
     if (!iframeDoc.getElementById("editor-style")) {
@@ -1119,34 +1170,73 @@
   // =====================================================================
   // Handle Paste URLs (Feixiang/Musk Online)
   // =====================================================================
-  document.addEventListener('paste', async (e) => {
-    const text = (e.clipboardData || window.clipboardData).getData('text');
-    if (!text) return;
-    const url = text.trim();
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      let isFeixiang = url.includes('feixianglaoshi.com') || url.includes('fbcontent.cn');
-      if (isFeixiang) {
-        e.preventDefault();
-        showToast("检测到飞象链接，正在抓取并净化...", "info");
-        try {
-          const rawHtml = await fetchFeixiangHtml(url);
-          
-          const purified = purifyFeixiangHtml(rawHtml, "网络课件");
-          const file = new File([purified.html], purified.title + ".html", { type: "text/html" });
-          Object.defineProperty(file, "webkitRelativePath", { value: file.name, writable: false });
-          folderName = purified.title;
-          processFiles([file]);
-        } catch (err) {
-          console.error(err);
-          showToast("抓取或净化链接失败: " + err.message, "warning");
-        }
+  function getSupportedPastedUrl(text) {
+    try {
+      const url = new URL((text || "").trim());
+      const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+      const supportedHost = ["feixianglaoshi.com", "fbcontent.cn"].some(
+        (domain) => hostname === domain || hostname.endsWith(`.${domain}`)
+      );
+      return url.protocol === "https:" && supportedHost ? url.href : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function processPastedLink(url) {
+    showToast("检测到飞象链接，正在抓取并净化...", "info");
+    try {
+      const rawHtml = await fetchFeixiangHtml(url);
+      const purified = purifyFeixiangHtml(rawHtml, "网络课件");
+      const file = new File([purified.html], purified.title + ".html", { type: "text/html" });
+      Object.defineProperty(file, "webkitRelativePath", { value: file.name, writable: false });
+      folderName = purified.title;
+      processFiles([file]);
+    } catch (err) {
+      console.error(err);
+      showToast("抓取或净化链接失败: " + err.message, "warning");
+    }
+  }
+
+  document.addEventListener("paste", (e) => {
+    const text = (e.clipboardData || window.clipboardData).getData("text");
+    const url = getSupportedPastedUrl(text);
+    if (!url) return;
+    e.preventDefault();
+    processPastedLink(url);
+  });
+
+  btnPasteLink.addEventListener("click", async () => {
+    hideLinkContextMenu();
+    if (!navigator.clipboard?.readText) {
+      showToast("当前浏览器无法读取剪贴板，请使用 Ctrl/⌘+V", "warning");
+      return;
+    }
+
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text.trim()) {
+        showToast("剪贴板中没有链接", "warning");
+        return;
       }
+      const url = getSupportedPastedUrl(text);
+      if (!url) {
+        showToast("仅支持飞象老师和 fbcontent.cn 的 HTTPS 链接", "warning");
+        return;
+      }
+      await processPastedLink(url);
+    } catch (err) {
+      showToast("无法读取剪贴板，请允许权限或使用 Ctrl/⌘+V", "warning");
     }
   });
 
   // =====================================================================
   // Wire Up Events
   // =====================================================================
+  bindLinkContextMenu(document);
+  window.addEventListener("blur", hideLinkContextMenu);
+  window.addEventListener("resize", hideLinkContextMenu);
+
   setupDragAndDrop();
 
   btnSelectFile.onclick = openFilePicker;
