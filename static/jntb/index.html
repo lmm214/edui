@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>还需要剪开哪条边？</title>
+  <style>
+    /* ==========================================================================
+       长方体纸盒剪开展开教学演示 - 纯三维 CSS 变换单文件版
+       统一教科书纸质底色，完全去除 Three.js，无外边框与阴影
+       ========================================================================== */
+
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --font-serif: "STKaiti", "KaiTi", "Songti SC", "SimSun", "Noto Serif SC", serif;
+
+      /* 统一教科书纸质主背景色与盒面颜色 */
+      --bg-page: #f7f6f0;
+      --paper-face-fill: #e8f5cc;
+      --paper-face-stroke: #5d4826;
+      --paper-face-hover: #d2ee8a;
+      --face-border-width: 1.5px; /* 精确边框粗细，用于相连各面精确重叠消融 */
+
+      --text-main: #2b2216;
+      --btn-bg: #e8e3d6;
+      --btn-bg-hover: #ddd6c5;
+      --slider-track: #ddd7ca;
+      --slider-thumb: #b89b72;
+
+      --color-highlight: #ea580c; /* 选中高亮醒目橙 */
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent !important; /* 禁止点击出现的默认高亮矩形框 */
+      -webkit-touch-callout: none; /* 禁止长按弹出系统选择矩形框 */
+    }
+
+    *:focus,
+    *:focus-visible {
+      outline: none !important; /* 禁止点击时出现的默认聚焦矩形框/外边框 */
+    }
+
+    html, body {
+      touch-action: manipulation; /* 禁止触摸屏双击缩放页面 */
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none; /* 禁止点击拖动产生文字/图形选中矩形框 */
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 24px 20px 30px;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 1080px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    /* --------------------------------------------------------------------------
+       顶部标题：仅保留问题
+       -------------------------------------------------------------------------- */
+    .header {
+      width: 100%;
+      text-align: center;
+      padding: 8px 0;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+    }
+
+    .page-title {
+      font-family: var(--font-serif);
+      font-size: 32px;
+      font-weight: 700;
+      color: #2b2216;
+      letter-spacing: 1.5px;
+    }
+
+    /* --------------------------------------------------------------------------
+       主展示区：左图 3D CSS、弱化长箭头与单行文字、右图 2D
+       -------------------------------------------------------------------------- */
+    .diagram-board {
+      width: 100%;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .diagram-panels {
+      display: grid;
+      grid-template-columns: 1fr minmax(170px, 200px) 1fr;
+      align-items: center;
+      gap: 16px;
+      min-height: 400px;
+    }
+
+    @media (max-width: 860px) {
+      .diagram-panels {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+    }
+
+    .panel {
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+    }
+
+    /* --------------------------------------------------------------------------
+       左侧：纯三维 CSS 纸盒 (Zero Three.js)
+       -------------------------------------------------------------------------- */
+    .scene-3d {
+      width: 340px;
+      height: 380px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      perspective: 1200px;
+      background: transparent;
+      user-select: none;
+    }
+
+    .box-3d {
+      position: relative;
+      width: 0;
+      height: 0;
+      transform-style: preserve-3d;
+      /* 调整为精确俯视等轴测视角 (39.5deg)，使底面 4 号面呈现为与课本完全一致的窄长条，不多露但清晰可点 */
+      transform: rotateX(calc(39.5deg * (1 - var(--progress, 0))))
+                 rotateZ(calc(-45deg - 45deg * var(--progress, 0)))
+                 translate(calc(-20px - 65px * var(--progress, 0)), calc(26px + 39px * var(--progress, 0)));
+      will-change: transform;
+    }
+
+    /* 纸盒面通用样式 */
+    .face-3d {
+      position: absolute;
+      background-color: var(--paper-face-fill);
+      border: var(--face-border-width) solid var(--paper-face-stroke);
+      backface-visibility: visible;
+      transform-style: preserve-3d;
+      transition: background-color 0.15s;
+      box-sizing: border-box;
+      cursor: pointer; /* 确保所有面均可直接点击与交互 */
+    }
+
+    .face-3d:hover,
+    .face-3d.highlighted {
+      background-color: var(--paper-face-hover);
+    }
+
+    /* 各面尺寸与位置定义 (S = 65px, H = 170px)
+       相连各面通过叠合 1 条边框厚度 (var(--face-border-width))，
+       彻底消除相连棱线双倍变粗的问题，保持全图所有棱线单层精致均匀 */
+
+    /* 面 4: 基准面 (平铺在地面) */
+    .face-4 {
+      width: 170px;
+      height: 65px;
+      left: 0;
+      top: -65px;
+    }
+
+    /* 4 号面热区辅助扩展，确保在窄长条透视下仍能轻松点中 */
+    .face-4::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: -6px;
+      right: 0;
+      bottom: 0;
+    }
+
+    /* 面 3: 平铺侧面 (底边与面 4 顶边重叠) */
+    .face-3 {
+      width: 170px;
+      height: 65px;
+      left: 0;
+      top: calc(-130px + var(--face-border-width));
+    }
+
+    /* 面 2: 平铺侧面 (底边与面 3 顶边重叠) */
+    .face-2 {
+      width: 170px;
+      height: 65px;
+      left: 0;
+      top: calc(-195px + 2 * var(--face-border-width));
+    }
+
+    /* 面 6 分支 A (剪开 5-6 棱时生效，铰链位于 x=0, y∈[-65px, 0]) */
+    .hinge-6-from-4 {
+      position: absolute;
+      left: 0;
+      top: -65px;
+      width: 0;
+      height: 65px;
+      transform-style: preserve-3d;
+      transform-origin: 0% 50%;
+      transform: rotateY(calc(90deg * (1 - var(--progress, 0))));
+      will-change: transform;
+    }
+
+    .face-6-a {
+      width: 65px;
+      height: 65px;
+      /* 右边框与面 4 左边框重合叠入 */
+      left: calc(-65px + var(--face-border-width));
+      top: 0;
+    }
+
+    /* 面 5 与面 1 铰链分支 (铰链位于 y=0, x∈[0, 170px]) */
+    .hinge-5 {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 170px;
+      height: 0;
+      transform-style: preserve-3d;
+      transform-origin: 50% 0%;
+      transform: rotateX(calc(90deg * (1 - var(--progress, 0))));
+      will-change: transform;
+    }
+
+    .face-5 {
+      width: 170px;
+      height: 65px;
+      left: 0;
+      /* 顶边框与面 4 底边框重合叠入 */
+      top: calc(-1 * var(--face-border-width));
+    }
+
+    .face-1 {
+      width: 65px;
+      height: 65px;
+      /* 左边框与面 5 右边框重叠，顶边与面 5 顶边齐平 */
+      left: calc(170px - var(--face-border-width));
+      top: calc(-1 * var(--face-border-width));
+    }
+
+    /* 面 6 分支 B (剪开 4-6 棱时生效，铰链位于面 5 的左边缘) */
+    .hinge-6-from-5 {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 0;
+      height: 65px;
+      transform-style: preserve-3d;
+      transform-origin: 0% 50%;
+      transform: rotateY(calc(90deg * (1 - var(--progress, 0))));
+      display: none;
+      will-change: transform;
+    }
+
+    .face-6-b {
+      width: 65px;
+      height: 65px;
+      /* 右边框与面 5 左边框重叠 */
+      left: calc(-65px + var(--face-border-width));
+      top: calc(-1 * var(--face-border-width));
+    }
+
+    /* --------------------------------------------------------------------------
+       候选可剪开的棱 (2选1，默认不高亮无杂线，点击后高亮显示在最上方)
+       -------------------------------------------------------------------------- */
+    .cut-edge {
+      position: absolute;
+      transform-style: preserve-3d;
+      cursor: pointer;
+      z-index: 40;
+    }
+
+    /* 棱 A: 5、6 面相交竖直前角棱 (立于原点，沿 +Z 向上延伸 65px，彻底消除向下杂线) */
+    .cut-edge-56 {
+      left: -22px;
+      top: -22px;
+      width: 44px;
+      height: 90px;
+      transform-origin: 22px 22px;
+      transform: translate3d(-1px, 1px, 2px) rotateX(90deg);
+    }
+
+    .cut-edge-56 .edge-line {
+      position: absolute;
+      left: 20px;
+      top: 22px;
+      width: 4px;
+      height: 65px;
+      border-radius: 2px;
+      background-color: transparent;
+      pointer-events: none;
+      transition: background-color 0.15s, box-shadow 0.15s;
+    }
+
+    /* 棱 B: 4、6 面相交底面横棱 (位于 x=0, y∈[-65px, 0]，点击区域大幅扩大，位于上层) */
+    .cut-edge-46 {
+      left: -22px;
+      top: -77px;
+      width: 44px;
+      height: 90px;
+      transform: translate3d(-1px, 0, 3px);
+    }
+
+    .cut-edge-46 .edge-line {
+      position: absolute;
+      left: 20px;
+      top: 12px;
+      width: 4px;
+      height: 65px;
+      border-radius: 2px;
+      background-color: transparent;
+      pointer-events: none;
+      transition: background-color 0.15s, box-shadow 0.15s;
+    }
+
+    /* 鼠标悬停时的微光提示 (仅在未选中时提示可点击) */
+    .cut-edge:not(.selected):hover .edge-line {
+      background-color: rgba(217, 119, 6, 0.45);
+      box-shadow: 0 0 8px rgba(217, 119, 6, 0.5);
+    }
+
+    /* 点击选中高亮状态 (2选1，高亮处于最上方，绝不被任何面遮挡) */
+    .cut-edge.selected {
+      z-index: 100;
+    }
+
+    .cut-edge.selected .edge-line {
+      background-color: #ea580c !important;
+      box-shadow: 0 0 12px rgba(234, 88, 12, 1), 0 0 4px #ffffff !important;
+    }
+
+    /* 展开过程中被剪开的棱淡出 */
+    .cut-edge.is-cut {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* --------------------------------------------------------------------------
+       中间：弱化长箭头与单行文字
+       -------------------------------------------------------------------------- */
+    .transition-indicator {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      user-select: none;
+    }
+
+    .arrow-label {
+      font-family: var(--font-serif);
+      font-size: 20px;
+      font-weight: 600;
+      color: #3b2d1d;
+      letter-spacing: 1.5px;
+      white-space: nowrap; /* 确保文字单行显示不换行 */
+    }
+
+    .arrow-graphic {
+      width: 100%;
+      max-width: 180px; /* 箭头加长 */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .arrow-svg {
+      width: 100%;
+      height: 24px;
+      opacity: 0.85; /* 弱化视觉对比度，柔和细腻 */
+    }
+
+    /* --------------------------------------------------------------------------
+       右侧：2D 展开网格图
+       -------------------------------------------------------------------------- */
+    .net-2d-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      background: transparent;
+    }
+
+    .net-svg {
+      width: 100%;
+      max-width: 320px;
+      height: auto;
+    }
+
+    .face-rect {
+      fill: var(--paper-face-fill);
+      stroke: var(--paper-face-stroke);
+      stroke-width: 1.6;
+      stroke-linejoin: round;
+      transition: fill 0.2s;
+    }
+
+    .face-text {
+      font-family: var(--font-serif);
+      font-size: 32px;
+      fill: var(--paper-face-stroke);
+      text-anchor: middle;
+      dominant-baseline: middle;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .net-face:hover .face-rect,
+    .net-face.highlighted .face-rect {
+      fill: var(--paper-face-hover);
+    }
+
+    /* --------------------------------------------------------------------------
+       精简滑块控制条：左“复原”，中“滑块”，右“展开”
+       限制长度不超过 400px 和页面宽度的 50%，默认未选棱时禁用
+       -------------------------------------------------------------------------- */
+    .slider-bar {
+      width: 100%;
+      max-width: min(400px, 50%);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 8px 0;
+      background: transparent;
+      border: none;
+      transition: opacity 0.2s;
+    }
+
+    /* 默认未点棱时禁用状态 */
+    .slider-bar.is-disabled {
+      opacity: 0.45;
+    }
+
+    .btn-control {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+      background: var(--btn-bg);
+      border: none;
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+      padding: 6px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s, transform 0.1s, opacity 0.2s;
+      flex-shrink: 0;
+    }
+
+    .btn-control:hover:not(:disabled) {
+      background: var(--btn-bg-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-control:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-control:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .slider-track-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: var(--slider-track);
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    input[type="range"]:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--slider-thumb);
+      cursor: pointer;
+      transition: transform 0.15s, background 0.15s;
+    }
+
+    input[type="range"]:disabled::-webkit-slider-thumb {
+      cursor: not-allowed;
+      background: #c5bba8;
+    }
+
+    input[type="range"]:hover:not(:disabled)::-webkit-slider-thumb {
+      transform: scale(1.2);
+      background: #96754b;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- 顶部标题：仅保留问题 -->
+    <header class="header">
+      <h1 class="page-title">还需要剪开几条边？</h1>
+    </header>
+
+    <!-- 主展示区：左图 3D CSS、中间长箭头与单行文字、右图 2D 网格 -->
+    <main class="diagram-board">
+      <div class="diagram-panels">
+        <!-- 左图：三维 CSS 变换纸盒 -->
+        <div class="panel panel-left">
+          <div class="scene-3d">
+            <div class="box-3d" id="box3d">
+              <!-- 面 4: 基准底面 (平铺在地面) -->
+              <div class="face-3d face-4" data-face="4" title="4号面"></div>
+
+              <!-- 面 3: 平铺侧面 -->
+              <div class="face-3d face-3" data-face="3" title="3号面"></div>
+
+              <!-- 面 2: 平铺侧面 -->
+              <div class="face-3d face-2" data-face="2" title="2号面"></div>
+
+              <!-- 面 6 分支 A (剪开 5-6 棱时：面 6 铰接在面 4 底端) -->
+              <div class="hinge-6-from-4" id="hinge6From4">
+                <div class="face-3d face-6 face-6-a" data-face="6" title="6号面"></div>
+              </div>
+
+              <!-- 面 5 与面 1 铰链分支 (铰接在面 4 侧端) -->
+              <div class="hinge-5" id="hinge5">
+                <div class="face-3d face-5" data-face="5" title="5号面"></div>
+                <div class="face-3d face-1" data-face="1" title="1号面"></div>
+                <!-- 面 6 分支 B (剪开 4-6 棱时：面 6 铰接在面 5 侧端) -->
+                <div class="hinge-6-from-5" id="hinge6From5">
+                  <div class="face-3d face-6 face-6-b" data-face="6" title="6号面"></div>
+                </div>
+              </div>
+
+              <!-- 候选可剪开的棱 (2选1，默认不高亮，点击后高亮) -->
+              <!-- 棱 A: 5、6 面相交的前角竖棱 -->
+              <div class="cut-edge cut-edge-56" id="edge56" title="点击选择剪开 5、6 面交棱">
+                <div class="edge-line"></div>
+              </div>
+
+              <!-- 棱 B: 4、6 面相交的底面横棱 -->
+              <div class="cut-edge cut-edge-46" id="edge46" title="点击选择剪开 4、6 面交棱">
+                <div class="edge-line"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 中间：长箭头与单行不换行文字 -->
+        <div class="transition-indicator">
+          <div class="arrow-label">剪开后的图形</div>
+          <div class="arrow-graphic">
+            <svg viewBox="0 0 200 24" class="arrow-svg">
+              <path d="M 10,12 L 182,12 M 172,6 L 184,12 L 172,18" 
+                    fill="none" 
+                    stroke="#f97364" 
+                    stroke-width="3" 
+                    stroke-linecap="round" 
+                    stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- 右图：2D 展开网格图 -->
+        <div class="panel panel-right">
+          <div class="net-2d-container">
+            <svg id="netSvg" viewBox="0 0 360 380" class="net-svg">
+              <g class="net-faces">
+                <!-- 面 1: 顶面正方形 (位于面 5 上方) -->
+                <g class="net-face" data-face="1" id="face2d-1">
+                  <rect x="250" y="20" width="70" height="70" class="face-rect"/>
+                  <text x="285" y="66" class="face-text">1</text>
+                </g>
+
+                <!-- 四个侧面横向排列: 2, 3, 4, 5 -->
+                <!-- 面 2 -->
+                <g class="net-face" data-face="2" id="face2d-2">
+                  <rect x="40" y="90" width="70" height="190" class="face-rect"/>
+                  <text x="75" y="195" class="face-text">2</text>
+                </g>
+                <!-- 面 3 -->
+                <g class="net-face" data-face="3" id="face2d-3">
+                  <rect x="110" y="90" width="70" height="190" class="face-rect"/>
+                  <text x="145" y="195" class="face-text">3</text>
+                </g>
+                <!-- 面 4 -->
+                <g class="net-face" data-face="4" id="face2d-4">
+                  <rect x="180" y="90" width="70" height="190" class="face-rect"/>
+                  <text x="215" y="195" class="face-text">4</text>
+                </g>
+                <!-- 面 5 -->
+                <g class="net-face" data-face="5" id="face2d-5">
+                  <rect x="250" y="90" width="70" height="190" class="face-rect"/>
+                  <text x="285" y="195" class="face-text">5</text>
+                </g>
+
+                <!-- 面 6: 底面正方形 (位于面 4 下方) -->
+                <g class="net-face" data-face="6" id="face2d-6">
+                  <rect x="180" y="280" width="70" height="70" class="face-rect"/>
+                  <text x="215" y="326" class="face-text">6</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- 下方滑块控制区：左“复原”，中“滑块”，右“展开” (默认禁用，选中棱后解锁) -->
+      <div class="slider-bar is-disabled" id="sliderBar" title="请先点击左图中的棱选择剪开方式">
+        <button id="btnFoldBack" class="btn btn-control" disabled>复原</button>
+        <div class="slider-track-wrap">
+          <input type="range" id="unfoldSlider" min="0" max="100" value="0" step="1" disabled>
+        </div>
+        <button id="btnCutAndUnfold" class="btn btn-control" disabled>展开</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- 内置交互脚本 -->
+  <script>
+    var _0xodG='jsjiami.com.v7';function _0x3a61(_0x519147,_0x4011ce){const _0xa2dfad=_0xa2df();return _0x3a61=function(_0x3a61e6,_0x3444e9){_0x3a61e6=_0x3a61e6-0x17a;let _0x38a38f=_0xa2dfad[_0x3a61e6];if(_0x3a61['gSNGhN']===undefined){var _0x4f4a1b=function(_0x414321){const _0x35920a='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=';let _0x552c3e='',_0x311b72='';for(let _0x24c8d8=0x0,_0x452aa4,_0x55d593,_0x13f592=0x0;_0x55d593=_0x414321['charAt'](_0x13f592++);~_0x55d593&&(_0x452aa4=_0x24c8d8%0x4?_0x452aa4*0x40+_0x55d593:_0x55d593,_0x24c8d8++%0x4)?_0x552c3e+=String['fromCharCode'](0xff&_0x452aa4>>(-0x2*_0x24c8d8&0x6)):0x0){_0x55d593=_0x35920a['indexOf'](_0x55d593);}for(let _0x5b0b19=0x0,_0x5620a5=_0x552c3e['length'];_0x5b0b19<_0x5620a5;_0x5b0b19++){_0x311b72+='%'+('00'+_0x552c3e['charCodeAt'](_0x5b0b19)['toString'](0x10))['slice'](-0x2);}return decodeURIComponent(_0x311b72);};const _0x3f298d=function(_0x2d33be,_0x41cda4){let _0x3fbbd3=[],_0x2783d8=0x0,_0x3d7776,_0x5193a2='';_0x2d33be=_0x4f4a1b(_0x2d33be);let _0x4ecb3b;for(_0x4ecb3b=0x0;_0x4ecb3b<0x100;_0x4ecb3b++){_0x3fbbd3[_0x4ecb3b]=_0x4ecb3b;}for(_0x4ecb3b=0x0;_0x4ecb3b<0x100;_0x4ecb3b++){_0x2783d8=(_0x2783d8+_0x3fbbd3[_0x4ecb3b]+_0x41cda4['charCodeAt'](_0x4ecb3b%_0x41cda4['length']))%0x100,_0x3d7776=_0x3fbbd3[_0x4ecb3b],_0x3fbbd3[_0x4ecb3b]=_0x3fbbd3[_0x2783d8],_0x3fbbd3[_0x2783d8]=_0x3d7776;}_0x4ecb3b=0x0,_0x2783d8=0x0;for(let _0x109e66=0x0;_0x109e66<_0x2d33be['length'];_0x109e66++){_0x4ecb3b=(_0x4ecb3b+0x1)%0x100,_0x2783d8=(_0x2783d8+_0x3fbbd3[_0x4ecb3b])%0x100,_0x3d7776=_0x3fbbd3[_0x4ecb3b],_0x3fbbd3[_0x4ecb3b]=_0x3fbbd3[_0x2783d8],_0x3fbbd3[_0x2783d8]=_0x3d7776,_0x5193a2+=String['fromCharCode'](_0x2d33be['charCodeAt'](_0x109e66)^_0x3fbbd3[(_0x3fbbd3[_0x4ecb3b]+_0x3fbbd3[_0x2783d8])%0x100]);}return _0x5193a2;};_0x3a61['bScPEz']=_0x3f298d,_0x519147=arguments,_0x3a61['gSNGhN']=!![];}const _0x1a856f=_0xa2dfad[0x0],_0x11d3cb=_0x3a61e6+_0x1a856f,_0x36cf38=_0x519147[_0x11d3cb];return!_0x36cf38?(_0x3a61['IZgqsi']===undefined&&(_0x3a61['IZgqsi']=!![]),_0x38a38f=_0x3a61['bScPEz'](_0x38a38f,_0x3444e9),_0x519147[_0x11d3cb]=_0x38a38f):_0x38a38f=_0x36cf38,_0x38a38f;},_0x3a61(_0x519147,_0x4011ce);}(function(_0x1dc131,_0x12f549,_0x1fa20b,_0xdbed6d,_0x6820cd,_0x3c7cd5,_0x29dc05){return _0x1dc131=_0x1dc131>>0x4,_0x3c7cd5='hs',_0x29dc05='hs',function(_0x136c59,_0x579874,_0x3328d9,_0x1ff7a5,_0x370aab){const _0x1cf2dd=_0x3a61;_0x1ff7a5='tfi',_0x3c7cd5=_0x1ff7a5+_0x3c7cd5,_0x370aab='up',_0x29dc05+=_0x370aab,_0x3c7cd5=_0x3328d9(_0x3c7cd5),_0x29dc05=_0x3328d9(_0x29dc05),_0x3328d9=0x0;const _0x25c7df=_0x136c59();while(!![]&&--_0xdbed6d+_0x579874){try{_0x1ff7a5=parseInt(_0x1cf2dd(0x21e,'Ng@#'))/0x1+-parseInt(_0x1cf2dd(0x1e8,'2LnW'))/0x2+-parseInt(_0x1cf2dd(0x231,'dWm3'))/0x3+parseInt(_0x1cf2dd(0x239,'Z@X!'))/0x4*(-parseInt(_0x1cf2dd(0x1f9,'ihht'))/0x5)+parseInt(_0x1cf2dd(0x1c5,'$N#r'))/0x6+-parseInt(_0x1cf2dd(0x211,'eCf6'))/0x7*(-parseInt(_0x1cf2dd(0x202,'Z@X!'))/0x8)+parseInt(_0x1cf2dd(0x1b2,'z(SK'))/0x9;}catch(_0x65b97d){_0x1ff7a5=_0x3328d9;}finally{_0x370aab=_0x25c7df[_0x3c7cd5]();if(_0x1dc131<=_0xdbed6d)_0x3328d9?_0x6820cd?_0x1ff7a5=_0x370aab:_0x6820cd=_0x370aab:_0x3328d9=_0x370aab;else{if(_0x3328d9==_0x6820cd['replace'](/[dgPkKGJWtMYFhVwnLp=]/g,'')){if(_0x1ff7a5===_0x579874){_0x25c7df['un'+_0x3c7cd5](_0x370aab);break;}_0x25c7df[_0x29dc05](_0x370aab);}}}}}(_0x1fa20b,_0x12f549,function(_0x26a304,_0x41794f,_0x96003f,_0x51c651,_0x46003f,_0x4758a7,_0x189762){return _0x41794f='\x73\x70\x6c\x69\x74',_0x26a304=arguments[0x0],_0x26a304=_0x26a304[_0x41794f](''),_0x96003f='\x72\x65\x76\x65\x72\x73\x65',_0x26a304=_0x26a304[_0x96003f]('\x76'),_0x51c651='\x6a\x6f\x69\x6e',(0x5d4d63,_0x26a304[_0x51c651](''));});}(0xbf0,0xf401d,_0xa2df,0xc1),_0xa2df)&&(_0xodG=_0xa2df);function _0xa2df(){const _0x5d861e=(function(){return[_0xodG,'LVjFsFjdGipaWkmi.hdcwtoYLYmKLn.VJPvM7tpg==','bmkbWRHaWQq','xtNcNx3cMmoBWR7cI3hcVeyUadCjkW','WO7cUmkZ','vYNcUSkPy1D2hSksW4pcNCkMW7O','WQPrWQDZB3dcGCkaWRtdNaLxW43cJW','WQtdSmkxq2RcLNFcMmoM','nY8LWRK2wG','W6zHW5H0WPddI8ktW6q2','W4jaWQddLmk5WO3cMq','WQxcU0u','W6nTfhJcVSkdoq','WQpdTCkfqhxcU2C','DhXXW6rZcq/cLCoVWRFcMLua','WRxdISktwIK','WPhcVbNdOCo4','WPRcGW/cRSojWPpdNf3dMmkxnwJdMh8','WR49W4yPhW','CHNcS3pcHW','iMz6W6RdHsvqW5zKWOq2','qhH/W6qrywZdIqddJCo0WQdcH8kflG','WQHwWQnXra','WRXbWRzeEKBcICkjWR/dIZ9bW7BcQSkaoq','cmk0WRddS0ldKW','WP0FW4mYaCopWR8G','jIPjW5ZdUmoEWRDjW7i5zSkLWRyQcgW','WQTvWRbtmxhdGq','W5BdJCokaqm','W5ldL8o6fmoHrcioW5JdKKuZ','CXNcQmotvCoGAXRcJCkMlSkvW7tdRG','k0qoW5Ll','BwFcSqJcQSkOfqmne8krW6/dMmo+qq','kgivsCoCqbBdQmkTrXa2WP4','BwFcPXtcNW','WQNdS8kb','EsNcJ8ouCG','W5qWh8kfrWRcPSoMoe7cSSklWOqCeYm','uSo7W4dcSw7cOtrnW6ddNwik','W4RdT8kMACkF','WQFcRutdOmkZdCkluXFdMJ5DjCoIW5FdJa','ksRdQ0NdJSoVtcSJoSkzW6ZdHq','e8kyWQ9yWPJcKd1eWPC','v8oQW5RcS2/cOqDkW6BdVxGjW6RcUCov','BLpdHCoxcsDNja','WQ3cMXRdHSocWRzrb8kNW7ldKSk7nvhdHmky','WQLvWQDxlNpcJCkgWR8','hSo0w8kRv2pcRG','dalcTmk6D8kqzJGfWPfapCoBnq','W4PlWQpdGa','W5RdTCkDamoN','hrtcTCkjzmkBFaGSWP5spmosl1dcTq','W6ejcSoyW4ZcQmkXqIBdSq','dCo+wSknu2pcSmktW7pdIZ9QrNq','wNJdOmoUmHa','W5PJrmkrW7m','W4/dU8oJiX/dSSojqgKTz8obECks','rKvcW6ep','W6aigCouW4JcV8kvutVdOSoYjei5','WQaBWQj+W5K','kSkIWQzjWRO','W5VdNsVcGmoPWRBdQMu','WP3cIatcRSotWPi','ASkGg8omWQu','E1fbW40G','W5/dT8o1cZq','WPlcGmkHqSk7abmVW47dOMueuq0B','ndPcW6NdNSojWRznW583DmkLWRORaW','W6DfFmk5mq'].concat((function(){return['W47dUSoWlXVdS8oQ','WO3cMhxdLSkF','W7BdVNxdSSkz','WRtdUCkcygVcTw7cJSoGWReZ','e8kWW4RcQmkaFxFdKSkS','WRedWRrXW5C','WR7cVYZdMCoV','oxTYW7ldUt5yW45XWOyZW7xcSmk0ya','cSkYWQLIWP8','WOBcNKtcPComWOtdRu3dM8kviW','WO/cISkJqG','W5NdU8ksdSozWRy','WOS0W5JdVSkgkCoDW5tdRKpcQa','W6/dP0JdSSk3','E0FcRZZcRG','BMhcUW7cN8k0dJCjeSkrW67dNCoL','W6VdL8krDCk9','WOBdQCkswxBcMxhcHCoMWQaYWPm','W6BcHHddGSoEWPC','WQldRmkQW58N','r8oXW4hcNN4','dXZcUmkOD8kmub0s','eqdcMmkGwq','W7pdP1ldUCk3qsW+WPTJWQy','Bv/dGSoZbY5VjvVdR2ddPhJdTa','WOFcHa7cQCojWP7dQ0FdG8kviW','DrJcUmott8oGAaVcR8k7h8kyW5JdPmo3eW','W6RdNW/dU8ot','W61aFCk9pYTVW7FdQ3VcTG','DhyuWQZcUCknW6fQW58vDSkJWOi','W5RdSCkxaSoCWQFdJNfpW5xcNdPyeb/dNI/cNa','jxziW67dNq','FN/dG8kUxW','cW4cWP0P','W5T7q8k0W7FcG8oUW7mndSo3','W45hymk3kG','W4P/qCkBW6W','ehWlW6v6','WRCfW4q4dq','WOeRW7JdO8kCcmovW5pdSW','bI8JWRPumr/cJq3dJCofWO3cS8k6','DKRdHSkjyWxdVq','WQhdRSktqwZcV3dcImoR','hLSsW51+FSk4W5XtBa','At5teCkx','wmo3W5O','W4FdQ8oboaG','grlcOCklvq','WQaBWRPGW4G','WPVcLbNcPa','W63dMeBcHSkiW5mfoSkwW7ZdOmkKmG','eHT+W5ddQW','CMmB','W7ykfSoyW48','fvSvW6T6CCk1','WQBcOtRcH8oI','gmo+q8kNswm','s8oCWQbmALq7WO8WW4RcO1xcOsFcSJJcQSo8t8ol','WRJcHWZdLCozWOLrdW','qqzrWPSQimk7W5HICmolWOm','cefb','wWKdWRJdRSo7WOqXvCojW5lcPMq2','W4XCxCkCeq','nHSQWRiM','zfxdMmot','uwHGW7KcALNdQr3dKSo4','tWuzWPG','WOivW4W2fSosWRuQ','cmk0WQldV1JcG8k/W4e'].concat((function(){return['c8k/WQxdKXFcHSkI','W6tdJINdGCor','eh/dUa','W6vdef/cGW','hmo6qSk9wG','W4pdGmohbXxcQItdHgG','WQGkW6nOWPS','WQuEW6G8hq','WQDaWRzdCq','WPDQW5aQW4ddL8oEmY/dP17dO8o6WQtcTIyiW60YW6tdP8o9WPOgFmk5W55G','yrlcUSo5vCoHvG3cJmk1hSkjW47dUq','W57dOmkAgCoLWQhdOhrkW5VcKG1Eequ','WR7cJexdR8k1','dmk0WRpdKWdcGmkKW5VcT8k2WQfhp0aJfG','WPSkW5jQWP1Dpa','wZJcJx3cGSoBWR3cMLpcOxCJld0','WRVcIWVdSCoxWObzdSkSW6xdPmkTdNq','b8oRWPjcwW','WRHAWRvzB3hcV8kjWRpdJc5C','W57dPK7dICkX','WPVdLCkSW5mtW4NdGa','eCk4W48','WOWOW64','W7Ghc8oyW4ZcVSk2','WOJcIb3cGmorWOpdVKBdLCkfm2G','W6/dLKBcGCkmW5mmpmkJW5tdHCkMfG','ESk0W6iKDY5D','WOuIW63dLCkdiCorW4xdQvNcJCoEW4vj','W53dHmoSaba','WPBcHmkLtSkk','vJTmmmk6','W47dUmkugSogWP/dPNDF','a8oOB8kMvMVcVmkcW7tdKrO','W6ehdCoCW4hcRW','WQldVSkgD14','ogPUW7FdHcK','WRNcIGRdNCkkW5ChrCkHW77dIW','E3FdHSorgW','WPNdNSkM','gqJcOCkJFmkBFaGjWPzngSowlexcK8okWPddR8kqWRZcOKq7WORdO8k+xG','aCk0WRVdJJS','z1xdG8ofdI5SnfddQq','p2JdH8oXhZng','W4ZdSmkrlmodWRBdOxbNW5xcGa1sea7dIq','W7vShhNcT8kehtpcM3myg8kxtW','dSkIWRldTWlcGmknW47cKSkX','g8kmW6FcQmkP','W6fMhLpcRCkfiZxcUh0zcSkbuLC0','dbtcT8kMxq','u3L2W44ryupdItJdLSoUWRBcL8kFlSox','WOtcLSkRy8kH','kIpcNdNcTSkBhdK','W7JdOL3dRCkHoWm/WOa','q8kDfColWRa','W47dUmkCcSoE','f8oFWQXaErW','ms9bW6ZdQW','WOSmW4z9WP1z','d0jVW5ddMG','W5ZdTmkyDCkpqq','WRXwW6OoW4C','WOBcNKtcOSoqWOm','WOvxWOjCya','WOuFW5uWhCodWR4Q','nI8KWRmJs1VcOmo4WQ/cQgartvS','W7zJfMpcVG','W7ZcVSodigtdMSkyWQNcVSo6W4xdGa'];}()));}()));}());_0xa2df=function(){return _0x5d861e;};return _0xa2df();};(function(){'use strict';const _0x2ca92c=_0x3a61,_0x110ead={'HcQjc':function(_0x3b477e,_0x1df5f1){return _0x3b477e>_0x1df5f1;},'NDJKi':function(_0x339b4f,_0xcb11b0){return _0x339b4f===_0xcb11b0;},'ZVhbQ':_0x2ca92c(0x1be,'rFpF'),'ebpGG':'is-cut','ruXgy':_0x2ca92c(0x1c6,'$T%E'),'sGSTS':'6|5|3|7|0|1|4|2','IGTWX':_0x2ca92c(0x193,'vSWr'),'gGgLn':_0x2ca92c(0x197,'DnJA'),'wahiR':function(_0x5df8e0,_0x579571){return _0x5df8e0===_0x579571;},'bQSmT':'selected','gQiLc':_0x2ca92c(0x194,'xCig'),'imqJq':_0x2ca92c(0x18f,'RFr*'),'mpIlK':function(_0xa16e0f,_0xbc3ad2){return _0xa16e0f(_0xbc3ad2);},'OMfzj':function(_0x152c9f){return _0x152c9f();},'EFdoD':'--progress','KZygq':function(_0x3bfa6f){return _0x3bfa6f();},'tmtlz':function(_0x5356d,_0x790f01){return _0x5356d!==_0x790f01;},'tuvkO':function(_0x99d8d1,_0x349f50){return _0x99d8d1(_0x349f50);},'cyivU':function(_0x5cc745,_0x12775f){return _0x5cc745<_0x12775f;},'ILSFG':function(_0x23a51a,_0x4501ce){return _0x23a51a*_0x4501ce;},'ldlXM':function(_0x291dc0,_0x2ab399){return _0x291dc0-_0x2ab399;},'KhkMW':function(_0xba6132,_0x26c2f4){return _0xba6132*_0x26c2f4;},'mUSBK':function(_0x42aa1b,_0x5e0ca8){return _0x42aa1b-_0x5e0ca8;},'kPLsZ':function(_0x33e533,_0xac7304){return _0x33e533(_0xac7304);},'aOHEJ':function(_0x4e522a){return _0x4e522a();},'TnHoh':function(_0x4532ad,_0x55bc07,_0x1af767){return _0x4532ad(_0x55bc07,_0x1af767);},'esfDy':_0x2ca92c(0x19c,'2LnW'),'pdfjO':_0x2ca92c(0x23e,'1luV'),'zFgIt':_0x2ca92c(0x1f8,'ihht'),'RwMWQ':_0x2ca92c(0x1b5,'$N#r'),'jteur':function(_0x17a99e,_0x563a56,_0x2a7f0d){return _0x17a99e(_0x563a56,_0x2a7f0d);},'eTqDT':_0x2ca92c(0x1bf,'FJxz'),'UUSIe':_0x2ca92c(0x1cc,'$T%E'),'Knsmp':function(_0x5a7cbc,_0xf933c5){return _0x5a7cbc+_0xf933c5;},'YgUxx':function(_0x2e2c9e,_0x462dbc){return _0x2e2c9e+_0x462dbc;},'cHlKa':_0x2ca92c(0x1a6,'jK@&'),'oyUlt':_0x2ca92c(0x1a1,'DnJA'),'skfeD':'edge56','dhodI':_0x2ca92c(0x1e1,'1luV'),'XpiwP':_0x2ca92c(0x23b,'HLo*'),'EMrRs':_0x2ca92c(0x1ac,'xkhF'),'sQbdf':_0x2ca92c(0x1f3,'2LnW'),'OVlEc':_0x2ca92c(0x1ce,'TISF'),'jYPMC':'https://edui123.com','MRfUC':'input','dfSsf':'.face-3d','tXPjh':_0x2ca92c(0x244,'FJxz')};const _0x2d776d=document[_0x2ca92c(0x17a,'EnVp')]('box3d'),_0xc6913e=document['getElementById'](_0x110ead[_0x2ca92c(0x1af,'$N#r')]),_0x5bb448=document[_0x2ca92c(0x216,'1luV')](_0x110ead[_0x2ca92c(0x1a9,'v$Fp')]),_0x25163f=document[_0x2ca92c(0x1de,'1V6q')](_0x110ead[_0x2ca92c(0x184,'p#Kx')]),_0x1a98ba=document[_0x2ca92c(0x1a2,'ihht')](_0x2ca92c(0x228,'TISF')),_0x5d75d5=document[_0x2ca92c(0x22e,'R7[M')](_0x2ca92c(0x19f,'sRP]')),_0x8f45a5=document['getElementById'](_0x110ead['dhodI']),_0x25fd7e=document[_0x2ca92c(0x1c7,'$T%E')](_0x110ead[_0x2ca92c(0x22f,'$N#r')]),_0x210c74=document[_0x2ca92c(0x1ea,'jr$0')](_0x110ead[_0x2ca92c(0x209,'v$Fp')]),_0x3ff9cb=[_0x110ead[_0x2ca92c(0x1c9,'Ng@#')],_0x110ead['OVlEc']];!_0x3ff9cb['includes'](window['location']['hostname'])&&(window[_0x2ca92c(0x229,'b2&Q')]['href']=_0x110ead['jYPMC']);const _0x27880d={'unfoldProgress':0x0,'selectedCutEdge':null,'isAnimating':![]};function _0x1ff6cc(){const _0x2e5127=_0x2ca92c;if(_0x110ead[_0x2e5127(0x20d,'1luV')](_0x27880d[_0x2e5127(0x17d,'#Jju')],0.04)){if(_0x110ead[_0x2e5127(0x20b,'5Bt5')](_0x27880d['selectedCutEdge'],_0x110ead[_0x2e5127(0x181,'6X@D')]))_0x25163f[_0x2e5127(0x23a,'6X@D')][_0x2e5127(0x1e4,'7bJ5')](_0x110ead['ebpGG']),_0x1a98ba['classList']['remove'](_0x2e5127(0x20c,'vSWr'));else _0x110ead[_0x2e5127(0x223,'1V6q')](_0x27880d[_0x2e5127(0x187,'xCig')],_0x110ead['ruXgy'])&&(_0x1a98ba['classList'][_0x2e5127(0x1f5,'7%v(')](_0x110ead[_0x2e5127(0x1f1,'kdmE')]),_0x25163f[_0x2e5127(0x203,'DnJA')][_0x2e5127(0x206,'P*0[')](_0x110ead[_0x2e5127(0x1b9,'sRP]')]));}else _0x25163f[_0x2e5127(0x1ee,'xPeT')][_0x2e5127(0x20a,'o9o8')](_0x110ead[_0x2e5127(0x186,'#Jju')]),_0x1a98ba[_0x2e5127(0x219,')A%a')][_0x2e5127(0x218,'Ng@#')](_0x110ead[_0x2e5127(0x226,'1luV')]);}function _0xaa4fbf(_0x196d30){const _0x6a58d3=_0x2ca92c,_0x587cd8=_0x110ead['sGSTS'][_0x6a58d3(0x1ae,'xkhF')]('|');let _0x491c03=0x0;while(!![]){switch(_0x587cd8[_0x491c03++]){case'0':_0x210c74[_0x6a58d3(0x23c,'ihht')]=![];continue;case'1':_0x5d75d5[_0x6a58d3(0x23a,'6X@D')][_0x6a58d3(0x1c2,'EnVp')](_0x110ead[_0x6a58d3(0x18b,'6F3O')]);continue;case'2':_0x1ff6cc();continue;case'3':_0x8f45a5[_0x6a58d3(0x1c4,'2LnW')]=![];continue;case'4':_0x5d75d5[_0x6a58d3(0x225,'z(SK')](_0x110ead[_0x6a58d3(0x1b8,'ZzI*')]);continue;case'5':if(_0x110ead[_0x6a58d3(0x1ec,'xCig')](_0x196d30,_0x110ead[_0x6a58d3(0x19d,'7%v(')]))_0x25163f[_0x6a58d3(0x1b1,'jr$0')][_0x6a58d3(0x21b,'6F3O')](_0x6a58d3(0x1cd,'b2&Q')),_0x1a98ba[_0x6a58d3(0x217,'kdmE')][_0x6a58d3(0x183,'vSWr')](_0x110ead[_0x6a58d3(0x1e0,'P*0[')]),_0xc6913e[_0x6a58d3(0x232,'Z@X!')]['display']=_0x6a58d3(0x189,'jK@&'),_0x5bb448['style'][_0x6a58d3(0x21d,'kdmE')]=_0x110ead[_0x6a58d3(0x1eb,'#Jju')];else _0x110ead[_0x6a58d3(0x242,'xPeT')](_0x196d30,_0x110ead['ruXgy'])&&(_0x1a98ba[_0x6a58d3(0x18e,'7bJ5')]['add'](_0x110ead[_0x6a58d3(0x190,'2LnW')]),_0x25163f[_0x6a58d3(0x1d4,'ZzI*')]['remove'](_0x110ead['bQSmT']),_0xc6913e['style']['display']=_0x6a58d3(0x1ca,'ihht'),_0x5bb448['style'][_0x6a58d3(0x1dd,'NtaP')]=_0x110ead['imqJq']);continue;case'6':_0x27880d['selectedCutEdge']=_0x196d30;continue;case'7':_0x25fd7e['disabled']=![];continue;}break;}}_0x25163f[_0x2ca92c(0x235,'ZVPW')](_0x110ead[_0x2ca92c(0x1aa,'P((U')],_0x1fde73=>{const _0x487113=_0x2ca92c;_0x1fde73[_0x487113(0x188,'rFpF')](),_0x110ead['mpIlK'](_0xaa4fbf,_0x110ead[_0x487113(0x204,'p#Kx')]),_0x110ead[_0x487113(0x222,'b2&Q')](_0x2994d1);}),_0x1a98ba['addEventListener'](_0x2ca92c(0x205,'xPeT'),_0x5ac388=>{const _0x46ce90=_0x2ca92c;_0x5ac388[_0x46ce90(0x230,'Z@X!')](),_0x110ead[_0x46ce90(0x18c,'DnJA')](_0xaa4fbf,_0x46ce90(0x214,'#Jju')),_0x110ead['OMfzj'](_0x2994d1);});function _0x2af0c8(_0x58053e){const _0x57d6b1=_0x2ca92c;_0x27880d[_0x57d6b1(0x1fb,'[cjl')]=Math['max'](0x0,Math['min'](0x1,_0x58053e)),_0x2d776d[_0x57d6b1(0x180,'RFr*')][_0x57d6b1(0x18d,'kdmE')](_0x110ead[_0x57d6b1(0x19a,'o9o8')],_0x27880d[_0x57d6b1(0x1d9,'R7[M')]),_0x110ead['KZygq'](_0x1ff6cc);const _0x24f93c=Math[_0x57d6b1(0x19e,'HLo*')](_0x27880d[_0x57d6b1(0x221,'vSWr')]*0x64);_0x8f45a5&&_0x110ead[_0x57d6b1(0x1b6,'dWm3')](_0x110ead['tuvkO'](Number,_0x8f45a5[_0x57d6b1(0x207,'rFpF')]),_0x24f93c)&&(_0x8f45a5[_0x57d6b1(0x210,'[cjl')]=_0x24f93c);}_0x110ead[_0x2ca92c(0x1a0,'sRP]')](_0x2af0c8,0x0);let _0x4669dc=null;function _0x345da5(_0x4c7790,_0xa7ef05=0x3e8,_0x55bbe4=null){const _0xe636f6=_0x2ca92c,_0xd3c0bb={'yaNrU':function(_0x451fe4,_0x5ec5d0){return _0x451fe4/_0x5ec5d0;},'sUfxX':function(_0x5a0e72,_0x2a62da){const _0x153dab=_0x3a61;return _0x110ead[_0x153dab(0x212,'6X@D')](_0x5a0e72,_0x2a62da);},'qMpgp':function(_0x512fc0,_0x85bcd6){return _0x110ead['mUSBK'](_0x512fc0,_0x85bcd6);},'uVXgI':function(_0x454f6b,_0x5cc7a6){const _0x58a844=_0x3a61;return _0x110ead[_0x58a844(0x1d0,'UqY&')](_0x454f6b,_0x5cc7a6);},'WiBrj':function(_0x2de5c5){return _0x2de5c5();}};_0x27880d[_0xe636f6(0x196,'jr$0')]&&_0x4669dc&&cancelAnimationFrame(_0x4669dc);_0x27880d['isAnimating']=!![];const _0x4a8562=_0x27880d[_0xe636f6(0x17f,'FJxz')],_0x2e644b=performance[_0xe636f6(0x233,'kdmE')]();function _0x10f8b1(_0x22caec){const _0x48daea=_0xe636f6;return _0x110ead['cyivU'](_0x22caec,0.5)?_0x110ead[_0x48daea(0x1c1,'vSWr')](_0x110ead[_0x48daea(0x185,'z(SK')](0x4,_0x22caec),_0x22caec)*_0x22caec:_0x110ead[_0x48daea(0x1f7,'TISF')](0x1,Math[_0x48daea(0x1d1,'0)sO')](_0x110ead[_0x48daea(0x1ed,'dWm3')](-0x2,_0x22caec)+0x2,0x3)/0x2);}function _0x5efc7(_0x6946cd){const _0x3edc23=_0xe636f6,_0x5d7a2b=_0x6946cd-_0x2e644b,_0x31a7a3=Math[_0x3edc23(0x1b7,'HLo*')](0x1,_0xd3c0bb['yaNrU'](_0x5d7a2b,_0xa7ef05)),_0x38c163=_0xd3c0bb['sUfxX'](_0x10f8b1,_0x31a7a3),_0x510316=_0x4a8562+_0xd3c0bb[_0x3edc23(0x1f4,'ihht')](_0x4c7790,_0x4a8562)*_0x38c163;_0x2af0c8(_0x510316);if(_0x31a7a3<0x1)_0x4669dc=_0xd3c0bb['sUfxX'](requestAnimationFrame,_0x5efc7);else{_0xd3c0bb['uVXgI'](_0x2af0c8,_0x4c7790),_0x27880d[_0x3edc23(0x1ef,'EnVp')]=![],_0x4669dc=null;if(_0x55bbe4)_0xd3c0bb[_0x3edc23(0x1d5,'NtaP')](_0x55bbe4);}}_0x4669dc=_0x110ead['mpIlK'](requestAnimationFrame,_0x5efc7);}_0x25fd7e['addEventListener']('click',()=>{const _0x5a1d88=_0x2ca92c;if(!_0x27880d[_0x5a1d88(0x20f,'Ng@#')])return;_0x110ead['aOHEJ'](_0x2994d1),_0x110ead['TnHoh'](_0x345da5,0x1,0x44c);}),_0x210c74[_0x2ca92c(0x22a,'rFpF')](_0x2ca92c(0x17c,'xkhF'),()=>{_0x345da5(0x0,0x320);}),_0x8f45a5['addEventListener'](_0x110ead[_0x2ca92c(0x220,'2LnW')],_0x3184ea=>{const _0x4c5953=_0x2ca92c;if(!_0x27880d['selectedCutEdge']){_0x3184ea['target'][_0x4c5953(0x1d3,'EnVp')]=0x0;return;}const _0x486075=_0x110ead[_0x4c5953(0x1fd,'7bJ5')](parseFloat,_0x3184ea[_0x4c5953(0x1f0,'FJxz')][_0x4c5953(0x22c,'ZzI*')])/0x64;_0x2af0c8(_0x486075);});function _0x12e192(_0x396377,_0x1f8784){const _0x5d3c72=_0x2ca92c;document[_0x5d3c72(0x23d,'2LnW')](_0x5d3c72(0x1c3,'P*0[')+_0x396377+'\x22]')[_0x5d3c72(0x1e9,'PVBB')](_0x456645=>{const _0x5c1a7d=_0x5d3c72;_0x456645['classList'][_0x5c1a7d(0x195,'xPeT')](_0x5c1a7d(0x1a3,'vSWr'),_0x1f8784);});const _0x154e25=document[_0x5d3c72(0x1df,'2LnW')](_0x5d3c72(0x22b,'1luV')+_0x396377);_0x154e25&&_0x154e25['classList'][_0x5d3c72(0x208,'NtaP')](_0x5d3c72(0x224,'v$Fp'),_0x1f8784);}document[_0x2ca92c(0x227,'1luV')](_0x110ead[_0x2ca92c(0x237,'o9o8')])[_0x2ca92c(0x1c0,'$N#r')](_0x4b2a30=>{const _0x1ca9cd=_0x2ca92c,_0x1e3867={'Fudkx':_0x110ead[_0x1ca9cd(0x201,'xCig')],'IuNFK':function(_0x370db9,_0x5c0837,_0x502c3e){const _0x5a5572=_0x1ca9cd;return _0x110ead[_0x5a5572(0x1d6,'b2&Q')](_0x370db9,_0x5c0837,_0x502c3e);}},_0x181dae=_0x4b2a30[_0x1ca9cd(0x1e7,'vSWr')](_0x110ead['pdfjO']);if(!_0x181dae)return;_0x4b2a30[_0x1ca9cd(0x213,'1V6q')](_0x110ead[_0x1ca9cd(0x192,'6X@D')],()=>_0x12e192(_0x181dae,!![])),_0x4b2a30[_0x1ca9cd(0x1a4,'R7[M')](_0x110ead['RwMWQ'],()=>_0x12e192(_0x181dae,![])),_0x4b2a30[_0x1ca9cd(0x243,'sRP]')](_0x1ca9cd(0x1bf,'FJxz'),_0x5b15fa=>{const _0x69ed03=_0x1ca9cd;_0x5b15fa[_0x69ed03(0x1da,'xPeT')](),_0x12e192(_0x181dae,!![]),_0x2994d1(),_0x1e3867[_0x69ed03(0x1c8,'jK@&')](setTimeout,()=>{const _0x17a933=_0x69ed03;!_0x4b2a30[_0x17a933(0x1b3,'P((U')](_0x1e3867[_0x17a933(0x1b0,'b2&Q')])&&_0x1e3867['IuNFK'](_0x12e192,_0x181dae,![]);},0x258);});}),document['querySelectorAll']('.net-face')[_0x2ca92c(0x1cf,'TISF')](_0x534204=>{const _0x188ed2=_0x2ca92c,_0x35dc0c={'eAjIX':function(_0x1de001,_0xc6229c,_0x5aa9e5){return _0x110ead['TnHoh'](_0x1de001,_0xc6229c,_0x5aa9e5);},'EhrWc':function(_0x459408,_0x416dd8,_0x418c46){const _0x4d63be=_0x3a61;return _0x110ead[_0x4d63be(0x1d7,'1luV')](_0x459408,_0x416dd8,_0x418c46);}},_0x2d28ca=_0x534204[_0x188ed2(0x236,'HLo*')](_0x110ead[_0x188ed2(0x1ff,'sRP]')]);if(!_0x2d28ca)return;_0x534204[_0x188ed2(0x200,'z(SK')](_0x110ead[_0x188ed2(0x21f,'eCf6')],()=>_0x12e192(_0x2d28ca,!![])),_0x534204[_0x188ed2(0x1fa,'xPeT')](_0x110ead['RwMWQ'],()=>_0x12e192(_0x2d28ca,![])),_0x534204['addEventListener'](_0x110ead[_0x188ed2(0x198,'Z@X!')],_0x5e7627=>{const _0x5bcc64=_0x188ed2,_0x26c239={'zSdnr':_0x5bcc64(0x17b,'0)sO'),'htsnX':function(_0x5581d4,_0xe67c4a,_0xacdc3){const _0x534096=_0x5bcc64;return _0x35dc0c[_0x534096(0x1d2,'[cjl')](_0x5581d4,_0xe67c4a,_0xacdc3);}};_0x5e7627[_0x5bcc64(0x191,'v$Fp')](),_0x35dc0c[_0x5bcc64(0x1a5,'UqY&')](_0x12e192,_0x2d28ca,!![]),_0x2994d1(),_0x35dc0c[_0x5bcc64(0x1e2,'DnJA')](setTimeout,()=>{const _0x1afd61=_0x5bcc64;!_0x534204[_0x1afd61(0x1e6,'FJxz')](_0x26c239[_0x1afd61(0x1db,'6F3O')])&&_0x26c239['htsnX'](_0x12e192,_0x2d28ca,![]);},0x258);});});let _0x183880=null;function _0x2994d1(){const _0x2939b9=_0x2ca92c;try{!_0x183880&&(_0x183880=new(window[(_0x2939b9(0x19b,'kdmE'))]||window[(_0x2939b9(0x1a8,'xPeT'))])());_0x110ead[_0x2939b9(0x1ab,'Ng@#')](_0x183880['state'],'suspended')&&_0x183880[_0x2939b9(0x1f2,'v$Fp')]();const _0x2118f6=_0x183880[_0x2939b9(0x1cb,'z(SK')],_0x460101=_0x183880[_0x2939b9(0x238,'6F3O')](),_0x52602e=_0x183880[_0x2939b9(0x1fc,'TISF')]();_0x460101[_0x2939b9(0x1bb,'vSWr')]=_0x110ead[_0x2939b9(0x1bd,'rFpF')],_0x460101[_0x2939b9(0x1b4,'kdmE')]['setValueAtTime'](0x370,_0x2118f6),_0x460101['frequency'][_0x2939b9(0x1f6,'sRP]')](0x1b8,_0x110ead[_0x2939b9(0x1ad,'jK@&')](_0x2118f6,0.05)),_0x52602e['gain']['setValueAtTime'](0.18,_0x2118f6),_0x52602e[_0x2939b9(0x241,'dOxi')][_0x2939b9(0x1d8,'5Bt5')](0.01,_0x110ead['YgUxx'](_0x2118f6,0.05)),_0x460101[_0x2939b9(0x1e3,'7%v(')](_0x52602e),_0x52602e[_0x2939b9(0x21c,'[cjl')](_0x183880['destination']),_0x460101[_0x2939b9(0x1ba,'RFr*')](_0x2118f6),_0x460101['stop'](_0x110ead['Knsmp'](_0x2118f6,0.06));}catch(_0xf41a9a){}}let _0x5095ac=0x0;document[_0x2ca92c(0x1dc,'TISF')](_0x2ca92c(0x20e,'b2&Q'),_0x4fcd10=>{const _0xa65083=_0x2ca92c,_0x2d3c59=Date[_0xa65083(0x1e5,'jr$0')]();_0x110ead[_0xa65083(0x234,'R7[M')](_0x2d3c59,_0x5095ac)<=0x12c&&_0x4fcd10[_0xa65083(0x199,'Z@X!')](),_0x5095ac=_0x2d3c59;},{'passive':![]}),document[_0x2ca92c(0x1fe,'[cjl')](_0x110ead[_0x2ca92c(0x17e,'z(SK')],_0x19b8b0=>{const _0x25b3c6=_0x2ca92c;_0x19b8b0[_0x25b3c6(0x23f,'EnVp')]&&_0x19b8b0[_0x25b3c6(0x18a,'#Jju')]['length']>0x1&&_0x19b8b0[_0x25b3c6(0x240,'sRP]')]();},{'passive':![]});}());var version_ = 'jsjiami.com.v7';
+  </script>
+</body>
+</html>
