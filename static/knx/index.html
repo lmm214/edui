@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>可能性</title>
+    <style>
+        :root {
+            --ink: #3c2a1a;
+            --muted: #7d654f;
+            --border-line: rgba(118, 77, 43, 0.2);
+            --tbl-blue: #0082be;
+            --tbl-header-bg: #e6f4fa;
+            --pawn-red: #dc1e28;
+            --pawn-blue: #0974c8;
+            --pawn-yellow: #f59e0b;
+            --card-bg: rgba(255, 253, 249, 0.95);
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #ede3d3;
+            color: var(--ink);
+            font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        }
+
+        #app {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            isolation: isolate;
+            background: radial-gradient(circle at 50% 38%, #fbf8f2 0, #f3ece0 50%, #e3d5c2 100%);
+        }
+
+        #scene {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            cursor: grab;
+        }
+
+        #scene:active {
+            cursor: grabbing;
+        }
+
+        /* 顶部导航栏：仅保留左侧标题与右侧快捷工具 */
+        .topbar {
+            position: absolute;
+            z-index: 10;
+            left: 20px;
+            right: 20px;
+            top: 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .brand-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            pointer-events: auto;
+            background: rgba(255, 252, 247, 0.92);
+            padding: 9px 18px;
+            border-radius: 14px;
+            border: 1px solid rgba(133, 95, 62, 0.22);
+            box-shadow: 0 4px 16px rgba(110, 75, 43, 0.08);
+            backdrop-filter: blur(8px);
+        }
+
+        .brand-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #a77042, #7d4920);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.3), 0 3px 6px rgba(100, 60, 25, 0.25);
+            color: #fff;
+            font-size: 15px;
+        }
+
+        .brand-text h1 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            color: #432814;
+        }
+
+        /* 右侧快捷工具（眼镜半透明透视与音效） */
+        .top-tools {
+            display: flex;
+            gap: 8px;
+            pointer-events: auto;
+        }
+
+        .tool-icon-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 11px;
+            background: rgba(255, 252, 247, 0.92);
+            border: 1px solid rgba(133, 95, 62, 0.25);
+            color: #5c3e24;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(110, 75, 43, 0.08);
+            backdrop-filter: blur(8px);
+            transition: all 0.2s;
+            font-size: 18px;
+        }
+
+        .tool-icon-btn:hover {
+            background: #fff;
+            transform: translateY(-1px);
+        }
+
+        .tool-icon-btn.active {
+            background: #fdf2e9;
+            border-color: #0082be;
+            box-shadow: 0 0 0 2px rgba(0, 130, 190, 0.25);
+        }
+
+        /* 核心记录表格卡片（仅在单盒实验时显示，两列：颜色、次数） */
+        .result-panel {
+            position: absolute;
+            z-index: 10;
+            top: 80px;
+            right: 22px;
+            width: 250px;
+            background: var(--card-bg);
+            border: 1px solid rgba(133, 95, 62, 0.25);
+            border-radius: 14px;
+            padding: 14px 16px;
+            box-shadow: 0 16px 36px rgba(100, 65, 35, 0.14);
+            backdrop-filter: blur(10px);
+            transition: opacity 0.3s;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .panel-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #4a2f18;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge-counter {
+            font-size: 11px;
+            font-weight: 600;
+            color: #0082be;
+            background: #e6f4fa;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 130, 190, 0.3);
+        }
+
+        /* 单盒教学表格：仅保留颜色和次数 */
+        .textbook-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 2px solid var(--tbl-blue);
+            background: #ffffff;
+            border-radius: 2px;
+            table-layout: fixed;
+        }
+
+        .textbook-table th,
+        .textbook-table td {
+            border: 1.5px solid var(--tbl-blue);
+            text-align: center;
+            vertical-align: middle;
+            padding: 7px 4px;
+        }
+
+        .textbook-table th {
+            background-color: var(--tbl-header-bg);
+            color: #1a1a1a;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            font-family: "STKaiti", "KaiTi", "Songti SC", "SimSun", serif;
+            height: 38px;
+        }
+
+        .textbook-table td {
+            height: 48px;
+            background: #fff;
+        }
+
+        .col-color {
+            width: 50%;
+        }
+
+        .col-count {
+            width: 50%;
+        }
+
+        .pawn-cell-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .pawn-svg {
+            display: block;
+            filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.22));
+        }
+
+        /* 次数数值 */
+        .count-number {
+            font-family: -apple-system, "SF Pro", "PingFang SC", sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        /* 右下角控制栏（重置与设置按钮） */
+        .bottom-right-dock {
+            position: absolute;
+            z-index: 10;
+            right: 22px;
+            bottom: 22px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .corner-btn {
+            background: rgba(255, 252, 247, 0.94);
+            border: 1px solid rgba(133, 95, 62, 0.28);
+            color: #5c3e24;
+            padding: 9px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 16px rgba(100, 65, 35, 0.12);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .corner-btn:hover {
+            background: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(100, 65, 35, 0.18);
+        }
+
+        .corner-btn:active {
+            transform: translateY(1px);
+        }
+
+        /* 3D 浮动小组状态标牌 */
+        .group-marker-container {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 5;
+            overflow: hidden;
+        }
+
+        .box-3d-tag {
+            position: absolute;
+            background: rgba(255, 252, 247, 0.95);
+            border: 1.5px solid #0082be;
+            border-radius: 10px;
+            padding: 5px 12px;
+            box-shadow: 0 4px 14px rgba(0, 80, 120, 0.14);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: auto;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .box-3d-tag:hover {
+            transform: translate(-50%, -3px) scale(1.04) !important;
+            box-shadow: 0 8px 22px rgba(0, 80, 120, 0.24);
+        }
+
+        .box-3d-tag-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0082be;
+        }
+
+        .box-3d-tag-stat {
+            font-size: 11px;
+            color: #444;
+            display: flex;
+            gap: 6px;
+            font-weight: 600;
+        }
+
+        /* 设置抽屉（位于右下角上方） */
+        .settings-drawer {
+            display: none;
+            position: absolute;
+            z-index: 15;
+            right: 22px;
+            bottom: 74px;
+            width: 280px;
+            background: rgba(255, 252, 247, 0.96);
+            border: 1px solid rgba(133, 95, 62, 0.28);
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: 0 18px 40px rgba(100, 65, 35, 0.2);
+            backdrop-filter: blur(12px);
+        }
+
+        .settings-drawer.open {
+            display: block;
+        }
+
+        .drawer-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #432814;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .drawer-close {
+            cursor: pointer;
+            font-size: 16px;
+            color: #999;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 9px 0;
+            border-top: 1px solid rgba(133, 95, 62, 0.12);
+        }
+
+        .setting-row:first-of-type {
+            border-top: none;
+        }
+
+        .setting-name {
+            font-size: 12px;
+            color: #523722;
+            font-weight: 600;
+        }
+
+        .opt-buttons {
+            display: flex;
+            gap: 6px;
+        }
+
+        .opt-btn {
+            border: 1px solid #c9b098;
+            background: #fff9f2;
+            color: #6d4e33;
+            padding: 5px 10px;
+            border-radius: 7px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .opt-btn.active {
+            background: #0082be;
+            border-color: #0072a8;
+            color: #fff;
+            box-shadow: 0 2px 6px rgba(0, 130, 190, 0.3);
+        }
+
+        .opt-btn:disabled,
+        .opt-btn.disabled {
+            opacity: 0.38;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .switch {
+            position: relative;
+            width: 38px;
+            height: 22px;
+            display: inline-block;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            inset: 0;
+            border-radius: 24px;
+            background: #e2d3c3;
+            border: 1px solid #c3ae98;
+            cursor: pointer;
+            transition: 0.25s;
+        }
+
+        .slider:before {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            left: 2px;
+            top: 2px;
+            border-radius: 50%;
+            background: #9d8063;
+            transition: 0.25s;
+        }
+
+        .switch input:checked+.slider {
+            background: #0082be;
+            border-color: #006b9d;
+        }
+
+        .switch input:checked+.slider:before {
+            transform: translateX(16px);
+            background: #fff;
+        }
+
+        /* 移动端与小屏适配 */
+        @media (max-width: 768px) {
+            .topbar {
+                left: 12px;
+                right: 12px;
+                top: 12px;
+            }
+
+            .result-panel {
+                top: auto;
+                bottom: 74px;
+                right: 12px;
+                left: 12px;
+                width: calc(100% - 24px);
+                max-width: 320px;
+                margin: 0 auto;
+                padding: 10px 12px;
+            }
+
+            .bottom-right-dock {
+                bottom: 14px;
+                right: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <!-- 3D 场景容器 -->
+        <div id="scene"></div>
+
+        <!-- 3D 浮动标签挂载点 -->
+        <div id="markerContainer" class="group-marker-container"></div>
+
+        <!-- 顶部导航栏（左侧标题，右侧眼镜透视与音效） -->
+        <header class="topbar">
+            <div class="brand-section">
+                <div class="brand-icon">📦</div>
+                <div class="brand-text">
+                    <h1>可能性</h1>
+                </div>
+            </div>
+
+            <!-- 右侧快捷工具 -->
+            <div class="top-tools">
+                <button id="xrayBtn" class="tool-icon-btn" title="透视盒体（点击使整个盒子半透明）">👓</button>
+                <button id="soundBtn" class="tool-icon-btn" title="音效开关">🔊</button>
+            </div>
+        </header>
+
+        <!-- 抽取结果面板（仅在单盒实验时显示，两列：颜色、次数） -->
+        <section class="result-panel" id="resultPanel" aria-label="数据记录面板">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <span id="panelTitle">例2 摸棋子记录表</span>
+                </div>
+                <div class="badge-counter" id="drawBadge">已摸 0 / 20 次</div>
+            </div>
+
+            <!-- 仅保留颜色和次数，内容根据当前习题动态生成 -->
+            <div id="singleTableWrap">
+                <table class="textbook-table">
+                    <thead>
+                        <tr>
+                            <th class="col-color">颜 色</th>
+                            <th class="col-count">次 数</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- 动态填充 -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 右下角控制栏：重置与设置 -->
+        <div class="bottom-right-dock">
+            <button id="resetBtn" class="corner-btn" title="清空记录重新开始">
+                <span>🔄</span>
+                <span>重置</span>
+            </button>
+            <button id="moreBtn" class="corner-btn" title="设置与功能">
+                <span>⚙️</span>
+                <span>设置</span>
+            </button>
+        </div>
+
+        <!-- 设置面板（抽屉式，位于右下角上方） -->
+        <aside class="settings-drawer" id="settingsDrawer">
+            <div class="drawer-title">
+                <span>设置</span>
+                <span class="drawer-close" id="drawerClose">✕</span>
+            </div>
+            <!-- 实验模式切换：单盒 / 4组（做一做时禁用4组） -->
+            <div class="setting-row">
+                <span class="setting-name">实验模式</span>
+                <div class="opt-buttons">
+                    <button id="modeSingleBtn" class="opt-btn active">单盒实验</button>
+                    <button id="modeMultiBtn" class="opt-btn">4组同屏</button>
+                </div>
+            </div>
+            <!-- 教学内容：仅显示例2、做一做、例3，不显示具体数量搭配 -->
+            <div class="setting-row">
+                <span class="setting-name">教学内容</span>
+                <div class="opt-buttons">
+                    <button id="setExample2" class="opt-btn active">例2</button>
+                    <button id="setZuoyizuo" class="opt-btn">做一做</button>
+                    <button id="setExample3" class="opt-btn">例3</button>
+                </div>
+            </div>
+            <!-- 抽取音效 -->
+            <div class="setting-row">
+                <span class="setting-name">抽取音效</span>
+                <label class="switch">
+                    <input type="checkbox" id="soundInput" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <!-- 视角复位 -->
+            <div class="setting-row">
+                <span class="setting-name">视角复位</span>
+                <button id="resetCamBtn" class="opt-btn">复位视角 (R)</button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- 库文件依赖 -->
+    <script src="./three.min.js"></script>
+    <script src="./OrbitControls.js"></script>
+    <script src="./app.js"></script>
+</body>
+
+</html>
