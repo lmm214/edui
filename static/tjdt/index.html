@@ -92,11 +92,12 @@ segments.forEach((s,i)=>{
 carpetGeometry.setAttribute('position',new THREE.BufferAttribute(coords,3).setUsage(THREE.DynamicDrawUsage));carpetGeometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));carpetGeometry.setAttribute('color',new THREE.BufferAttribute(colors,3));carpetGeometry.setIndex(indices);
 const carpet=new THREE.Mesh(carpetGeometry,carpetMaterial);carpet.castShadow=false;carpet.receiveShadow=false;carpet.frustumCulled=false;scene.add(carpet);
 const selectedSurface={index:-1};
+const HORIZONTAL_COLOR=0xff4fa3, VERTICAL_COLOR=0xff8a00;
 const surfaceOverlays=segments.map(s=>{
  const geometry=new THREE.BufferGeometry();
  const position=new THREE.BufferAttribute(new Float32Array(12),3).setUsage(THREE.DynamicDrawUsage);
  geometry.setAttribute('position',position);geometry.setIndex([0,2,1,1,2,3]);
- const material=new THREE.MeshBasicMaterial({color:s.vertical?0xdcc7ff:0xffd88a,transparent:true,opacity:.9,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+ const material=new THREE.MeshBasicMaterial({color:s.vertical?VERTICAL_COLOR:HORIZONTAL_COLOR,transparent:true,opacity:.9,toneMapped:false,side:THREE.DoubleSide,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
  const mesh=new THREE.Mesh(geometry,material);mesh.visible=false;mesh.renderOrder=3;scene.add(mesh);
  return {mesh,position};
 });
@@ -104,12 +105,14 @@ const duplicateSurfaces=segments.map(s=>{
  const geometry=new THREE.BufferGeometry();
  const position=new THREE.BufferAttribute(new Float32Array(12),3).setUsage(THREE.DynamicDrawUsage);
  geometry.setAttribute('position',position);geometry.setIndex([0,2,1,1,2,3]);
- const material=new THREE.MeshBasicMaterial({color:s.vertical?0xdcc7ff:0xffd88a,transparent:true,opacity:.32,side:THREE.DoubleSide,depthTest:false,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
- const mesh=new THREE.Mesh(geometry,material);mesh.visible=false;mesh.renderOrder=4;scene.add(mesh);
+ const material=new THREE.MeshBasicMaterial({color:s.vertical?VERTICAL_COLOR:HORIZONTAL_COLOR,transparent:true,opacity:.38,toneMapped:false,side:THREE.DoubleSide,depthTest:false,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+ const mesh=new THREE.Mesh(geometry,material);mesh.visible=false;mesh.frustumCulled=false;mesh.renderOrder=4;scene.add(mesh);
  return {mesh,position};
 });
 const duplicateVisible=Array(segments.length).fill(false),duplicateShifts=Array(segments.length).fill(0),duplicateAnimating=Array(segments.length).fill(false),duplicateAnimationStarts=Array(segments.length).fill(0);
-function clearDuplicateSurfaces(){for(let i=0;i<duplicateSurfaces.length;i++){duplicateVisible[i]=false;duplicateShifts[i]=0;duplicateAnimating[i]=false;duplicateSurfaces[i].mesh.visible=false;}}
+const COLLECT_END=.1, FOLD_START=.13, FOLD_END=.3, UNFOLD_END=1, BASE_Y=.02;
+let assemblyProgress=0;
+function clearDuplicateSurfaces(){assemblyProgress=0;for(let i=0;i<duplicateSurfaces.length;i++){duplicateVisible[i]=false;duplicateShifts[i]=0;duplicateAnimating[i]=false;duplicateSurfaces[i].mesh.visible=false;}}
 const outlineArray=new Float32Array((segments.length*2+2)*6);
 const outlineGeometry=new THREE.BufferGeometry();outlineGeometry.setAttribute('position',new THREE.BufferAttribute(outlineArray,3).setUsage(THREE.DynamicDrawUsage));
 const outline=new THREE.LineSegments(outlineGeometry,new THREE.LineBasicMaterial({color:0x4285a3,transparent:true,opacity:.8}));outline.frustumCulled=false;scene.add(outline);
@@ -126,12 +129,15 @@ const interval=(p,a,b)=>smooth((p-a)/(b-a));
 let progress=0,playing=false,direction=1, previousTime=0;
 let points=[], anchors={},needsRender=true;
 function updateShape(p){
- if(p>.04){selectedSurface.index=-1;clearDuplicateSurfaces();}
- const lifted=interval(p,0,.18)*.35, unfolded=interval(p,.18,.78), settled=interval(p,.78,1);
+ progress=THREE.MathUtils.clamp(p,0,1);p=progress;
+ // Retain the assembled reference during unfolding, then fold it back when rewinding.
+ assemblyProgress=Math.min(p,FOLD_END);
+ if(p>0)selectedSurface.index=-1;
+ const collected=interval(assemblyProgress,0,COLLECT_END),folded=interval(assemblyProgress,FOLD_START,FOLD_END);
+ const unfolded=interval(p,FOLD_END,UNFOLD_END);
  const angle=(1-unfolded)*Math.PI/2;
- const span=RUN+RISE*Math.cos(angle);
- const baseY=(RISE*(1-Math.sin(angle))+lifted)*(1-settled)+GAP;
- let x=-span/2,y=baseY;
+ // Anchor the lower edge while each riser folds down and extends the carpet.
+ let x=-RUN/2,y=GAP;
  points=[V(x,y,0)];
  for(const s of segments){x+=s.length*(s.vertical?Math.cos(angle):1);y+=s.length*(s.vertical?Math.sin(angle):0);points.push(V(x,y,0));}
  let outlineIndex=0;
@@ -142,23 +148,31 @@ function updateShape(p){
   const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len,overlay=surfaceOverlays[i],pad=.006;
   overlay.position.array.set([a.x+nx*pad,a.y+ny*pad,-WIDTH/2,a.x+nx*pad,a.y+ny*pad,WIDTH/2,b.x+nx*pad,b.y+ny*pad,-WIDTH/2,b.x+nx*pad,b.y+ny*pad,WIDTH/2]);
   overlay.position.needsUpdate=true;
-  overlay.mesh.visible=p<.04&&selectedSurface.index===i;
+  overlay.mesh.visible=p===0&&selectedSurface.index===i;
   const duplicate=duplicateSurfaces[i];
-  if(p<.04&&duplicateVisible[i]){
-   const amount=duplicateAnimating[i]?duplicateShifts[i]:1,offset=segments[i].vertical?V((1.012-a.x)*amount,0,0):V(0,(.02-a.y)*amount,0);
-   duplicate.position.array.set([a.x+offset.x,a.y+offset.y,-WIDTH/2+offset.z,a.x+offset.x,a.y+offset.y,WIDTH/2+offset.z,b.x+offset.x,b.y+offset.y,-WIDTH/2+offset.z,b.x+offset.x,b.y+offset.y,WIDTH/2+offset.z]);
+  if(duplicateVisible[i]||assemblyProgress>0){
+   const s=segments[i],step=Math.floor(i/2),amount=Math.max(duplicateShifts[i],collected);
+   const sourceX=-RUN/2+step*RUN/N,sourceY=GAP+(step+(s.vertical?0:1))*RISE/N;
+   let ax=sourceX,ay=sourceY,bx=sourceX+(s.vertical?0:s.length),by=sourceY+(s.vertical?s.length:0);
+   if(s.vertical){
+    const tilt=folded*Math.PI/2,low=step*RISE/N,high=low+s.length;
+    ax=THREE.MathUtils.lerp(sourceX,RUN/2+low*Math.sin(tilt),amount);
+    bx=THREE.MathUtils.lerp(sourceX,RUN/2+high*Math.sin(tilt),amount);
+    ay=THREE.MathUtils.lerp(sourceY,BASE_Y+low*Math.cos(tilt),amount);
+    by=THREE.MathUtils.lerp(sourceY+s.length,BASE_Y+high*Math.cos(tilt),amount);
+   }else ay=by=THREE.MathUtils.lerp(sourceY,BASE_Y,amount);
+   duplicate.position.array.set([ax,ay,-WIDTH/2,ax,ay,WIDTH/2,bx,by,-WIDTH/2,bx,by,WIDTH/2]);
    duplicate.position.needsUpdate=true;duplicate.mesh.visible=true;
   }else duplicate.mesh.visible=false;
   edge(V(a.x,a.y+.002,-.5),V(b.x,b.y+.002,-.5));edge(V(a.x,a.y+.002,.5),V(b.x,b.y+.002,.5));
   if(i>0)seamArray.set([a.x,a.y+.002,-.5,a.x,a.y+.002,.5],(i-1)*6);
  }
  edge(V(points[0].x,points[0].y,-.5),V(points[0].x,points[0].y,.5));edge(V(points.at(-1).x,points.at(-1).y,-.5),V(points.at(-1).x,points.at(-1).y,.5));
- const selected=selectedSurface.index;
  carpetGeometry.attributes.position.needsUpdate=true;carpetGeometry.computeVertexNormals();outlineGeometry.attributes.position.needsUpdate=true;seamGeometry.attributes.position.needsUpdate=true;
  seams.material.opacity=.3-.19*unfolded;
- const stairOpacity=1-interval(p,.12,.65);
+ const stairOpacity=1-interval(p,FOLD_END,.75);
  stairs.visible=stairEdges.visible=stairOpacity>.005;stairMaterial.opacity=.28*stairOpacity;stairMaterial.depthWrite=false;stairs.castShadow=false;stairEdges.material.opacity=.35*stairOpacity;
- const showOriginal=p<.19;
+ const showOriginal=p<FOLD_END;
  const lenPairs=[];
  if(showOriginal){
   lenPairs.push([V(-1,.008,.76),V(1,.008,.76)],[V(-1,.008,.55),V(-1,.008,.82)],[V(1,.008,.55),V(1,.008,.82)]);
@@ -176,7 +190,7 @@ function updateShape(p){
  writeLines(widthDim,[[V(wx,end.y,-.5),V(wx,end.y,.5)],[V(end.x+.04,end.y,-.5),V(wx+.06,end.y,-.5)],[V(end.x+.04,end.y,.5),V(wx+.06,end.y,.5)]]);
  anchors.width=V(wx+.17,end.y,0);$('widthLabel').innerHTML=p>.94?'10 dm<span class="minor">1 m</span>':'1 m';
  $('progress').value=Math.round(p*1000);$('progress').style.setProperty('--progress',`${p*100}%`);$('percent').textContent=`${Math.round(p*100)}%`;$('progress').setAttribute('aria-valuetext',`已展开 ${Math.round(p*100)}%`);
- const phase=p===0?(selectedSurface.index<0?'点击台阶面可高亮':segments[selectedSurface.index].vertical?'已高亮 · 垂直面':'已高亮 · 水平面'):p<.18?'提起地毯':p<.78?'拉直折角':p<1?'平铺地毯':'长方形 · 面积不变';if($('phase').textContent!==phase)$('phase').textContent=phase;
+ const phase=p===0?(selectedSurface.index<0?'点击台阶面可高亮':segments[selectedSurface.index].vertical?'已高亮 · 垂直面':'已高亮 · 水平面'):assemblyProgress<COLLECT_END?(direction<0?'复制面返回台阶':'归并水平面与竖面'):assemblyProgress<FOLD_START?(direction<0?'竖面已折回':'沿底边放平竖面'):assemblyProgress<FOLD_END?(direction<0?'沿底边折回竖面':'放平竖面 · 拼接底面'):p<UNFOLD_END?(direction<0?'底边固定 · 折回地毯':'底边固定 · 展开地毯'):'长方形 · 面积不变';if($('phase').textContent!==phase)$('phase').textContent=phase;
  updateButton();needsRender=true;
 }
 function updateButton(){const text=playing?'暂停':progress>=1?'铺回台阶':progress<=0?'展开地毯':direction===1?'继续展开':'继续铺回';$('playText').textContent=text;$('play').setAttribute('aria-label',text);$('playIcon').innerHTML=playing?'<path d="M7 4v12M13 4v12"/>':progress===1?'<path d="M5 9a6 6 0 1 1 1 6M5 4v5h5"/>':'<path d="m7 4 8 6-8 6Z"/>';}
@@ -187,7 +201,7 @@ function updateCamera(refit=false){
  if(refit||fixedHalfHeight===null){
   const samples=[];
   for(const y of [.014,.364,.814,1.164])for(const x of [-1,1])for(const z of [-.57,.9])samples.push(V(x,y,z));
-  for(const y of [.014,1.164])for(const x of [-1.4,1.4,1.85])for(const z of [-.5,.92])samples.push(V(x,y,z));
+  for(const y of [.014,1.164])for(const x of [-1.4,1.4,2.2])for(const z of [-.5,.92])samples.push(V(x,y,z));
   let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
   for(const p of samples){p.applyMatrix4(camera.matrixWorldInverse);minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y);}
   const aspect=viewWidth/viewHeight,padX=Math.min(.26,30/viewWidth)*(maxX-minX),padY=Math.min(.25,28/viewHeight)*(maxY-minY);
@@ -201,14 +215,14 @@ function resize(){viewWidth=viewport.clientWidth;viewHeight=viewport.clientHeigh
 const projected=new THREE.Vector3();
 function updateLabels(){for(const key of ['length','height','width']){projected.copy(anchors[key]).project(camera);const label=$(key+'Label');const x=(projected.x*.5+.5)*viewWidth,y=(-projected.y*.5+.5)*viewHeight;label.style.left=x+'px';label.style.top=y+'px';}}
  $('play').addEventListener('click',()=>{if(playing)playing=false;else{if(progress>=1)direction=-1;if(progress<=0){direction=1;selectedSurface.index=-1;}playing=true;}updateButton();});
-$('progress').addEventListener('input',e=>{playing=false;updateShape(Number(e.target.value)/1000);});
+$('progress').addEventListener('input',e=>{playing=false;const next=Number(e.target.value)/1000;if(next!==progress)direction=next>progress?1:-1;updateShape(next);});
  $('reset').addEventListener('click',()=>{playing=false;direction=1;progress=0;selectedSurface.index=-1;clearDuplicateSurfaces();updateShape(0);});
 $('view').addEventListener('click',()=>{azimuth=defaultAzimuth;elevation=defaultElevation;zoom=1;updateCamera();});
 $('fullscreen').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch(e){$('phase').textContent='可使用浏览器全屏按钮';}});
 document.addEventListener('fullscreenchange',()=>{$('fullscreen').setAttribute('aria-label',document.fullscreenElement?'退出全屏':'进入全屏');resize();});
 const raycaster=new THREE.Raycaster(),pointerNdc=new THREE.Vector2();
 function selectSurface(e){
- if(progress>.04)return;
+ if(progress!==0||playing)return;
  const rect=viewport.getBoundingClientRect();
  pointerNdc.x=((e.clientX-rect.left)/rect.width)*2-1;pointerNdc.y=-((e.clientY-rect.top)/rect.height)*2+1;
  raycaster.setFromCamera(pointerNdc,camera);
@@ -228,10 +242,10 @@ viewport.addEventListener('wheel',e=>{e.preventDefault();zoom=THREE.MathUtils.cl
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&!(e.target instanceof HTMLInputElement)&&e.target===document.body){e.preventDefault();$('play').click();}});
 new ResizeObserver(resize).observe(viewport);
 updateShape(0);resize();
-function frame(time){requestAnimationFrame(frame);const dt=Math.min((time-previousTime)/1000,.05);previousTime=time;if(playing&&!document.hidden){progress=THREE.MathUtils.clamp(progress+dt*direction/7.5,0,1);if(progress===0||progress===1)playing=false;updateShape(progress);}let duplicateNeedsUpdate=false;if(!document.hidden&&progress<.04){for(let i=0;i<duplicateAnimating.length;i++)if(duplicateAnimating[i]){duplicateNeedsUpdate=true;const elapsed=(time-duplicateAnimationStarts[i])/620;duplicateShifts[i]=smooth(elapsed);if(elapsed>=1)duplicateAnimating[i]=false;}}if(duplicateNeedsUpdate)updateShape(progress);if(needsRender){renderer.render(scene,camera);updateLabels();needsRender=false;}}
+function frame(time){requestAnimationFrame(frame);const dt=Math.min((time-previousTime)/1000,.05);previousTime=time;if(playing&&!document.hidden){const next=THREE.MathUtils.clamp(progress+dt*direction/10,0,1);if(next===0||next===1)playing=false;updateShape(next);}let duplicateNeedsUpdate=false;if(!document.hidden){for(let i=0;i<duplicateAnimating.length;i++)if(duplicateAnimating[i]){duplicateNeedsUpdate=true;const elapsed=(time-duplicateAnimationStarts[i])/620;duplicateShifts[i]=smooth(elapsed);if(elapsed>=1)duplicateAnimating[i]=false;}}if(duplicateNeedsUpdate)updateShape(progress);if(needsRender){renderer.render(scene,camera);updateLabels();needsRender=false;}}
 requestAnimationFrame(frame);
 // Read-only diagnostics for local visual and geometry verification.
-window.carpetDemo={get progress(){return progress;},get playing(){return playing;},get points(){return points.map(p=>({x:p.x,y:p.y,z:p.z}));},get dimensions(){return {run:RUN,rise:RISE,width:WIDTH,length:RUN+RISE,areaDm2:(RUN+RISE)*WIDTH*100};}};
+window.carpetDemo={get progress(){return progress;},get playing(){return playing;},get assemblyProgress(){return assemblyProgress;},get selectedSurface(){return selectedSurface.index;},get duplicates(){return duplicateSurfaces.map(({mesh,position})=>({visible:mesh.visible,positions:Array.from(position.array),color:mesh.material.color.getHexString()}));},get points(){return points.map(p=>({x:p.x,y:p.y,z:p.z}));},get dimensions(){return {run:RUN,rise:RISE,width:WIDTH,length:RUN+RISE,areaDm2:(RUN+RISE)*WIDTH*100};}};
 })();
 </script>
 </body>
