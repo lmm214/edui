@@ -1,0 +1,1839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>长方形内圆覆盖面积</title>
+  <style>
+    :root {
+      --bg-color: #f7f6f2;
+      --paper-grid: rgba(0, 0, 0, 0.032);
+      --rect-border: #18181b;
+      --circle-pink: #fbc5d8;
+      --panel-bg: rgba(255, 255, 255, 0.9);
+      --panel-border: rgba(0, 0, 0, 0.08);
+      --panel-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.09), 0 2px 6px rgba(0, 0, 0, 0.04);
+      --accent: #18181b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-color);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+    }
+
+    /* 极简背景微点阵 */
+    .bg-grid {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image: radial-gradient(circle at 1px 1px, var(--paper-grid) 1px, transparent 0);
+      background-size: 24px 24px;
+      z-index: 0;
+    }
+
+    /* 画布全屏居中容器 */
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      z-index: 1;
+    }
+
+    canvas {
+      display: block;
+      touch-action: none;
+    }
+
+    /* 右侧极简画笔工具栏 - 渐入动画 */
+    .toolbox-panel {
+      position: absolute;
+      top: 50%;
+      right: 28px;
+      transform: translateY(-50%) translateX(20px);
+      z-index: 20;
+      background: var(--panel-bg);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      padding: 10px 8px;
+      box-shadow: var(--panel-shadow);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      opacity: 0;
+      animation: toolFadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .toolbox-panel:hover {
+      box-shadow: 0 20px 44px -8px rgba(0, 0, 0, 0.14), 0 3px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    @keyframes toolFadeIn {
+      0% {
+        opacity: 0;
+        transform: translateY(-50%) translateX(28px) scale(0.96);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateY(-50%) translateX(0) scale(1);
+      }
+    }
+
+    /* 动作按钮 */
+    .tool-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #3f3f46;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .tool-btn:hover {
+      background: rgba(0, 0, 0, 0.06);
+      color: #18181b;
+      transform: translateY(-1px);
+    }
+
+    .tool-btn:active {
+      transform: scale(0.92);
+    }
+
+    .tool-btn.active {
+      background: #18181b;
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    }
+
+    .tool-btn svg {
+      width: 17px;
+      height: 17px;
+      stroke-width: 2;
+    }
+
+    .tool-divider {
+      width: 18px;
+      height: 1px;
+      background: rgba(0, 0, 0, 0.08);
+      margin: 1px 0;
+    }
+
+    /* 画笔写字墨水颜色选择 */
+    .color-swatches {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      align-items: center;
+    }
+
+    .swatch-btn {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+    }
+
+    .swatch-btn:hover {
+      transform: scale(1.15);
+    }
+
+    .swatch-btn.active {
+      box-shadow: 0 0 0 2px #18181b, 0 2px 6px rgba(0, 0, 0, 0.15);
+      transform: scale(1.15);
+    }
+
+    /* 右下角设置按钮 */
+    .settings-btn {
+      position: absolute;
+      bottom: 24px;
+      right: 28px;
+      z-index: 30;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--panel-bg);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid var(--panel-border);
+      box-shadow: var(--panel-shadow);
+      color: #374151;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .settings-btn:hover {
+      background: #ffffff;
+      color: #111827;
+      transform: rotate(30deg) scale(1.06);
+    }
+
+    .settings-btn.active {
+      background: #18181b;
+      color: #ffffff;
+      transform: rotate(90deg);
+    }
+
+    .settings-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke-width: 2;
+    }
+
+    /* 页面底部中间合并方中圆滑动条面板（涂色完毕后出现） */
+    .merge-slider-panel {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(24px);
+      z-index: 30;
+      background: var(--panel-bg);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      padding: 8px 18px 8px 16px;
+      box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.05);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .merge-slider-panel.visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .merge-slider-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #18181b;
+      white-space: nowrap;
+      letter-spacing: 0.2px;
+      user-select: none;
+    }
+
+    .merge-slider {
+      width: 200px;
+      height: 6px;
+      border-radius: 99px;
+      background: #e4e4e7;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .merge-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #18181b;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25), 0 0 0 2.5px #ffffff;
+      cursor: grab;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .merge-slider::-webkit-slider-thumb:active {
+      cursor: grabbing;
+      transform: scale(1.15);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(24, 24, 27, 0.2);
+    }
+
+    .merge-slider::-moz-range-thumb {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #18181b;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25), 0 0 0 2.5px #ffffff;
+      cursor: grab;
+      border: none;
+    }
+
+    .merge-slider-val {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: #18181b;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 2px 8px;
+      border-radius: 6px;
+      min-width: 38px;
+      text-align: center;
+      user-select: none;
+    }
+
+    /* 右下浮动控制面板 */
+    .settings-panel {
+      position: absolute;
+      bottom: 74px;
+      right: 28px;
+      z-index: 45;
+      width: 300px;
+      background: var(--panel-bg);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      border: 1px solid var(--panel-border);
+      border-radius: 22px;
+      padding: 22px 22px;
+      box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(12px) scale(0.96);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+
+    .settings-panel.open {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .settings-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #18181b;
+      letter-spacing: 0.2px;
+    }
+
+    .settings-close {
+      background: transparent;
+      border: none;
+      color: #71717a;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: 8px;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .settings-close:hover {
+      background: rgba(0, 0, 0, 0.06);
+      color: #18181b;
+    }
+
+    /* 分段控制器（长方形 / 正方形切换） */
+    .segmented-control {
+      display: flex;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 3px;
+      border-radius: 10px;
+      gap: 3px;
+    }
+
+    .segment-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #52525b;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .segment-btn.active {
+      background: #ffffff;
+      color: #18181b;
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    }
+
+    /* 滑块与数值输入行 - 增大行距与触控区域 */
+    .setting-row {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .setting-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 13px;
+      color: #3f3f46;
+      font-weight: 500;
+    }
+
+    .setting-val-badge {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: #18181b;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    /* 滑动条轨道与圆点触控优化 */
+    .setting-slider {
+      width: 100%;
+      height: 8px;
+      border-radius: 99px;
+      background: #e4e4e7;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+      cursor: pointer;
+      margin: 6px 0;
+    }
+
+    .setting-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #18181b;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 3px #ffffff;
+      cursor: grab;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .setting-slider::-webkit-slider-thumb:active {
+      transform: scale(1.15);
+      cursor: grabbing;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 4px rgba(24, 24, 27, 0.15);
+    }
+
+    .setting-slider::-moz-range-thumb {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #18181b;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 3px #ffffff;
+      cursor: grab;
+      border: none;
+    }
+
+    /* 页面右上角自动巡航纯图标按钮 */
+    .top-cruise-btn {
+      position: absolute;
+      top: 24px;
+      right: 28px;
+      z-index: 30;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--panel-bg);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid var(--panel-border);
+      box-shadow: var(--panel-shadow);
+      color: #374151;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .top-cruise-btn:hover {
+      background: #ffffff;
+      color: #111827;
+      transform: translateY(-1px) scale(1.05);
+      box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.12);
+    }
+
+    .top-cruise-btn:active {
+      transform: scale(0.94);
+    }
+
+    .top-cruise-btn.active {
+      background: #18181b;
+      color: #ffffff;
+      border-color: #18181b;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .top-cruise-btn svg {
+      width: 19px;
+      height: 19px;
+      stroke-width: 2;
+    }
+
+    /* 移动端自适应布局 */
+    @media (max-width: 768px) {
+      .top-cruise-btn {
+        top: 16px;
+        right: 16px;
+        width: 36px;
+        height: 36px;
+      }
+
+      .toolbox-panel {
+        top: auto;
+        bottom: 24px;
+        right: 50%;
+        transform: translateX(50%) translateY(20px);
+        flex-direction: row;
+        padding: 8px 12px;
+        gap: 10px;
+        border-radius: 999px;
+      }
+
+      @keyframes toolFadeIn {
+        0% {
+          opacity: 0;
+          transform: translateX(50%) translateY(28px);
+        }
+
+        100% {
+          opacity: 1;
+          transform: translateX(50%) translateY(0);
+        }
+      }
+
+      .color-swatches {
+        flex-direction: row;
+        gap: 7px;
+      }
+
+      .tool-divider {
+        width: 1px;
+        height: 18px;
+        margin: 0 2px;
+      }
+
+      .merge-slider-panel {
+        bottom: 74px;
+        padding: 6px 14px 6px 12px;
+        gap: 10px;
+      }
+
+      .merge-slider {
+        width: 140px;
+      }
+
+      .settings-btn {
+        bottom: 24px;
+        right: 16px;
+        width: 36px;
+        height: 36px;
+      }
+
+      .settings-panel {
+        bottom: 74px;
+        right: 16px;
+        left: 16px;
+        width: auto;
+        max-width: 340px;
+        margin: 0 auto;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="bg-grid"></div>
+
+  <!-- 页面右上角自动巡航涂色按钮 -->
+  <button class="top-cruise-btn" id="btnAutoCruise" aria-label="自动巡航">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <path d="M4 18h16a2 2 0 002-2v-2a2 2 0 00-2-2H4a2 2 0 01-2-2V8a2 2 0 012-2h16" />
+      <circle cx="19" cy="6" r="2.5" fill="currentColor" />
+    </svg>
+  </button>
+
+  <!-- 全屏画布 -->
+  <div id="canvas-container">
+    <canvas id="mainCanvas"></canvas>
+  </div>
+
+  <!-- 页面底部中间方中圆合并进度滑动条（涂色完毕后出现） -->
+  <div class="merge-slider-panel" id="mergeSliderPanel">
+    <span class="merge-slider-label">合并方中圆</span>
+    <input type="range" class="merge-slider" id="sliderMerge" min="0" max="100" value="0" step="1">
+    <span class="merge-slider-val" id="valMerge">0%</span>
+  </div>
+
+  <!-- 右侧渐入极简画笔工具栏 -->
+  <div class="toolbox-panel" id="toolbox">
+    <!-- 画笔写字工具 (点击在画笔写字与拖动圆盘之间切换) -->
+    <button class="tool-btn" id="btnBrush" aria-label="画笔">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M12 19l7-7 3 3-7 7-3-3z" />
+        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+        <path d="M2 2l7.586 7.586" />
+      </svg>
+    </button>
+
+    <!-- 橡皮擦模式 -->
+    <button class="tool-btn" id="btnEraser" aria-label="橡皮擦">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M20 20H7L3 16C2 15 2 13 3 12L13 2C14 1 16 1 17 2L21 6C22 7 22 9 21 10L14 17" />
+        <path d="M18 9l-7 7" />
+      </svg>
+    </button>
+
+    <div class="tool-divider"></div>
+
+    <!-- 画笔写字墨水颜色（仅改变写字墨水，绝不影响粉色圆盘） -->
+    <div class="color-swatches" id="colorSwatches">
+      <button class="swatch-btn active" data-color="#18181b" style="background: #18181b;" aria-label="黑墨水"></button>
+      <button class="swatch-btn" data-color="#e11d48" style="background: #e11d48;" aria-label="红墨水"></button>
+      <button class="swatch-btn" data-color="#2563eb" style="background: #2563eb;" aria-label="蓝墨水"></button>
+    </div>
+
+    <div class="tool-divider"></div>
+
+    <!-- 一键清空并复位 -->
+    <button class="tool-btn" id="btnClear" aria-label="清空">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M3 6h18" />
+        <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+      </svg>
+    </button>
+  </div>
+
+  <!-- 右下角设置按钮 -->
+  <button class="settings-btn" id="btnSettings" aria-label="设置">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+      <path
+        d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+    </svg>
+  </button>
+
+  <!-- 右下浮动控制面板 -->
+  <div class="settings-panel" id="settingsPanel">
+    <div class="settings-header">
+      <span class="settings-title">图形设置</span>
+      <button class="settings-close" id="btnCloseSettings" aria-label="关闭设置">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- 形状切换：长方形 / 正方形 -->
+    <div class="segmented-control">
+      <button class="segment-btn active" id="btnShapeRect">长方形</button>
+      <button class="segment-btn" id="btnShapeSquare">正方形</button>
+    </div>
+
+    <!-- 长方形参数：长与宽 -->
+    <div id="rectControls">
+      <div class="setting-row">
+        <div class="setting-label-row">
+          <span>长</span>
+          <span class="setting-val-badge" id="valWidth">80</span>
+        </div>
+        <input type="range" class="setting-slider" id="sliderWidth" min="40" max="160" value="80" step="1">
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-label-row">
+          <span>宽</span>
+          <span class="setting-val-badge" id="valHeight">50</span>
+        </div>
+        <input type="range" class="setting-slider" id="sliderHeight" min="30" max="120" value="50" step="1">
+      </div>
+    </div>
+
+    <!-- 正方形参数：边长 -->
+    <div id="squareControls" style="display: none;">
+      <div class="setting-row">
+        <div class="setting-label-row">
+          <span>边长</span>
+          <span class="setting-val-badge" id="valSide">60</span>
+        </div>
+        <input type="range" class="setting-slider" id="sliderSide" min="30" max="120" value="60" step="1">
+      </div>
+    </div>
+
+    <!-- 圆半径 -->
+    <div class="setting-row">
+      <div class="setting-label-row">
+        <span>圆半径</span>
+        <span class="setting-val-badge" id="valRadius">15</span>
+      </div>
+      <input type="range" class="setting-slider" id="sliderRadius" min="5" max="24" value="15" step="1">
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById('mainCanvas');
+      const ctx = canvas.getContext('2d');
+
+      // 1. 离屏层：圆盘拖动覆盖填充（粉色轨迹，裁剪在长方形内）
+      const sweepCanvas = document.createElement('canvas');
+      const sweepCtx = sweepCanvas.getContext('2d');
+
+      // 2. 离屏层：画笔写字涂鸦手绘层（黑/红/蓝手写墨水线）
+      const doodleCanvas = document.createElement('canvas');
+      const doodleCtx = doodleCanvas.getContext('2d');
+
+      // 工具栏交互元素
+      const btnBrush = document.getElementById('btnBrush');
+      const btnEraser = document.getElementById('btnEraser');
+      const btnClear = document.getElementById('btnClear');
+      const swatchBtns = document.querySelectorAll('.swatch-btn');
+
+      // 页面底部中间合并滑动条交互元素
+      const mergeSliderPanel = document.getElementById('mergeSliderPanel');
+      const sliderMerge = document.getElementById('sliderMerge');
+      const valMerge = document.getElementById('valMerge');
+
+      // 涂色完毕与合并进度状态
+      let isPaintCompleted = false;
+      let mergeProgress = 0; // 0: 原始长方形状态，1: 中心合并完成为方中圆
+
+      // 设置面板交互元素
+      const btnSettings = document.getElementById('btnSettings');
+      const btnCloseSettings = document.getElementById('btnCloseSettings');
+      const settingsPanel = document.getElementById('settingsPanel');
+      const btnShapeRect = document.getElementById('btnShapeRect');
+      const btnShapeSquare = document.getElementById('btnShapeSquare');
+      const rectControls = document.getElementById('rectControls');
+      const squareControls = document.getElementById('squareControls');
+
+      const sliderWidth = document.getElementById('sliderWidth');
+      const sliderHeight = document.getElementById('sliderHeight');
+      const sliderSide = document.getElementById('sliderSide');
+      const sliderRadius = document.getElementById('sliderRadius');
+
+      const valWidth = document.getElementById('valWidth');
+      const valHeight = document.getElementById('valHeight');
+      const valSide = document.getElementById('valSide');
+      const valRadius = document.getElementById('valRadius');
+
+      // 核心工具状态：'circle' (拖动圆盘) | 'brush' (画笔写字画线) | 'eraser' (橡皮擦)
+      let activeTool = 'circle';
+      let penColor = '#18181b'; // 默认写字黑墨水
+      const penWidth = 2.8;      // 写字线条适中粗细
+
+      // 原题圆盘属性（淡雅柔和纯色粉红，绝不随画笔颜色改变）
+      const CIRCLE_COLOR = '#fbc5d8';
+
+      // 几何参数模型（单位：cm）
+      let shapeType = 'rect'; // 'rect' | 'square'
+      let model = {
+        rectW: 80,
+        rectH: 50,
+        squareSide: 60,
+        radius: 15
+      };
+
+      // 屏幕上实际绘制参数（动态自适应放大）
+      let rect = {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        borderWidth: 2.4
+      };
+
+      let circle = {
+        x: 0,
+        y: 0,
+        radius: 36,
+        isDragging: false
+      };
+
+      // 写字画线过程状态
+      let isDrawing = false;
+      let lastPoint = { x: 0, y: 0 };
+
+      // 极简触感微音效
+      let audioCtx = null;
+      function playClickSfx() {
+        try {
+          if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+          }
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+
+          const now = audioCtx.currentTime;
+          osc.frequency.setValueAtTime(520, now);
+          osc.frequency.exponentialRampToValueAtTime(800, now + 0.05);
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.linearRampToValueAtTime(0.001, now + 0.05);
+          osc.start(now);
+          osc.stop(now + 0.05);
+        } catch (e) { }
+      }
+
+      // 魔法棒轻灵风铃微音效
+      function playMagicSfx() {
+        try {
+          if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+          }
+          const notes = [587.33, 739.99, 880, 1174.66]; // D5, F#5, A5, D6
+          const now = audioCtx.currentTime;
+          notes.forEach((freq, idx) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+            gain.gain.setValueAtTime(0.035, now + idx * 0.07);
+            gain.gain.exponentialRampToValueAtTime(0.0005, now + idx * 0.07 + 0.32);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now + idx * 0.07);
+            osc.stop(now + idx * 0.07 + 0.32);
+          });
+        } catch (e) { }
+      }
+
+      function easeInOutCubic(x) {
+        return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+      }
+
+      // 增大自适应计算：充分利用浏览器窗口长和宽
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = width + 'px';
+        canvas.style.height = height + 'px';
+
+        sweepCanvas.width = width * dpr;
+        sweepCanvas.height = height * dpr;
+
+        // 保留已有手绘涂鸦，避免窗口尺寸变动或调整参数时被清空
+        if (doodleCanvas.width > 0 && doodleCanvas.height > 0) {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = doodleCanvas.width;
+          tempCanvas.height = doodleCanvas.height;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.drawImage(doodleCanvas, 0, 0);
+
+          doodleCanvas.width = width * dpr;
+          doodleCanvas.height = height * dpr;
+          doodleCtx.drawImage(tempCanvas, 0, 0);
+        } else {
+          doodleCanvas.width = width * dpr;
+          doodleCanvas.height = height * dpr;
+        }
+
+        // 当前模型尺寸
+        const mw = shapeType === 'rect' ? model.rectW : model.squareSide;
+        const mh = shapeType === 'rect' ? model.rectH : model.squareSide;
+
+        // 视口安全可用区域（增大显示，优雅铺展）
+        const paddingRight = width > 768 ? 140 : 50;
+        const paddingLeft = width > 768 ? 60 : 20;
+        const paddingY = width > 768 ? 80 : 70;
+
+        const availW = Math.max(120, width - paddingLeft - paddingRight);
+        const availH = Math.max(120, height - paddingY * 2);
+
+        // 自适应比例缩放（在视口基础上缩小20%，呈现更精致和谐的比例）
+        const scale = Math.min(availW / mw, availH / mh) * 0.8;
+
+        rect.width = Math.round(mw * scale);
+        rect.height = Math.round(mh * scale);
+
+        // 水平偏左居中，为右侧工具栏留出舒适留白
+        const freeX = width - paddingRight - paddingLeft - rect.width;
+        rect.x = Math.round(paddingLeft + freeX / 2);
+        rect.y = Math.round((height - rect.height) / 2);
+
+        // 圆半径按真实比例映射到像素
+        circle.radius = Math.round(model.radius * scale);
+
+        // 严格靠在左下角（相切）
+        resetCircleToBottomLeft();
+
+        render();
+      }
+
+      // 圆严格靠在左下角两边边界（紧贴相切）
+      function resetCircleToBottomLeft() {
+        circle.x = rect.x + circle.radius;
+        circle.y = rect.y + rect.height - circle.radius;
+      }
+
+      // 约束圆盘严格在长方形/正方形内部移动
+      function clampCirclePosition() {
+        const minX = rect.x + circle.radius;
+        const maxX = rect.x + rect.width - circle.radius;
+        const minY = rect.y + circle.radius;
+        const maxY = rect.y + rect.height - circle.radius;
+
+        circle.x = Math.max(minX, Math.min(maxX, circle.x));
+        circle.y = Math.max(minY, Math.min(maxY, circle.y));
+      }
+
+      // 拖动圆盘时在 sweepCanvas 上填充淡粉色覆盖轨迹
+      function stampSweep(fromX, fromY, toX, toY, isContinuous = true) {
+        const dpr = window.devicePixelRatio || 1;
+        sweepCtx.save();
+        sweepCtx.scale(dpr, dpr);
+
+        // 严格裁剪在长方形内
+        sweepCtx.beginPath();
+        sweepCtx.rect(rect.x, rect.y, rect.width, rect.height);
+        sweepCtx.clip();
+
+        sweepCtx.globalCompositeOperation = 'source-over';
+        sweepCtx.strokeStyle = CIRCLE_COLOR;
+        sweepCtx.fillStyle = CIRCLE_COLOR;
+
+        const r = circle.radius;
+
+        if (isContinuous && fromX !== undefined && fromY !== undefined) {
+          sweepCtx.lineWidth = r * 2;
+          sweepCtx.lineCap = 'round';
+          sweepCtx.lineJoin = 'round';
+          sweepCtx.beginPath();
+          sweepCtx.moveTo(fromX, fromY);
+          sweepCtx.lineTo(toX, toY);
+          sweepCtx.stroke();
+        }
+
+        sweepCtx.beginPath();
+        sweepCtx.arc(toX, toY, r, 0, Math.PI * 2);
+        sweepCtx.fill();
+
+        sweepCtx.restore();
+      }
+
+      // 画笔手绘写字画点（起笔/点击）
+      function drawDoodlePoint(x, y) {
+        const dpr = window.devicePixelRatio || 1;
+        doodleCtx.save();
+        doodleCtx.scale(dpr, dpr);
+
+        doodleCtx.globalCompositeOperation = 'source-over';
+        doodleCtx.fillStyle = penColor;
+        doodleCtx.beginPath();
+        doodleCtx.arc(x, y, penWidth / 2, 0, Math.PI * 2);
+        doodleCtx.fill();
+
+        doodleCtx.restore();
+      }
+
+      // 画笔手绘写字画线
+      function drawDoodleLine(fromX, fromY, toX, toY) {
+        const dpr = window.devicePixelRatio || 1;
+        doodleCtx.save();
+        doodleCtx.scale(dpr, dpr);
+
+        doodleCtx.globalCompositeOperation = 'source-over';
+        doodleCtx.strokeStyle = penColor;
+        doodleCtx.fillStyle = penColor;
+        doodleCtx.lineWidth = penWidth;
+        doodleCtx.lineCap = 'round';
+        doodleCtx.lineJoin = 'round';
+
+        doodleCtx.beginPath();
+        doodleCtx.moveTo(fromX, fromY);
+        doodleCtx.lineTo(toX, toY);
+        doodleCtx.stroke();
+
+        doodleCtx.restore();
+      }
+
+      // 橡皮擦擦除（支持平滑线段与单点擦除）
+      function eraseAt(x, y, fromX, fromY) {
+        const dpr = window.devicePixelRatio || 1;
+        const eraseRadius = 18;
+
+        [doodleCtx, sweepCtx].forEach(c => {
+          c.save();
+          c.scale(dpr, dpr);
+          c.globalCompositeOperation = 'destination-out';
+          if (fromX !== undefined && fromY !== undefined) {
+            c.lineWidth = eraseRadius * 2;
+            c.lineCap = 'round';
+            c.lineJoin = 'round';
+            c.beginPath();
+            c.moveTo(fromX, fromY);
+            c.lineTo(x, y);
+            c.stroke();
+          }
+          c.beginPath();
+          c.arc(x, y, eraseRadius, 0, Math.PI * 2);
+          c.fill();
+          c.restore();
+        });
+      }
+
+      // 绘制单个角块：外角保持白色、内扇形保持原粉色、圆弧与外边缘为黑色边线
+      function drawCornerPiece(quadrant, dx, dy) {
+        const r = circle.radius;
+        const W = rect.width;
+        const H = rect.height;
+
+        ctx.save();
+
+        if (quadrant === 'TL') {
+          const ox = rect.x + dx;
+          const oy = rect.y + dy;
+
+          // 1. 外角白色填充与外边线
+          ctx.beginPath();
+          ctx.moveTo(ox, oy);
+          ctx.lineTo(ox + r, oy);
+          ctx.arc(ox + r, oy + r, r, -Math.PI / 2, Math.PI, true);
+          ctx.closePath();
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          // 2. 内扇形原粉色填充
+          ctx.beginPath();
+          ctx.moveTo(ox + r, oy + r);
+          ctx.lineTo(ox, oy + r);
+          ctx.arc(ox + r, oy + r, r, Math.PI, -Math.PI / 2, false);
+          ctx.closePath();
+          ctx.fillStyle = CIRCLE_COLOR;
+          ctx.fill();
+
+          // 3. 扇形分界弧黑线
+          ctx.beginPath();
+          ctx.arc(ox + r, oy + r, r, Math.PI, -Math.PI / 2, false);
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+        } else if (quadrant === 'TR') {
+          const ox = rect.x + W + dx;
+          const oy = rect.y + dy;
+
+          // 1. 外角白色填充与外边线
+          ctx.beginPath();
+          ctx.moveTo(ox, oy);
+          ctx.lineTo(ox, oy + r);
+          ctx.arc(ox - r, oy + r, r, 0, -Math.PI / 2, true);
+          ctx.closePath();
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          // 2. 内扇形原粉色填充
+          ctx.beginPath();
+          ctx.moveTo(ox - r, oy + r);
+          ctx.lineTo(ox - r, oy);
+          ctx.arc(ox - r, oy + r, r, -Math.PI / 2, 0, false);
+          ctx.closePath();
+          ctx.fillStyle = CIRCLE_COLOR;
+          ctx.fill();
+
+          // 3. 扇形分界弧黑线
+          ctx.beginPath();
+          ctx.arc(ox - r, oy + r, r, -Math.PI / 2, 0, false);
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+        } else if (quadrant === 'BL') {
+          const ox = rect.x + dx;
+          const oy = rect.y + H + dy;
+
+          // 1. 外角白色填充与外边线
+          ctx.beginPath();
+          ctx.moveTo(ox, oy);
+          ctx.lineTo(ox, oy - r);
+          ctx.arc(ox + r, oy - r, r, Math.PI, Math.PI / 2, true);
+          ctx.closePath();
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          // 2. 内扇形原粉色填充
+          ctx.beginPath();
+          ctx.moveTo(ox + r, oy - r);
+          ctx.lineTo(ox + r, oy);
+          ctx.arc(ox + r, oy - r, r, Math.PI / 2, Math.PI, false);
+          ctx.closePath();
+          ctx.fillStyle = CIRCLE_COLOR;
+          ctx.fill();
+
+          // 3. 扇形分界弧黑线
+          ctx.beginPath();
+          ctx.arc(ox + r, oy - r, r, Math.PI / 2, Math.PI, false);
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+        } else if (quadrant === 'BR') {
+          const ox = rect.x + W + dx;
+          const oy = rect.y + H + dy;
+
+          // 1. 外角白色填充与外边线
+          ctx.beginPath();
+          ctx.moveTo(ox, oy);
+          ctx.lineTo(ox - r, oy);
+          ctx.arc(ox - r, oy - r, r, Math.PI / 2, 0, true);
+          ctx.closePath();
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          // 2. 内扇形原粉色填充
+          ctx.beginPath();
+          ctx.moveTo(ox - r, oy - r);
+          ctx.lineTo(ox, oy - r);
+          ctx.arc(ox - r, oy - r, r, 0, Math.PI / 2, false);
+          ctx.closePath();
+          ctx.fillStyle = CIRCLE_COLOR;
+          ctx.fill();
+
+          // 3. 扇形分界弧黑线
+          ctx.beginPath();
+          ctx.arc(ox - r, oy - r, r, 0, Math.PI / 2, false);
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
+      // 绘制四个角落向中心动态合并（拖动时不显示虚线、合并前不显示方中圆、合并后不标记半径和刻度数据）
+      function drawMagicMergeLayers() {
+        if (mergeProgress <= 0) return;
+
+        const W = rect.width;
+        const H = rect.height;
+        const r = circle.radius;
+        const Cx = rect.x + W / 2;
+        const Cy = rect.y + H / 2;
+        const t = mergeProgress;
+
+        // 向中心目标点的最大位移向量
+        const maxDx = W / 2 - r;
+        const maxDy = H / 2 - r;
+
+        // 绘制四个向中心飞行的角落（外角保持白色、内扇形保持原粉色，无虚线引导）
+        drawCornerPiece('TL', t * maxDx, t * maxDy);
+        drawCornerPiece('TR', -t * maxDx, t * maxDy);
+        drawCornerPiece('BL', t * maxDx, -t * maxDy);
+        drawCornerPiece('BR', -t * maxDx, -t * maxDy);
+
+        // 仅在完全合并到中心时（t >= 0.999）闭合呈现「方中圆」外轮廓（不显示任何虚线、文字、半径刻度数据）
+        if (t >= 0.999) {
+          ctx.save();
+          // 1. 中心正方形外轮廓 (边长 2r)
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.strokeRect(Cx - r, Cy - r, 2 * r, 2 * r);
+
+          // 2. 内切圆外轮廓 (半径 r 的圆)
+          ctx.beginPath();
+          ctx.arc(Cx, Cy, r, 0, Math.PI * 2);
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // 渲染主画面
+      function render() {
+        const dpr = window.devicePixelRatio || 1;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
+        if (mergeProgress === 0) {
+          // 未拖动时：正常绘制完整长方形、涂色轨迹、边框与圆盘
+          // 1. 绘制长方形/正方形白色底板与微阴影
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.06)';
+          ctx.shadowBlur = 28;
+          ctx.shadowOffsetY = 10;
+          ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+          ctx.shadowColor = 'transparent';
+
+          // 2. 绘制圆盘拖动扫过的淡粉色覆盖轨迹（裁剪在矩形内）
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(rect.x, rect.y, rect.width, rect.height);
+          ctx.clip();
+          ctx.drawImage(sweepCanvas, 0, 0, canvas.width / dpr, canvas.height / dpr);
+          ctx.restore();
+
+          // 3. 绘制几何黑色外边框
+          ctx.strokeStyle = '#18181b';
+          ctx.lineWidth = rect.borderWidth;
+          ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+          // 4. 绘制淡粉色圆盘
+          drawDisk();
+        } else {
+          // 拖动时先隐藏整个长方形，仅保留四个角落动态向中心移动
+          drawMagicMergeLayers();
+        }
+
+        // 绘制画笔手写笔记层（顶层呈现）
+        ctx.drawImage(doodleCanvas, 0, 0, canvas.width / dpr, canvas.height / dpr);
+
+        ctx.restore();
+      }
+
+      // 绘制圆盘
+      function drawDisk() {
+        const r = circle.radius;
+        const x = circle.x;
+        const y = circle.y;
+
+        if (circle.isDragging) {
+          ctx.beginPath();
+          ctx.arc(x, y, r + 3, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(24, 24, 27, 0.25)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        // 淡粉色纯色填充
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = CIRCLE_COLOR;
+        ctx.fill();
+
+        // 黑色外轮廓
+        ctx.strokeStyle = '#18181b';
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+      }
+
+      // 获取相对于画布的精确坐标
+      function getCanvasCoords(e) {
+        const rectBounds = canvas.getBoundingClientRect();
+        return {
+          x: e.clientX - rectBounds.left,
+          y: e.clientY - rectBounds.top
+        };
+      }
+
+      // ================= 触控与鼠标事件交互 =================
+      canvas.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch (_) { }
+
+        e.preventDefault();
+        const coords = getCanvasCoords(e);
+        const px = coords.x;
+        const py = coords.y;
+
+        // 用户交互时停止自动巡航
+        if (isCruising) {
+          stopCruise();
+        }
+
+        // 仅在圆盘拖动模式下可移动圆盘；合并状态下不可拖动圆盘
+        if (activeTool === 'circle') {
+          if (mergeProgress > 0) return;
+          circle.isDragging = true;
+          circle.x = px;
+          circle.y = py;
+          clampCirclePosition();
+          stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+          playClickSfx();
+          render();
+          return;
+        }
+
+        // 画笔写字模式：画点/起笔（任何阶段均可正常书写涂鸦，包括拖动合并后）
+        if (activeTool === 'brush') {
+          isDrawing = true;
+          lastPoint = { x: px, y: py };
+          drawDoodlePoint(px, py);
+          render();
+          return;
+        }
+
+        // 橡皮擦模式：擦除
+        if (activeTool === 'eraser') {
+          isDrawing = true;
+          lastPoint = { x: px, y: py };
+          eraseAt(px, py);
+          render();
+        }
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (e.pointerType === 'mouse' && e.buttons === 0) {
+          if (isDrawing || circle.isDragging) {
+            onPointerEnd(e);
+          }
+          return;
+        }
+
+        const coords = getCanvasCoords(e);
+        const px = coords.x;
+        const py = coords.y;
+
+        if (circle.isDragging && activeTool === 'circle') {
+          if (mergeProgress > 0) return;
+          e.preventDefault();
+          const oldX = circle.x;
+          const oldY = circle.y;
+          circle.x = px;
+          circle.y = py;
+          clampCirclePosition();
+          stampSweep(oldX, oldY, circle.x, circle.y, true);
+          render();
+          return;
+        }
+
+        if (isDrawing && activeTool === 'brush') {
+          e.preventDefault();
+          drawDoodleLine(lastPoint.x, lastPoint.y, px, py);
+          lastPoint = { x: px, y: py };
+          render();
+          return;
+        }
+
+        if (isDrawing && activeTool === 'eraser') {
+          e.preventDefault();
+          eraseAt(px, py, lastPoint.x, lastPoint.y);
+          lastPoint = { x: px, y: py };
+          render();
+        }
+      });
+
+      function onPointerEnd(e) {
+        if (circle.isDragging) {
+          circle.isDragging = false;
+          checkCoverage();
+          render();
+        }
+        if (isDrawing) {
+          isDrawing = false;
+        }
+        try {
+          if (e && e.pointerId !== undefined && canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)) {
+            canvas.releasePointerCapture(e.pointerId);
+          }
+        } catch (_) { }
+      }
+
+      canvas.addEventListener('pointerup', onPointerEnd);
+      canvas.addEventListener('pointercancel', onPointerEnd);
+      window.addEventListener('pointerup', onPointerEnd);
+      window.addEventListener('pointercancel', onPointerEnd);
+
+      // ================= 覆盖检测与合并控制 =================
+
+      // 判断长方形/正方形内某点是否属于可涂色区域（排除四个圆弧角落绝对无法触及的区域）
+      function isPointCoverable(x, y) {
+        const r = circle.radius;
+        const W = rect.width;
+        const H = rect.height;
+
+        // 左上角外侧
+        if (x < rect.x + r && y < rect.y + r) {
+          const dx = x - (rect.x + r);
+          const dy = y - (rect.y + r);
+          if (dx * dx + dy * dy > r * r) return false;
+        }
+        // 右上角外侧
+        if (x > rect.x + W - r && y < rect.y + r) {
+          const dx = x - (rect.x + W - r);
+          const dy = y - (rect.y + r);
+          if (dx * dx + dy * dy > r * r) return false;
+        }
+        // 左下角外侧
+        if (x < rect.x + r && y > rect.y + H - r) {
+          const dx = x - (rect.x + r);
+          const dy = y - (rect.y + H - r);
+          if (dx * dx + dy * dy > r * r) return false;
+        }
+        // 右下角外侧
+        if (x > rect.x + W - r && y > rect.y + H - r) {
+          const dx = x - (rect.x + W - r);
+          const dy = y - (rect.y + H - r);
+          if (dx * dx + dy * dy > r * r) return false;
+        }
+        return true;
+      }
+
+      // 检测长方形/正方形内部是否已被圆盘充分涂满（除四个角落无法涂色外，其余区域必须全部涂满才触发）
+      function checkCoverage() {
+        if (isPaintCompleted || mergeProgress > 0) return;
+        const W = rect.width;
+        const H = rect.height;
+        if (W <= 0 || H <= 0) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const rx = Math.round(rect.x * dpr);
+        const ry = Math.round(rect.y * dpr);
+        const rw = Math.round(W * dpr);
+        const rh = Math.round(H * dpr);
+
+        try {
+          const imgData = sweepCtx.getImageData(rx, ry, rw, rh);
+          const data = imgData.data;
+
+          // 适中高密度网格采样，全面覆盖图形的四边及内部所有可涂色区域
+          const stepX = Math.max(8, Math.round(W / 28));
+          const stepY = Math.max(8, Math.round(H / 22));
+
+          let coverableTotal = 0;
+          let coveredCount = 0;
+
+          // 预留 3px 边距避免触碰黑色边框
+          for (let y = rect.y + 3; y <= rect.y + H - 3; y += stepY) {
+            for (let x = rect.x + 3; x <= rect.x + W - 3; x += stepX) {
+              if (isPointCoverable(x, y)) {
+                coverableTotal++;
+                const px = Math.min(rw - 1, Math.max(0, Math.round((x - rect.x) * dpr)));
+                const py = Math.min(rh - 1, Math.max(0, Math.round((y - rect.y) * dpr)));
+                const alpha = data[(py * rw + px) * 4 + 3];
+                if (alpha > 80) {
+                  coveredCount++;
+                }
+              }
+            }
+          }
+
+          // 严格要求：必须可涂色区域几乎全部（>= 96%）涂满粉色才触发显示合并滑动条
+          if (coverableTotal > 0 && (coveredCount / coverableTotal) >= 0.96) {
+            triggerPaintComplete();
+          }
+        } catch (e) { }
+      }
+
+      // 触发涂色完毕：页面底部中间显示合并滑动条
+      function triggerPaintComplete() {
+        if (isPaintCompleted) return;
+        isPaintCompleted = true;
+        mergeSliderPanel.classList.add('visible');
+        playMagicSfx();
+      }
+
+      // 重置合并进度与状态
+      function resetMergeState() {
+        isPaintCompleted = false;
+        mergeProgress = 0;
+        sliderMerge.value = 0;
+        valMerge.textContent = '0%';
+        mergeSliderPanel.classList.remove('visible');
+      }
+
+      // 滑动条拖动或点击跳动事件（手动控制合并过程）
+      sliderMerge.addEventListener('input', (e) => {
+        if (isCruising) {
+          stopCruise();
+        }
+        mergeProgress = parseInt(e.target.value, 10) / 100;
+        valMerge.textContent = e.target.value + '%';
+        render();
+      });
+
+      // ================= 工具栏模式切换 =================
+
+      function setActiveTool(tool) {
+        activeTool = tool;
+        circle.isDragging = false;
+        isDrawing = false;
+
+        btnBrush.classList.toggle('active', tool === 'brush');
+        btnEraser.classList.toggle('active', tool === 'eraser');
+
+        if (tool === 'brush') {
+          canvas.style.cursor = 'crosshair';
+        } else if (tool === 'eraser') {
+          canvas.style.cursor = 'cell';
+        } else {
+          canvas.style.cursor = 'grab';
+        }
+
+        playClickSfx();
+      }
+
+      // 笔工具用来切换状态：已在画笔模式则切换回拖动圆盘，否则进入画笔模式
+      btnBrush.addEventListener('click', () => {
+        if (activeTool === 'brush') {
+          setActiveTool('circle');
+        } else {
+          setActiveTool('brush');
+        }
+      });
+
+      // 橡皮擦工具切换：已在橡皮模式则切回拖动圆盘，否则进入橡皮模式
+      btnEraser.addEventListener('click', () => {
+        if (activeTool === 'eraser') {
+          setActiveTool('circle');
+        } else {
+          setActiveTool('eraser');
+        }
+      });
+
+      // 墨水颜色切换（绝不影响圆盘颜色）
+      swatchBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          swatchBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          penColor = btn.getAttribute('data-color');
+          setActiveTool('brush');
+        });
+      });
+
+      // 清空画板并复位
+      btnClear.addEventListener('click', () => {
+        if (isCruising) {
+          stopCruise();
+        }
+        resetMergeState();
+
+        sweepCtx.clearRect(0, 0, sweepCanvas.width, sweepCanvas.height);
+        doodleCtx.clearRect(0, 0, doodleCanvas.width, doodleCanvas.height);
+
+        resetCircleToBottomLeft();
+        stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+
+        playClickSfx();
+        render();
+      });
+
+      // ================= 页面右上角自动巡航（最优弓字形巡航遍历） =================
+      const btnAutoCruise = document.getElementById('btnAutoCruise');
+      let isCruising = false;
+      let cruiseAnimId = null;
+
+      function startCruise() {
+        if (isCruising) return;
+        resetMergeState();
+        isCruising = true;
+        btnAutoCruise.classList.add('active');
+        setActiveTool('circle');
+
+        // 计算可移动的几何边界
+        const minX = rect.x + circle.radius;
+        const maxX = rect.x + rect.width - circle.radius;
+        const minY = rect.y + circle.radius;
+        const maxY = rect.y + rect.height - circle.radius;
+
+        // 起点重置至左下角相切点
+        circle.x = minX;
+        circle.y = maxY;
+        stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+
+        // 生成“之”字来回覆盖路径（严格按每步上升一个半径往复巡航）
+        const waypoints = [];
+        const stepY = circle.radius; // 向上步进严格为一个半径 r
+
+        let curY = maxY;
+        let atX = minX;
+
+        // 1. 左下启动往右
+        waypoints.push({ x: maxX, y: curY });
+        atX = maxX;
+
+        // 2. 依次：往上一个半径 -> 往左 -> 往上一个半径 -> 往右……来回往复
+        while (curY > minY) {
+          const nextY = Math.max(minY, curY - stepY);
+          if (nextY === curY) break;
+          curY = nextY;
+
+          // 往上一个半径
+          waypoints.push({ x: atX, y: curY });
+
+          // 水平扫向对侧
+          atX = (atX === maxX) ? minX : maxX;
+          waypoints.push({ x: atX, y: curY });
+        }
+
+        // 3. 最后顺着最后的方向绕一圈（沿四边贴边巡航一周回到该终点）
+        if (atX === maxX) {
+          // 最后一步是自左向右到达右上角 (maxX, minY)
+          // 顺着前进方向转入右边缘向下绕行一周（顺时针）：
+          waypoints.push({ x: maxX, y: maxY }); // 右侧沿壁向下到右下角
+          waypoints.push({ x: minX, y: maxY }); // 底部沿壁向左到左下角
+          waypoints.push({ x: minX, y: minY }); // 左侧沿壁向上到左上角
+          waypoints.push({ x: maxX, y: minY }); // 顶部沿壁向右回到右上角
+        } else {
+          // 最后一步是自右向左到达左上角 (minX, minY)
+          // 顺着前进方向转入左边缘向下绕行一周（逆时针）：
+          waypoints.push({ x: minX, y: maxY }); // 左侧沿壁向下到左下角
+          waypoints.push({ x: maxX, y: maxY }); // 底部沿壁向右到右下角
+          waypoints.push({ x: maxX, y: minY }); // 右侧沿壁向上到右上角
+          waypoints.push({ x: minX, y: minY }); // 顶部沿壁向左回到左上角
+        }
+
+        let currentTargetIndex = 0;
+        // 巡航平滑移动速度
+        const speed = Math.max(5, Math.min(10, Math.round(rect.width / 80)));
+
+        function cruiseLoop() {
+          if (!isCruising) return;
+          if (currentTargetIndex >= waypoints.length) {
+            stopCruise();
+            triggerPaintComplete();
+            return;
+          }
+
+          const target = waypoints[currentTargetIndex];
+          const dx = target.x - circle.x;
+          const dy = target.y - circle.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          const oldX = circle.x;
+          const oldY = circle.y;
+
+          if (dist <= speed) {
+            circle.x = target.x;
+            circle.y = target.y;
+            currentTargetIndex++;
+          } else {
+            circle.x += (dx / dist) * speed;
+            circle.y += (dy / dist) * speed;
+          }
+
+          clampCirclePosition();
+          stampSweep(oldX, oldY, circle.x, circle.y, true);
+          render();
+
+          cruiseAnimId = requestAnimationFrame(cruiseLoop);
+        }
+
+        cruiseAnimId = requestAnimationFrame(cruiseLoop);
+        playClickSfx();
+      }
+
+      function stopCruise() {
+        if (!isCruising) return;
+        isCruising = false;
+        if (cruiseAnimId) {
+          cancelAnimationFrame(cruiseAnimId);
+          cruiseAnimId = null;
+        }
+        btnAutoCruise.classList.remove('active');
+        playClickSfx();
+      }
+
+      btnAutoCruise.addEventListener('click', () => {
+        if (isCruising) {
+          stopCruise();
+        } else {
+          startCruise();
+        }
+      });
+
+      // ================= 右下角设置面板交互 =================
+
+      // 打开/关闭设置面板
+      btnSettings.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const willOpen = !settingsPanel.classList.contains('open');
+        settingsPanel.classList.toggle('open', willOpen);
+        btnSettings.classList.toggle('active', willOpen);
+        playClickSfx();
+      });
+
+      btnCloseSettings.addEventListener('click', (e) => {
+        e.stopPropagation();
+        settingsPanel.classList.remove('open');
+        btnSettings.classList.remove('active');
+        playClickSfx();
+      });
+
+      // 阻止面板内部点击向外冒泡
+      settingsPanel.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+      });
+
+      // 点击空白处，自动隐藏设置面板
+      document.addEventListener('pointerdown', (e) => {
+        if (settingsPanel.classList.contains('open')) {
+          if (!settingsPanel.contains(e.target) && !btnSettings.contains(e.target)) {
+            settingsPanel.classList.remove('open');
+            btnSettings.classList.remove('active');
+          }
+        }
+      });
+
+      // 动态限制最大半径（圆直径不可超过图形最短边，且必须为整数）
+      function updateRadiusMaxLimit() {
+        const curShortSide = shapeType === 'rect' ? Math.min(model.rectW, model.rectH) : model.squareSide;
+        const maxR = Math.floor(curShortSide / 2);
+        sliderRadius.max = maxR;
+        if (model.radius > maxR) {
+          model.radius = maxR;
+          sliderRadius.value = maxR;
+          valRadius.textContent = maxR;
+        }
+      }
+
+      // 切换形状：长方形
+      btnShapeRect.addEventListener('click', () => {
+        if (shapeType === 'rect') return;
+        if (isCruising) stopCruise();
+        resetMergeState();
+        shapeType = 'rect';
+        btnShapeRect.classList.add('active');
+        btnShapeSquare.classList.remove('active');
+        rectControls.style.display = 'block';
+        squareControls.style.display = 'none';
+
+        updateRadiusMaxLimit();
+        sweepCtx.clearRect(0, 0, sweepCanvas.width, sweepCanvas.height);
+        resizeCanvas();
+        stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+        playClickSfx();
+      });
+
+      // 切换形状：正方形
+      btnShapeSquare.addEventListener('click', () => {
+        if (shapeType === 'square') return;
+        if (isCruising) stopCruise();
+        resetMergeState();
+        shapeType = 'square';
+        btnShapeSquare.classList.add('active');
+        btnShapeRect.classList.remove('active');
+        rectControls.style.display = 'none';
+        squareControls.style.display = 'block';
+
+        updateRadiusMaxLimit();
+        sweepCtx.clearRect(0, 0, sweepCanvas.width, sweepCanvas.height);
+        resizeCanvas();
+        stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+        playClickSfx();
+      });
+
+      // 长方形长滑块（整数）
+      sliderWidth.addEventListener('input', (e) => {
+        if (isCruising) stopCruise();
+        resetMergeState();
+        model.rectW = parseInt(e.target.value, 10);
+        valWidth.textContent = model.rectW;
+        updateRadiusMaxLimit();
+        sweepCtx.clearRect(0, 0, sweepCanvas.width, sweepCanvas.height);
+        resizeCanvas();
+        stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+      });
+
+      // 长方形宽滑块（整数）
+      sliderHeight.addEventListener('input', (e) => {
+        if (isCruising) stopCruise();
+        resetMergeState();
+        model.rectH = parseInt(e.target.value, 10);
+        valHeight.textContent = model.rectH;
+        updateRadiusMaxLimit();
+        sweepCtx.clearRect(0, 0, sweepCanvas.width, sweepCanvas.height);
+        resizeCanvas();
+        stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+      });
+
+      // 正方形边长滑块（整数）
+      sliderSide.addEventListener('input', (e) => {
+        if (isCruising) stopCruise();
+        resetMergeState();
+        model.squareSide = parseInt(e.target.value, 10);
+        valSide.textContent = model.squareSide;
+        updateRadiusMaxLimit();
+        sweepCtx.clearRect(0, 0, sweepCanvas.width, sweepCanvas.height);
+        resizeCanvas();
+        stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+      });
+
+      // 圆半径滑块（严格整数）
+      sliderRadius.addEventListener('input', (e) => {
+        if (isCruising) stopCruise();
+        resetMergeState();
+        model.radius = parseInt(e.target.value, 10);
+        valRadius.textContent = model.radius;
+        sweepCtx.clearRect(0, 0, sweepCanvas.width, sweepCanvas.height);
+        resizeCanvas();
+        stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+      });
+
+      // 窗口自适应
+      window.addEventListener('resize', () => {
+        if (isCruising) stopCruise();
+        resizeCanvas();
+      });
+      window.addEventListener('orientationchange', () => {
+        if (isCruising) stopCruise();
+        setTimeout(resizeCanvas, 150);
+      });
+
+      // 首次初始化启动
+      setActiveTool('circle');
+      updateRadiusMaxLimit();
+      resizeCanvas();
+      stampSweep(circle.x, circle.y, circle.x, circle.y, false);
+      render();
+    })();
+  </script>
+</body>
+
+</html>
