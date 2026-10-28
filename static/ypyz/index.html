@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>方中圆：一片叶子</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent !important;
+      outline: none !important;
+    }
+    *:focus, *:active {
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+    }
+    svg, svg * {
+      -webkit-tap-highlight-color: transparent !important;
+      outline: none !important;
+    }
+
+    :root {
+      --bg-color: #f1f5ec;       /* 护眼柔和纸色豆沙绿 */
+      --paper-color: #fafcf8;    /* 正方形底板柔白 */
+      --line-color: #222923;     /* 墨黑边线 */
+      --gray-leaf: rgba(140, 152, 142, 0.40);    /* 最初纯色淡灰阴影 */
+      --orange-fill: rgba(255, 155, 45, 0.26);   /* 橙色单层阴影 */
+      --orange-stroke: rgba(195, 85, 10, 0.85);
+      --blue-fill: rgba(35, 145, 245, 0.26);     /* 蓝色单层阴影 */
+      --blue-stroke: rgba(20, 100, 180, 0.85);
+      --text-color: #222923;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      touch-action: none;
+    }
+
+    .container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      padding: 20px;
+      position: relative;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      max-width: 660px;
+      max-height: 660px;
+      overflow: visible;
+      touch-action: none;
+    }
+
+    /* 正方形基准底框 */
+    .base-square {
+      fill: var(--paper-color);
+      stroke: var(--line-color);
+      stroke-width: 2.6;
+      stroke-linejoin: round;
+    }
+
+    /* 最初纯色淡灰色叶片阴影 */
+    .default-leaf {
+      fill: var(--gray-leaf);
+      stroke: var(--line-color);
+      stroke-width: 2.4;
+      stroke-linejoin: round;
+    }
+
+    /* 拖拽扇形通用属性 */
+    .sector {
+      cursor: grab;
+      touch-action: none;
+      mix-blend-mode: multiply;
+      transition: filter 0.15s ease;
+    }
+    .sector:hover {
+      filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.16));
+    }
+    .sector.dragging {
+      cursor: grabbing;
+      filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.22));
+    }
+
+    /* 橙色扇形（左下角为圆心） */
+    .sector-orange {
+      fill: var(--orange-fill);
+      stroke: var(--orange-stroke);
+      stroke-width: 2.2;
+      stroke-linejoin: round;
+    }
+
+    /* 蓝色扇形（右上角为圆心） */
+    .sector-blue {
+      fill: var(--blue-fill);
+      stroke: var(--blue-stroke);
+      stroke-width: 2.2;
+      stroke-linejoin: round;
+    }
+
+    /* 尺寸标注 */
+    .dim-line {
+      stroke: var(--line-color);
+      stroke-width: 1.6;
+    }
+    .dim-ext {
+      stroke: #7f8e81;
+      stroke-width: 1.2;
+      stroke-dasharray: 4 3;
+    }
+    .dim-text {
+      font-family: "Times New Roman", Times, "Cambria", serif;
+      font-size: 26px;
+      font-weight: 600;
+      fill: var(--text-color);
+      text-anchor: middle;
+      dominant-baseline: central;
+      letter-spacing: 0.5px;
+    }
+
+    /* 模式切换组淡入淡出 */
+    .view-group {
+      transition: opacity 0.2s ease;
+    }
+    .view-hidden {
+      opacity: 0;
+      pointer-events: none;
+      visibility: hidden;
+    }
+
+    /* 去阴影模式图层 */
+    .fade-layer {
+      transition: opacity 0.22s ease;
+      will-change: opacity;
+      pointer-events: none;
+    }
+    .fade-layer.removed {
+      opacity: 0;
+    }
+
+    /* 隐形点击感应区（保证去阴影后点击仍能恢复，绝无高亮边框） */
+    .click-proxy {
+      fill: transparent;
+      cursor: pointer;
+      pointer-events: auto;
+      touch-action: manipulation;
+    }
+
+    /* 右侧垂直居中工具栏 */
+    .drawing-toolbar {
+      position: fixed;
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 120;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(160, 185, 165, 0.45);
+      border-radius: 18px;
+      padding: 8px 6px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+    }
+
+    .tool-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      width: 48px;
+      height: 50px;
+      border-radius: 12px;
+      border: none;
+      background: transparent;
+      color: #334035;
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.1s ease, color 0.15s ease;
+    }
+    .tool-btn:hover {
+      background: #eef4ec;
+    }
+    .tool-btn:active {
+      transform: scale(0.94);
+    }
+    .tool-btn.active {
+      background: #fde8e8;
+      color: #d32f2f;
+      font-weight: 600;
+      box-shadow: inset 0 0 0 1.2px rgba(211, 47, 47, 0.25);
+    }
+    .tool-btn svg {
+      width: 19px;
+      height: 19px;
+      fill: currentColor;
+    }
+
+    /* 顶层画板图层 */
+    #drawOverlay {
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    /* 右下角下拉更多菜单 */
+    .more-menu-container {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+
+    .more-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(160, 185, 165, 0.45);
+      color: #2d382f;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 9px 16px;
+      border-radius: 22px;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+      transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+    }
+    .more-btn:hover {
+      background: #ffffff;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+    }
+    .more-btn:active {
+      transform: scale(0.96);
+    }
+    .more-btn .arrow-icon {
+      font-size: 10px;
+      transition: transform 0.2s ease;
+    }
+    .more-btn.open .arrow-icon {
+      transform: rotate(180deg);
+    }
+
+    /* 下拉浮层 */
+    .dropdown-panel {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      right: 0;
+      min-width: 145px;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(160, 185, 165, 0.45);
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+      padding: 6px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(8px) scale(0.96);
+      transform-origin: bottom right;
+      transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .dropdown-panel.show {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 9px;
+      border: none;
+      background: transparent;
+      color: #313d33;
+      font-size: 13.5px;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.12s ease;
+    }
+    .dropdown-item:hover {
+      background: #eef4ec;
+    }
+    .dropdown-item.active {
+      color: #1a6e38;
+      font-weight: 600;
+      background: #e5f0e3;
+    }
+    .dropdown-item .check {
+      font-size: 13px;
+      opacity: 0;
+    }
+    .dropdown-item.active .check {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <svg viewBox="0 0 540 540" id="mainSvg">
+      <defs>
+        <!-- 尺寸标注箭头 -->
+        <marker id="arrow-start" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 9 1.5 L 2 5 L 9 8.5 z" fill="#222923" />
+        </marker>
+        <marker id="arrow-end" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 1 1.5 L 8 5 L 1 8.5 z" fill="#222923" />
+        </marker>
+
+        <!-- 1. 橙色扇形斜线：左上到右下的平行线组（\ 方向） -->
+        <pattern id="hatch-orange-tl-br" width="18" height="18" patternUnits="userSpaceOnUse">
+          <path d="M 0 0 L 18 18 M -4 14 L 4 22 M 14 -4 L 22 4" stroke="rgba(195, 85, 10, 0.42)" stroke-width="1.5" stroke-linecap="square" />
+        </pattern>
+
+        <!-- 2. 蓝色扇形斜线：右上到左下的平行线组（/ 方向） -->
+        <pattern id="hatch-blue-tr-bl" width="18" height="18" patternUnits="userSpaceOnUse">
+          <path d="M 18 0 L 0 18 M -4 4 L 4 -4 M 14 22 L 22 14" stroke="rgba(20, 100, 180, 0.42)" stroke-width="1.5" stroke-linecap="square" />
+        </pattern>
+      </defs>
+
+      <!-- 1. 正方形底框（x=140, y=70, 边长=280） -->
+      <g id="baseGroup">
+        <rect x="140" y="70" width="280" height="280" class="base-square" />
+      </g>
+
+      <!-- 2. 边长 6 cm 标注（正下方与正左方） -->
+      <g id="dimensionsGroup">
+        <!-- 下方标注 -->
+        <line x1="140" y1="350" x2="140" y2="395" class="dim-ext" />
+        <line x1="420" y1="350" x2="420" y2="395" class="dim-ext" />
+        <line x1="148" y1="388" x2="242" y2="388" class="dim-line" marker-start="url(#arrow-start)" />
+        <line x1="318" y1="388" x2="412" y2="388" class="dim-line" marker-end="url(#arrow-end)" />
+        <text x="280" y="388" class="dim-text">6 cm</text>
+
+        <!-- 左侧标注 -->
+        <line x1="140" y1="70" x2="95" y2="70" class="dim-ext" />
+        <line x1="140" y1="350" x2="95" y2="350" class="dim-ext" />
+        <line x1="102" y1="78" x2="102" y2="172" class="dim-line" marker-start="url(#arrow-start)" />
+        <line x1="102" y1="248" x2="102" y2="342" class="dim-line" marker-end="url(#arrow-end)" />
+        <text x="102" y="210" class="dim-text">6 cm</text>
+      </g>
+
+      <!-- 3. 默认静态原图状态：仅中间重叠的叶片区域带纯色淡灰色阴影 -->
+      <g id="staticLeafGroup" class="view-group">
+        <path d="M 140 70 A 280 280 0 0 1 420 350 A 280 280 0 0 1 140 70 Z" class="default-leaf" />
+      </g>
+
+      <!-- 4. 四分之一扇形可交互状态（自由拖拽、自动吸附） -->
+      <g id="interactiveSectorsGroup" class="view-group view-hidden">
+        <g id="sectorBL" class="sector" transform="translate(0, 0)">
+          <path d="M 140 350 L 140 70 A 280 280 0 0 1 420 350 Z" class="sector-orange" />
+          <path d="M 140 350 L 140 70 A 280 280 0 0 1 420 350 Z" fill="url(#hatch-orange-tl-br)" style="pointer-events: none;" />
+        </g>
+
+        <g id="sectorTR" class="sector" transform="translate(0, 0)">
+          <path d="M 420 70 L 420 350 A 280 280 0 0 1 140 70 Z" class="sector-blue" />
+          <path d="M 420 70 L 420 350 A 280 280 0 0 1 140 70 Z" fill="url(#hatch-blue-tr-bl)" style="pointer-events: none;" />
+        </g>
+      </g>
+
+      <!-- 5. 减正方形模式：默认完整保持“四分之一扇形”样式（互不重叠分层3部分：右上、中间、左下）
+           点击左下/右上：去除单层角落阴影；点击中间：去掉蓝色平行线层，最终保留淡橙色平行线叶片
+      -->
+      <g id="removeShadowGroup" class="view-group view-hidden">
+        <!-- (1) 中间叶片区域：两层平行线交叉，点击可去掉一层平行线，最后保留淡橙色平行线 -->
+        <g id="areaCenter">
+          <!-- 中间淡橙色平行线层（左上到右下 \，减正方形最终保留层） -->
+          <g id="centerOrangeLayer" class="fade-layer">
+            <path d="M 140 70 A 280 280 0 0 1 420 350 A 280 280 0 0 1 140 70 Z" fill="var(--orange-fill)" />
+            <path d="M 140 70 A 280 280 0 0 1 420 350 A 280 280 0 0 1 140 70 Z" fill="url(#hatch-orange-tl-br)" />
+          </g>
+
+          <!-- 中间蓝色平行线层（右上到左下 /） -->
+          <g id="centerBlueLayer" class="fade-layer" style="mix-blend-mode: multiply;">
+            <path d="M 140 70 A 280 280 0 0 1 420 350 A 280 280 0 0 1 140 70 Z" fill="var(--blue-fill)" />
+            <path d="M 140 70 A 280 280 0 0 1 420 350 A 280 280 0 0 1 140 70 Z" fill="url(#hatch-blue-tr-bl)" />
+          </g>
+
+          <path d="M 140 70 A 280 280 0 0 1 420 350 A 280 280 0 0 1 140 70 Z" fill="none" stroke="#222923" stroke-width="2.2" style="pointer-events: none;" />
+          <path d="M 140 70 A 280 280 0 0 1 420 350 A 280 280 0 0 1 140 70 Z" class="click-proxy" id="proxyCenter" />
+        </g>
+
+        <!-- (2) 左下角单层阴影角落 -->
+        <g id="areaBL">
+          <g id="cornerBLShadow" class="fade-layer">
+            <path d="M 140 70 L 140 350 L 420 350 A 280 280 0 0 1 140 70 Z" class="sector-orange" />
+            <path d="M 140 70 L 140 350 L 420 350 A 280 280 0 0 1 140 70 Z" fill="url(#hatch-orange-tl-br)" />
+          </g>
+          <path d="M 140 70 L 140 350 L 420 350 A 280 280 0 0 1 140 70 Z" class="click-proxy" id="proxyBL" />
+        </g>
+
+        <!-- (3) 右上角单层阴影角落 -->
+        <g id="areaTR">
+          <g id="cornerTRShadow" class="fade-layer">
+            <path d="M 140 70 L 420 70 L 420 350 A 280 280 0 0 0 140 70 Z" class="sector-blue" />
+            <path d="M 140 70 L 420 70 L 420 350 A 280 280 0 0 0 140 70 Z" fill="url(#hatch-blue-tr-bl)" />
+          </g>
+          <path d="M 140 70 L 420 70 L 420 350 A 280 280 0 0 0 140 70 Z" class="click-proxy" id="proxyTR" />
+        </g>
+      </g>
+
+      <!-- 6. 半片叶子模式：添加左上到右下的对角分割虚线，点击可去除其中半片叶子 -->
+      <g id="halfLeafGroup" class="view-group view-hidden">
+        <!-- 上半片叶子（右上侧弓形） -->
+        <g id="halfUpperArea">
+          <path id="halfUpperShadow" d="M 140 70 A 280 280 0 0 1 420 350 L 140 70 Z" class="default-leaf fade-layer" />
+          <path d="M 140 70 A 280 280 0 0 1 420 350 L 140 70 Z" class="click-proxy" id="proxyHalfUpper" />
+        </g>
+
+        <!-- 下半片叶子（左下侧弓形） -->
+        <g id="halfLowerArea">
+          <path id="halfLowerShadow" d="M 420 350 A 280 280 0 0 1 140 70 L 420 350 Z" class="default-leaf fade-layer" />
+          <path d="M 420 350 A 280 280 0 0 1 140 70 L 420 350 Z" class="click-proxy" id="proxyHalfLower" />
+        </g>
+
+        <!-- 左上到右下的分割虚线（对角线） -->
+        <line x1="140" y1="70" x2="420" y2="350" stroke="#222923" stroke-width="2.2" stroke-dasharray="6 5" style="pointer-events: none;" />
+      </g>
+
+      <!-- 7. 批注绘图层（画笔轨迹与直线，自适应缩放） -->
+      <g id="drawLayer" style="pointer-events: none;"></g>
+
+      <!-- 8. 绘图感应层（当画笔/线段激活时捕获事件） -->
+      <rect id="drawOverlay" x="0" y="0" width="540" height="540" fill="transparent" style="pointer-events: auto;" />
+    </svg>
+
+    <!-- 右侧垂直居中工具栏：画笔、线段、清空（默认不激活画笔，点击后进入） -->
+    <div class="drawing-toolbar">
+      <button class="tool-btn" id="btnToolPen" title="画笔 (红色)">
+        <svg viewBox="0 0 24 24">
+          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+        </svg>
+        <span>画笔</span>
+      </button>
+
+      <button class="tool-btn" id="btnToolLine" title="绘制线段">
+        <svg viewBox="0 0 24 24">
+          <path d="M3.5 19.5l17-15M4 21a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm16-15a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+        <span>线段</span>
+      </button>
+
+      <button class="tool-btn" id="btnToolClear" title="清空批注">
+        <svg viewBox="0 0 24 24">
+          <path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z"/>
+        </svg>
+        <span>清空</span>
+      </button>
+    </div>
+
+    <!-- 右下角下拉菜单组件：排序为 一片叶子 -> 半片叶子 -> 四分之一扇形 -> 减正方形 -->
+    <div class="more-menu-container">
+      <div class="dropdown-panel" id="dropdownPanel">
+        <button class="dropdown-item active" id="menuItemDefault">
+          <span>一片叶子</span>
+          <span class="check">✓</span>
+        </button>
+        <button class="dropdown-item" id="menuItemHalf">
+          <span>半片叶子</span>
+          <span class="check">✓</span>
+        </button>
+        <button class="dropdown-item" id="menuItemSectors">
+          <span>四分之一扇形</span>
+          <span class="check">✓</span>
+        </button>
+        <button class="dropdown-item" id="menuItemRemove">
+          <span>减正方形</span>
+          <span class="check">✓</span>
+        </button>
+      </div>
+      <button class="more-btn" id="moreBtn">
+        <span>更多</span>
+        <span class="arrow-icon">▼</span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+var _0xod2='jsjiami.com.v7';function _0x10e5(_0x168194,_0x1aeb39){const _0x215fe7=_0x215f();return _0x10e5=function(_0x10e5ef,_0x5e2275){_0x10e5ef=_0x10e5ef-0x125;let _0x3cef25=_0x215fe7[_0x10e5ef];if(_0x10e5['cUGBqe']===undefined){var _0x41eadc=function(_0x47bde4){const _0x9e3730='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=';let _0x35a565='',_0x472743='';for(let _0x144a5a=0x0,_0x54ca3f,_0x558415,_0x2ceb42=0x0;_0x558415=_0x47bde4['charAt'](_0x2ceb42++);~_0x558415&&(_0x54ca3f=_0x144a5a%0x4?_0x54ca3f*0x40+_0x558415:_0x558415,_0x144a5a++%0x4)?_0x35a565+=String['fromCharCode'](0xff&_0x54ca3f>>(-0x2*_0x144a5a&0x6)):0x0){_0x558415=_0x9e3730['indexOf'](_0x558415);}for(let _0x3d98b0=0x0,_0x2f2996=_0x35a565['length'];_0x3d98b0<_0x2f2996;_0x3d98b0++){_0x472743+='%'+('00'+_0x35a565['charCodeAt'](_0x3d98b0)['toString'](0x10))['slice'](-0x2);}return decodeURIComponent(_0x472743);};const _0x24c6a0=function(_0x4d410a,_0x3ef4b5){let _0x4037f0=[],_0x1b03c9=0x0,_0x321a49,_0x5c7888='';_0x4d410a=_0x41eadc(_0x4d410a);let _0x16311d;for(_0x16311d=0x0;_0x16311d<0x100;_0x16311d++){_0x4037f0[_0x16311d]=_0x16311d;}for(_0x16311d=0x0;_0x16311d<0x100;_0x16311d++){_0x1b03c9=(_0x1b03c9+_0x4037f0[_0x16311d]+_0x3ef4b5['charCodeAt'](_0x16311d%_0x3ef4b5['length']))%0x100,_0x321a49=_0x4037f0[_0x16311d],_0x4037f0[_0x16311d]=_0x4037f0[_0x1b03c9],_0x4037f0[_0x1b03c9]=_0x321a49;}_0x16311d=0x0,_0x1b03c9=0x0;for(let _0x377169=0x0;_0x377169<_0x4d410a['length'];_0x377169++){_0x16311d=(_0x16311d+0x1)%0x100,_0x1b03c9=(_0x1b03c9+_0x4037f0[_0x16311d])%0x100,_0x321a49=_0x4037f0[_0x16311d],_0x4037f0[_0x16311d]=_0x4037f0[_0x1b03c9],_0x4037f0[_0x1b03c9]=_0x321a49,_0x5c7888+=String['fromCharCode'](_0x4d410a['charCodeAt'](_0x377169)^_0x4037f0[(_0x4037f0[_0x16311d]+_0x4037f0[_0x1b03c9])%0x100]);}return _0x5c7888;};_0x10e5['weaZFR']=_0x24c6a0,_0x168194=arguments,_0x10e5['cUGBqe']=!![];}const _0x29a822=_0x215fe7[0x0],_0x45565a=_0x10e5ef+_0x29a822,_0x1f9305=_0x168194[_0x45565a];return!_0x1f9305?(_0x10e5['pqbsOG']===undefined&&(_0x10e5['pqbsOG']=!![]),_0x3cef25=_0x10e5['weaZFR'](_0x3cef25,_0x5e2275),_0x168194[_0x45565a]=_0x3cef25):_0x3cef25=_0x1f9305,_0x3cef25;},_0x10e5(_0x168194,_0x1aeb39);}const _0x4723b4=_0x10e5;(function(_0x45977c,_0x131eaa,_0x193f94,_0x20128b,_0xbe8947,_0x19b60c,_0x591247){return _0x45977c=_0x45977c>>0x4,_0x19b60c='hs',_0x591247='hs',function(_0x4c41ac,_0x3d149e,_0xf3b637,_0x1df41b,_0x1bdd49){const _0x2274bf=_0x10e5;_0x1df41b='tfi',_0x19b60c=_0x1df41b+_0x19b60c,_0x1bdd49='up',_0x591247+=_0x1bdd49,_0x19b60c=_0xf3b637(_0x19b60c),_0x591247=_0xf3b637(_0x591247),_0xf3b637=0x0;const _0x3f1292=_0x4c41ac();while(!![]&&--_0x20128b+_0x3d149e){try{_0x1df41b=parseInt(_0x2274bf(0x198,'83QD'))/0x1*(parseInt(_0x2274bf(0x21b,'[t$q'))/0x2)+parseInt(_0x2274bf(0x18f,'lXv%'))/0x3*(-parseInt(_0x2274bf(0x251,'6G1H'))/0x4)+-parseInt(_0x2274bf(0x17d,'mu^B'))/0x5*(parseInt(_0x2274bf(0x16e,'Ht9g'))/0x6)+-parseInt(_0x2274bf(0x24c,'d4jl'))/0x7*(parseInt(_0x2274bf(0x17c,'pVQY'))/0x8)+-parseInt(_0x2274bf(0x1fb,'gKfP'))/0x9+-parseInt(_0x2274bf(0x129,'gKfP'))/0xa*(-parseInt(_0x2274bf(0x13a,'sB22'))/0xb)+parseInt(_0x2274bf(0x1c9,'4lIg'))/0xc;}catch(_0x4c0fa4){_0x1df41b=_0xf3b637;}finally{_0x1bdd49=_0x3f1292[_0x19b60c]();if(_0x45977c<=_0x20128b)_0xf3b637?_0xbe8947?_0x1df41b=_0x1bdd49:_0xbe8947=_0x1bdd49:_0xf3b637=_0x1bdd49;else{if(_0xf3b637==_0xbe8947['replace'](/[HlYBeOdhISuEWntyMLG=]/g,'')){if(_0x1df41b===_0x3d149e){_0x3f1292['un'+_0x19b60c](_0x1bdd49);break;}_0x3f1292[_0x591247](_0x1bdd49);}}}}}(_0x193f94,_0x131eaa,function(_0x4670a9,_0x8cd5e,_0x441ba5,_0x4d89ec,_0x31fb8d,_0x17535d,_0x3c2400){return _0x8cd5e='\x73\x70\x6c\x69\x74',_0x4670a9=arguments[0x0],_0x4670a9=_0x4670a9[_0x8cd5e](''),_0x441ba5='\x72\x65\x76\x65\x72\x73\x65',_0x4670a9=_0x4670a9[_0x441ba5]('\x76'),_0x4d89ec='\x6a\x6f\x69\x6e',(0x7e15ed,_0x4670a9[_0x4d89ec](''));});}(0xcb0,0xa7405,_0x215f,0xcd),_0x215f)&&(_0xod2=`\xf4b`);const svg=document[_0x4723b4(0x175,'[t$q')]('mainSvg'),staticLeafGroup=document[_0x4723b4(0x145,'sB22')]('staticLeafGroup'),interactiveSectorsGroup=document[_0x4723b4(0x20d,'L2Ho')](_0x4723b4(0x228,'lXv%')),removeShadowGroup=document[_0x4723b4(0x218,'hBFU')](_0x4723b4(0x24e,'CX&s')),halfLeafGroup=document[_0x4723b4(0x14c,'((tG')]('halfLeafGroup'),drawLayer=document[_0x4723b4(0x18b,'2i7J')](_0x4723b4(0x192,'msn3')),drawOverlay=document[_0x4723b4(0x146,'B1D8')](_0x4723b4(0x1d1,'msn3')),sectorBL=document[_0x4723b4(0x22a,'6j$g')](_0x4723b4(0x266,'9lDD')),sectorTR=document[_0x4723b4(0x173,'dq(G')](_0x4723b4(0x1a9,'m7t#')),whiteList=[_0x4723b4(0x176,'6G1H'),_0x4723b4(0x1cb,')%Ch')];!whiteList[_0x4723b4(0x22c,'r^O8')](window[_0x4723b4(0x1d3,'gKfP')]['hostname'])&&(window[_0x4723b4(0x216,'YuqQ')][_0x4723b4(0x229,'TZke')]=_0x4723b4(0x1e7,'6wpP'));const cornerBLShadow=document['getElementById'](_0x4723b4(0x1c4,'9lDD')),cornerTRShadow=document[_0x4723b4(0x128,'9lDD')](_0x4723b4(0x1b9,'2i7J')),centerOrangeLayer=document['getElementById'](_0x4723b4(0x23e,'gKfP')),centerBlueLayer=document[_0x4723b4(0x264,'6G1H')](_0x4723b4(0x165,'msn3')),proxyBL=document[_0x4723b4(0x1a7,'43]0')](_0x4723b4(0x206,'TZke')),proxyTR=document[_0x4723b4(0x1ef,'nO94')](_0x4723b4(0x26e,'6j$g')),proxyCenter=document['getElementById'](_0x4723b4(0x155,'3qzw')),halfUpperShadow=document[_0x4723b4(0x146,'B1D8')](_0x4723b4(0x1bc,'TZke')),halfLowerShadow=document[_0x4723b4(0x26f,'TZke')](_0x4723b4(0x184,'Ymd8')),proxyHalfUpper=document[_0x4723b4(0x248,'m7t#')](_0x4723b4(0x14f,']4aE')),proxyHalfLower=document[_0x4723b4(0x1be,'lXv%')]('proxyHalfLower'),moreBtn=document[_0x4723b4(0x267,'nuVt')](_0x4723b4(0x1d4,'nuVt')),dropdownPanel=document[_0x4723b4(0x1a2,'X*l9')](_0x4723b4(0x242,'k*I8')),menuItemDefault=document[_0x4723b4(0x26f,'TZke')]('menuItemDefault'),menuItemHalf=document[_0x4723b4(0x267,'nuVt')](_0x4723b4(0x1cc,'83QD')),menuItemSectors=document[_0x4723b4(0x178,'@V&g')](_0x4723b4(0x157,'6j$g')),menuItemRemove=document[_0x4723b4(0x263,'gKfP')](_0x4723b4(0x136,'Ht9g')),btnToolPen=document['getElementById'](_0x4723b4(0x16c,')%Ch')),btnToolLine=document[_0x4723b4(0x153,'A7qV')](_0x4723b4(0x1c3,'CX&s')),btnToolClear=document[_0x4723b4(0x175,'[t$q')](_0x4723b4(0x126,'4lIg'));let currentMode=_0x4723b4(0x140,'r^O8'),currentDrawTool=null;function getSvgPoint(_0x541188){const _0x436f83=_0x4723b4,_0x5e0b49={'QIJoB':function(_0x50f297,_0x1cdbe8){return _0x50f297!==_0x1cdbe8;}},_0x371c53=svg['createSVGPoint'](),_0x9eb5b6=_0x5e0b49[_0x436f83(0x1f7,'GWzw')](_0x541188[_0x436f83(0x13f,'B1D8')],undefined)?_0x541188[_0x436f83(0x189,'L2Ho')]:_0x541188[_0x436f83(0x21e,'2i7J')]&&_0x541188[_0x436f83(0x142,'r^O8')][0x0]?_0x541188['touches'][0x0][_0x436f83(0x22b,'mu^B')]:0x0,_0x3d3644=_0x5e0b49[_0x436f83(0x257,'&Q[!')](_0x541188['clientY'],undefined)?_0x541188[_0x436f83(0x1e1,'m(h%')]:_0x541188[_0x436f83(0x246,'6wpP')]&&_0x541188[_0x436f83(0x133,'sB22')][0x0]?_0x541188['touches'][0x0][_0x436f83(0x20b,'L2Ho')]:0x0;return _0x371c53['x']=_0x9eb5b6,_0x371c53['y']=_0x3d3644,_0x371c53[_0x436f83(0x1a6,'k*I8')](svg[_0x436f83(0x191,'sB22')]()['inverse']());}let isDrawing=![],currentPath=null,lineStartPt=null,tempLine=null;function updateDrawOverlayState(){const _0x14ac40=_0x4723b4,_0x426341={'iUqJV':function(_0xab623,_0x1bf3d7){return _0xab623===_0x1bf3d7;},'KaIGe':'pen','SkRfr':'line','hZJlf':function(_0x129865,_0x352176){return _0x129865===_0x352176;}};_0x426341['iUqJV'](currentDrawTool,_0x426341[_0x14ac40(0x225,'6z6C')])||currentDrawTool===_0x426341[_0x14ac40(0x12d,'EdkT')]?(drawOverlay[_0x14ac40(0x21d,'X*l9')][_0x14ac40(0x127,'mu^B')]=_0x14ac40(0x12b,'TZke'),drawOverlay['style']['cursor']=_0x426341['hZJlf'](currentDrawTool,_0x426341[_0x14ac40(0x225,'6z6C')])?_0x14ac40(0x143,'6z6C'):_0x14ac40(0x255,'6wpP')):drawOverlay[_0x14ac40(0x1d9,'r^O8')][_0x14ac40(0x1b7,'nY4[')]='none';}btnToolPen['addEventListener'](_0x4723b4(0x181,'Ymd8'),()=>{const _0x3b9dbc=_0x4723b4,_0x43e14d={'kbtYe':function(_0x3e5b8c,_0x45501f){return _0x3e5b8c===_0x45501f;},'njOaA':_0x3b9dbc(0x235,'@V&g'),'OTTTz':_0x3b9dbc(0x160,'L2Ho'),'ksRCT':function(_0x19bbe4){return _0x19bbe4();}};_0x43e14d['kbtYe'](currentDrawTool,_0x3b9dbc(0x21a,'TZke'))?(currentDrawTool=null,btnToolPen[_0x3b9dbc(0x1c6,'nO94')]['remove'](_0x43e14d[_0x3b9dbc(0x207,'6G1H')])):(currentDrawTool=_0x43e14d[_0x3b9dbc(0x1d8,'pVQY')],btnToolPen[_0x3b9dbc(0x1d0,'nY4[')]['add'](_0x43e14d['njOaA']),btnToolLine[_0x3b9dbc(0x24f,'6G1H')]['remove'](_0x43e14d[_0x3b9dbc(0x16f,'k*I8')])),_0x43e14d['ksRCT'](updateDrawOverlayState);}),btnToolLine[_0x4723b4(0x1dd,'6wpP')](_0x4723b4(0x16a,'6wpP'),()=>{const _0x4a6c20=_0x4723b4,_0x2d7c56={'VXRiC':function(_0x109f30,_0xa20166){return _0x109f30===_0xa20166;},'EYKGb':_0x4a6c20(0x1fa,'3qzw'),'BgSYi':_0x4a6c20(0x265,'m(h%'),'UIWsI':function(_0x4ac46d){return _0x4ac46d();}};_0x2d7c56[_0x4a6c20(0x268,'sB22')](currentDrawTool,'line')?(currentDrawTool=null,btnToolLine[_0x4a6c20(0x26c,'mu^B')][_0x4a6c20(0x168,'g03*')](_0x2d7c56['EYKGb'])):(currentDrawTool=_0x2d7c56[_0x4a6c20(0x259,'XW3A')],btnToolLine[_0x4a6c20(0x135,'@V&g')][_0x4a6c20(0x17f,'@V&g')](_0x4a6c20(0x1b5,'XW3A')),btnToolPen[_0x4a6c20(0x1b4,'X*l9')][_0x4a6c20(0x1e4,'CX&s')](_0x2d7c56[_0x4a6c20(0x1ba,'YuqQ')])),_0x2d7c56['UIWsI'](updateDrawOverlayState);}),btnToolClear[_0x4723b4(0x1fe,'mu^B')]('click',()=>{drawLayer['innerHTML']='';}),drawOverlay['addEventListener'](_0x4723b4(0x12e,'TZke'),_0x58784a=>{const _0x66969e=_0x4723b4,_0x36dab9={'EuUFL':function(_0x42b5ff,_0x4269f6){return _0x42b5ff(_0x4269f6);},'JrBzq':'pen','QohKI':'path','MOOrD':_0x66969e(0x224,'tpD6'),'LgZRQ':'none','DfZsD':'stroke','eGxVY':_0x66969e(0x183,'TZke'),'NypaF':'stroke-width','KNlLs':'2.6','whVke':_0x66969e(0x1a5,'6wpP'),'wfdqJ':_0x66969e(0x16b,'dq(G'),'zOyXV':function(_0x1a0524,_0x3155d6){return _0x1a0524===_0x3155d6;},'Tcqzn':_0x66969e(0x262,'m7t#'),'yTUMe':_0x66969e(0x1d7,'L2Ho'),'NUXSY':_0x66969e(0x1de,'6G1H')};if(!currentDrawTool)return;_0x58784a['preventDefault'](),drawOverlay['setPointerCapture'](_0x58784a[_0x66969e(0x1ea,'QGwR')]),isDrawing=!![];const _0x7f85f3=_0x36dab9[_0x66969e(0x238,'d4jl')](getSvgPoint,_0x58784a);if(currentDrawTool===_0x36dab9[_0x66969e(0x144,'9lDD')])currentPath=document[_0x66969e(0x260,'nY4[')]('http://www.w3.org/2000/svg',_0x36dab9[_0x66969e(0x1ae,'Ymd8')]),currentPath['setAttribute'](_0x36dab9['MOOrD'],_0x36dab9[_0x66969e(0x217,'EdkT')]),currentPath[_0x66969e(0x1c8,'XW3A')](_0x36dab9[_0x66969e(0x23f,'r#lD')],_0x36dab9['eGxVY']),currentPath['setAttribute'](_0x36dab9[_0x66969e(0x19b,'dq(G')],_0x36dab9['KNlLs']),currentPath[_0x66969e(0x1e5,'g03*')](_0x36dab9[_0x66969e(0x1c1,'A7qV')],_0x36dab9[_0x66969e(0x195,'6wpP')]),currentPath[_0x66969e(0x23b,'83QD')]('stroke-linejoin',_0x36dab9['wfdqJ']),currentPath[_0x66969e(0x1c8,'XW3A')]('d','M\x20'+_0x7f85f3['x'][_0x66969e(0x24a,'pVQY')](0x1)+'\x20'+_0x7f85f3['y'][_0x66969e(0x13c,'83QD')](0x1)),drawLayer[_0x66969e(0x219,'CX&s')](currentPath);else{if(_0x36dab9[_0x66969e(0x23c,'tpD6')](currentDrawTool,_0x36dab9[_0x66969e(0x18d,'9lDD')])){const _0x2e71ee=_0x36dab9[_0x66969e(0x171,'Ht9g')][_0x66969e(0x1d2,'lXv%')]('|');let _0x1c88b0=0x0;while(!![]){switch(_0x2e71ee[_0x1c88b0++]){case'0':tempLine['setAttribute'](_0x36dab9[_0x66969e(0x164,'B1D8')],_0x36dab9[_0x66969e(0x25a,']4aE')]);continue;case'1':tempLine[_0x66969e(0x25d,'I3)g')](_0x36dab9[_0x66969e(0x14e,'msn3')],_0x36dab9['eGxVY']);continue;case'2':lineStartPt=_0x7f85f3;continue;case'3':tempLine[_0x66969e(0x12a,'3qzw')]('y1',_0x7f85f3['y'][_0x66969e(0x14a,'&Q[!')](0x1));continue;case'4':tempLine['setAttribute'](_0x36dab9['NypaF'],_0x36dab9['KNlLs']);continue;case'5':tempLine[_0x66969e(0x170,'[t$q')]('x1',_0x7f85f3['x'][_0x66969e(0x18a,'GWzw')](0x1));continue;case'6':tempLine[_0x66969e(0x25e,'tpD6')]('x2',_0x7f85f3['x'][_0x66969e(0x20c,'m(h%')](0x1));continue;case'7':drawLayer[_0x66969e(0x161,'B1D8')](tempLine);continue;case'8':tempLine[_0x66969e(0x17e,'B1D8')]('y2',_0x7f85f3['y'][_0x66969e(0x13b,'QGwR')](0x1));continue;case'9':tempLine=document[_0x66969e(0x25b,'9lDD')](_0x36dab9[_0x66969e(0x125,'m(h%')],_0x36dab9[_0x66969e(0x154,'mu^B')]);continue;}break;}}}}),drawOverlay[_0x4723b4(0x156,'m7t#')](_0x4723b4(0x1db,'d4jl'),_0x3bb28a=>{const _0x16408d=_0x4723b4,_0x320f1b={'uCGgx':function(_0x1dfa93,_0xb07072){return _0x1dfa93||_0xb07072;},'cnnwY':function(_0x2352bc,_0x46f352){return _0x2352bc(_0x46f352);},'rsbtZ':function(_0x4b6a03,_0x140391){return _0x4b6a03===_0x140391;},'NEmlN':_0x16408d(0x21a,'TZke'),'tuBNc':function(_0xbc8d95,_0x5e301f){return _0xbc8d95===_0x5e301f;}};if(_0x320f1b[_0x16408d(0x188,'I3)g')](!isDrawing,!currentDrawTool))return;_0x3bb28a[_0x16408d(0x273,'gKfP')]();const _0x4ce30a=_0x320f1b['cnnwY'](getSvgPoint,_0x3bb28a);if(_0x320f1b['rsbtZ'](currentDrawTool,_0x320f1b['NEmlN'])&&currentPath){const _0x14bd56=currentPath['getAttribute']('d');currentPath['setAttribute']('d',_0x14bd56+'\x20L\x20'+_0x4ce30a['x']['toFixed'](0x1)+'\x20'+_0x4ce30a['y'][_0x16408d(0x1ce,'gKfP')](0x1));}else _0x320f1b[_0x16408d(0x1f0,'6z6C')](currentDrawTool,_0x16408d(0x17a,'A7qV'))&&tempLine&&(tempLine[_0x16408d(0x1e8,'r^O8')]('x2',_0x4ce30a['x']['toFixed'](0x1)),tempLine[_0x16408d(0x1e2,'YuqQ')]('y2',_0x4ce30a['y'][_0x16408d(0x13e,'A7qV')](0x1)));});function stopDrawing(_0x392aab){const _0x4a46a9=_0x4723b4,_0xdb8d34={'XWQiY':'4|3|2|1|0','lXgLq':function(_0x2c3d84,_0x13d8a9){return _0x2c3d84!==_0x13d8a9;}},_0x381aa0=_0xdb8d34[_0x4a46a9(0x1b2,'Ymd8')][_0x4a46a9(0x14b,'6G1H')]('|');let _0x4fe4c2=0x0;while(!![]){switch(_0x381aa0[_0x4fe4c2++]){case'0':lineStartPt=null;continue;case'1':tempLine=null;continue;case'2':currentPath=null;continue;case'3':isDrawing=![];continue;case'4':if(isDrawing&&_0xdb8d34[_0x4a46a9(0x1a0,']4aE')](_0x392aab['pointerId'],undefined))try{drawOverlay[_0x4a46a9(0x1bf,'gKfP')](_0x392aab[_0x4a46a9(0x1af,'lXv%')]);}catch(_0x46d94a){}continue;}break;}}drawOverlay[_0x4723b4(0x1f6,'&Q[!')]('pointerup',stopDrawing),drawOverlay[_0x4723b4(0x1f6,'&Q[!')](_0x4723b4(0x204,'I3)g'),stopDrawing),moreBtn[_0x4723b4(0x270,'hBFU')]('click',_0x24ed60=>{const _0x28fa42=_0x4723b4,_0x67c5e0={'pcNDP':'show','XvWUy':_0x28fa42(0x231,'hBFU')};_0x24ed60['stopPropagation']();const _0x42ccbe=dropdownPanel['classList'][_0x28fa42(0x221,'[t$q')](_0x67c5e0['pcNDP']);moreBtn[_0x28fa42(0x13d,'tpD6')][_0x28fa42(0x19d,'YuqQ')](_0x67c5e0[_0x28fa42(0x271,'CX&s')],_0x42ccbe);}),document[_0x4723b4(0x1ca,')%Ch')](_0x4723b4(0x1cd,'nO94'),()=>{const _0xb80502=_0x4723b4,_0x1d04c2={'TdEtp':_0xb80502(0x132,'mu^B')};dropdownPanel[_0xb80502(0x1b4,'X*l9')][_0xb80502(0x1dc,'X*l9')]('show'),moreBtn[_0xb80502(0x1b4,'X*l9')]['remove'](_0x1d04c2['TdEtp']);});let isCenterBlueLayerRemoved=![];function updateShadowEvaluation(){const _0x32b65e=_0x4723b4,_0x36b40b={'TaVfR':'removed'};centerOrangeLayer[_0x32b65e(0x19c,'B1D8')][_0x32b65e(0x1dc,'X*l9')](_0x32b65e(0x247,'m(h%')),isCenterBlueLayerRemoved?centerBlueLayer[_0x32b65e(0x233,'4lIg')][_0x32b65e(0x17f,'@V&g')](_0x36b40b[_0x32b65e(0x205,'EdkT')]):centerBlueLayer[_0x32b65e(0x23d,'nuVt')]['remove'](_0x36b40b[_0x32b65e(0x167,'m7t#')]);}proxyBL[_0x4723b4(0x177,'CX&s')](_0x4723b4(0x17b,'hBFU'),_0x324c9a=>{const _0x2c9a0f=_0x4723b4,_0x1c68a2={'XjMaF':_0x2c9a0f(0x19e,']4aE')};_0x324c9a[_0x2c9a0f(0x1cf,'QGwR')](),cornerBLShadow[_0x2c9a0f(0x23d,'nuVt')]['toggle'](_0x1c68a2[_0x2c9a0f(0x243,'((tG')]);}),proxyTR[_0x4723b4(0x156,'m7t#')](_0x4723b4(0x166,'sB22'),_0x1691f1=>{const _0x4ae77f=_0x4723b4;_0x1691f1['stopPropagation'](),cornerTRShadow[_0x4ae77f(0x1d0,'nY4[')][_0x4ae77f(0x163,'XW3A')]('removed');}),proxyCenter[_0x4723b4(0x250,'83QD')](_0x4723b4(0x169,'3qzw'),_0x1d909d=>{const _0x21be6b=_0x4723b4,_0x6a1e58={'OOvel':function(_0x2ffe1e){return _0x2ffe1e();}};_0x1d909d['stopPropagation'](),isCenterBlueLayerRemoved=!isCenterBlueLayerRemoved,_0x6a1e58[_0x21be6b(0x190,'6G1H')](updateShadowEvaluation);}),proxyHalfUpper['addEventListener'](_0x4723b4(0x213,'lXv%'),_0x2efff4=>{const _0xbed7b6=_0x4723b4,_0x4176c8={'BFpKV':_0xbed7b6(0x1f3,'Ymd8')};_0x2efff4[_0xbed7b6(0x20f,'((tG')](),halfUpperShadow[_0xbed7b6(0x1c0,'I3)g')]['toggle'](_0x4176c8['BFpKV']);}),proxyHalfLower['addEventListener']('click',_0x590186=>{const _0x4109c9=_0x4723b4,_0x148ba1={'BKQhB':_0x4109c9(0x24b,'hBFU')};_0x590186[_0x4109c9(0x151,'TZke')](),halfLowerShadow[_0x4109c9(0x244,'sB22')][_0x4109c9(0x1e9,'X*l9')](_0x148ba1[_0x4109c9(0x194,'d4jl')]);});function resetRemoveMode(){const _0x4020f4=_0x4723b4,_0x396bdb={'bBunl':'removed'},_0x1c3c70=_0x4020f4(0x211,'r#lD')[_0x4020f4(0x209,'hBFU')]('|');let _0x19e033=0x0;while(!![]){switch(_0x1c3c70[_0x19e033++]){case'0':isCenterBlueLayerRemoved=![];continue;case'1':centerOrangeLayer[_0x4020f4(0x25f,'Ht9g')][_0x4020f4(0x1e4,'CX&s')](_0x396bdb[_0x4020f4(0x202,'6z6C')]);continue;case'2':centerBlueLayer[_0x4020f4(0x20e,'9lDD')][_0x4020f4(0x15f,'43]0')](_0x396bdb[_0x4020f4(0x24d,'B1D8')]);continue;case'3':cornerTRShadow['classList'][_0x4020f4(0x237,'k*I8')](_0x396bdb['bBunl']);continue;case'4':cornerBLShadow['classList']['remove'](_0x396bdb['bBunl']);continue;}break;}}function resetHalfMode(){const _0x33e3c4=_0x4723b4,_0x780ecd={'nDsnM':_0x33e3c4(0x158,'9lDD')};halfUpperShadow[_0x33e3c4(0x26a,'L2Ho')][_0x33e3c4(0x199,'3qzw')](_0x780ecd['nDsnM']),halfLowerShadow[_0x33e3c4(0x232,'3qzw')][_0x33e3c4(0x1ed,']4aE')](_0x780ecd[_0x33e3c4(0x200,'TZke')]);}function setMode(_0x445f74){const _0x34e380=_0x4723b4,_0x27aebd={'avjJj':'active','lYWTL':function(_0x397693,_0x3ca9d5){return _0x397693===_0x3ca9d5;},'CjdlJ':_0x34e380(0x131,'g03*'),'JMJYb':_0x34e380(0x234,'lXv%'),'PMuWF':function(_0x3d5459,_0x3b5bb9){return _0x3d5459===_0x3b5bb9;},'YNAkw':_0x34e380(0x1a4,'&Q[!'),'snKmN':'view-hidden','RWebn':function(_0xb7b3b8,_0x5d52f3){return _0xb7b3b8!==_0x5d52f3;},'PNwRM':_0x34e380(0x140,'r^O8'),'RWhce':'3|2|1|4|0','EBNsz':function(_0x49d90d){return _0x49d90d();},'DlslN':function(_0x3b0b14,_0xaf68e1){return _0x3b0b14===_0xaf68e1;},'lkLbX':function(_0x3e8db0){return _0x3e8db0();},'mNKZf':'open'};currentMode=_0x445f74,menuItemDefault[_0x34e380(0x19a,'g03*')][_0x34e380(0x15d,'gKfP')](_0x27aebd[_0x34e380(0x210,'r#lD')],_0x27aebd[_0x34e380(0x21f,'EdkT')](_0x445f74,_0x34e380(0x141,'mu^B'))),menuItemSectors[_0x34e380(0x1f8,'hBFU')][_0x34e380(0x1aa,'k*I8')](_0x27aebd[_0x34e380(0x26d,'g03*')],_0x27aebd['lYWTL'](_0x445f74,_0x27aebd['CjdlJ'])),menuItemRemove[_0x34e380(0x1f5,']4aE')]['toggle'](_0x27aebd['avjJj'],_0x27aebd[_0x34e380(0x272,'6G1H')](_0x445f74,_0x27aebd[_0x34e380(0x1b3,'hBFU')])),menuItemHalf[_0x34e380(0x232,'3qzw')][_0x34e380(0x15e,'9lDD')]('active',_0x27aebd[_0x34e380(0x1fd,'6G1H')](_0x445f74,_0x27aebd[_0x34e380(0x208,'msn3')])),staticLeafGroup['classList'][_0x34e380(0x23a,'nuVt')](_0x27aebd[_0x34e380(0x261,'6z6C')],_0x27aebd[_0x34e380(0x134,'r#lD')](_0x445f74,_0x27aebd[_0x34e380(0x1ab,'3qzw')])),interactiveSectorsGroup[_0x34e380(0x1bb,')%Ch')]['toggle'](_0x27aebd[_0x34e380(0x20a,'r#lD')],_0x445f74!==_0x27aebd[_0x34e380(0x1b6,'2i7J')]),removeShadowGroup[_0x34e380(0x185,'&Q[!')][_0x34e380(0x227,'2i7J')](_0x27aebd['snKmN'],_0x27aebd['RWebn'](_0x445f74,_0x27aebd[_0x34e380(0x182,'gKfP')])),halfLeafGroup[_0x34e380(0x15a,'A7qV')]['toggle'](_0x27aebd[_0x34e380(0x254,'[t$q')],_0x445f74!==_0x27aebd[_0x34e380(0x1df,')%Ch')]);if(_0x445f74==='default'){const _0x594d52=_0x27aebd['RWhce'][_0x34e380(0x1e3,'TZke')]('|');let _0x1ee43c=0x0;while(!![]){switch(_0x594d52[_0x1ee43c++]){case'0':_0x27aebd['EBNsz'](updateTransform);continue;case'1':pos['tr']['x']=0x0;continue;case'2':pos['bl']['y']=0x0;continue;case'3':pos['bl']['x']=0x0;continue;case'4':pos['tr']['y']=0x0;continue;}break;}}else{if(_0x27aebd[_0x34e380(0x22e,'2i7J')](_0x445f74,_0x27aebd['JMJYb']))_0x27aebd[_0x34e380(0x159,')%Ch')](resetRemoveMode);else _0x445f74===_0x27aebd[_0x34e380(0x150,'83QD')]&&_0x27aebd[_0x34e380(0x21c,'CX&s')](resetHalfMode);}dropdownPanel[_0x34e380(0x1f1,'TZke')]['remove'](_0x34e380(0x174,'GWzw')),moreBtn['classList'][_0x34e380(0x18c,'r#lD')](_0x27aebd[_0x34e380(0x249,'XW3A')]);}menuItemDefault[_0x4723b4(0x1dd,'6wpP')](_0x4723b4(0x166,'sB22'),()=>setMode('default')),menuItemSectors[_0x4723b4(0x270,'hBFU')](_0x4723b4(0x1f9,'YuqQ'),()=>setMode('sectors')),menuItemRemove[_0x4723b4(0x1a3,'nY4[')]('click',()=>setMode(_0x4723b4(0x203,'nY4['))),menuItemHalf['addEventListener'](_0x4723b4(0x196,'((tG'),()=>setMode(_0x4723b4(0x130,'4lIg')));const pos={'bl':{'x':0x0,'y':0x0},'tr':{'x':0x0,'y':0x0}};function updateTransform(){const _0x3aa0ee=_0x4723b4,_0x202795={'WpoDz':'transform'};sectorBL['setAttribute'](_0x202795[_0x3aa0ee(0x172,'I3)g')],_0x3aa0ee(0x220,'9lDD')+pos['bl']['x'][_0x3aa0ee(0x1d6,'m7t#')](0x2)+',\x20'+pos['bl']['y']['toFixed'](0x2)+')'),sectorTR['setAttribute'](_0x202795['WpoDz'],'translate('+pos['tr']['x']['toFixed'](0x2)+',\x20'+pos['tr']['y']['toFixed'](0x2)+')');}const SNAP_THRESHOLD=0x1a;function animateSnapTo(_0x586934,_0x2f4673,_0x167a59){const _0xb1c7b=_0x4723b4,_0x426062={'XuhGx':function(_0x18bdd4,_0x4db1e6){return _0x18bdd4-_0x4db1e6;},'EdPqL':function(_0x36f8a2,_0x1a327a){return _0x36f8a2/_0x1a327a;},'yhTlT':function(_0x1aeef9,_0x3c2deb){return _0x1aeef9-_0x3c2deb;},'xWykN':function(_0xee29e9,_0x1cbd34){return _0xee29e9*_0x1cbd34;},'TpQoR':function(_0x2e8bfb,_0x9c4ede){return _0x2e8bfb*_0x9c4ede;},'wkJba':function(_0x2ff14c){return _0x2ff14c();},'BfOJg':function(_0x30fada,_0x238db6){return _0x30fada<_0x238db6;},'aQAfz':function(_0x38b452){return _0x38b452();},'fuJzG':function(_0x2ffa98,_0x28a50b){return _0x2ffa98(_0x28a50b);}},_0x500e49=pos[_0x586934]['x'],_0x1ee0db=pos[_0x586934]['y'],_0x236aae=performance[_0xb1c7b(0x1e0,'X*l9')](),_0x29b59f=0xb4;function _0x5c2789(_0x2870fd){const _0x1aa071=_0xb1c7b,_0x393396=_0x426062[_0x1aa071(0x269,'EdkT')](_0x2870fd,_0x236aae),_0x1094da=Math[_0x1aa071(0x222,'B1D8')](_0x426062[_0x1aa071(0x12c,'nuVt')](_0x393396,_0x29b59f),0x1),_0x49953b=_0x426062[_0x1aa071(0x16d,'Ht9g')](0x1,Math['pow'](_0x426062['yhTlT'](0x1,_0x1094da),0x3));pos[_0x586934]['x']=_0x500e49+_0x426062[_0x1aa071(0x239,'J*#Q')](_0x2f4673-_0x500e49,_0x49953b),pos[_0x586934]['y']=_0x1ee0db+_0x426062[_0x1aa071(0x193,'r#lD')](_0x426062[_0x1aa071(0x1eb,'r^O8')](_0x167a59,_0x1ee0db),_0x49953b),_0x426062['wkJba'](updateTransform),_0x426062[_0x1aa071(0x1ac,'J*#Q')](_0x1094da,0x1)?requestAnimationFrame(_0x5c2789):(pos[_0x586934]['x']=_0x2f4673,pos[_0x586934]['y']=_0x167a59,_0x426062['aQAfz'](updateTransform));}_0x426062[_0xb1c7b(0x240,'6j$g')](requestAnimationFrame,_0x5c2789);}let activeDrag=null;function setupDraggable(_0x264758,_0x35771b){const _0x3ffb72=_0x4723b4,_0xbc0e21={'zUsgo':_0x3ffb72(0x230,'k*I8'),'sRmYQ':function(_0x2aa1bf,_0x5d8513){return _0x2aa1bf!==_0x5d8513;},'ndIWT':_0x3ffb72(0x14d,'X*l9'),'UBnOo':function(_0x2e9671,_0x4059ca){return _0x2e9671(_0x4059ca);},'EmBdE':function(_0x413aa5,_0x500074){return _0x413aa5!==_0x500074;},'qcCib':function(_0x271a19,_0x3a218b){return _0x271a19!==_0x3a218b;},'SZAvk':function(_0x2b8ff2,_0x11128a){return _0x2b8ff2!==_0x11128a;},'OqjbZ':function(_0x306136,_0x12e85f){return _0x306136-_0x12e85f;},'EkTkJ':function(_0x4d7518,_0x456ae5){return _0x4d7518+_0x456ae5;},'lMOqB':function(_0x5328e8,_0x2b557f){return _0x5328e8<_0x2b557f;},'xkLfp':function(_0x1a346d,_0xe37901){return _0x1a346d<_0xe37901;},'QRSee':function(_0x4ae715){return _0x4ae715();},'WEDKP':function(_0x481f33,_0x1fca45){return _0x481f33!==_0x1fca45;},'mKRsG':function(_0x471d0c,_0x466f52){return _0x471d0c!==_0x466f52;},'EGsxt':function(_0x5385af,_0x245723,_0x12005c,_0xf8524c){return _0x5385af(_0x245723,_0x12005c,_0xf8524c);},'BMkqX':function(_0x2f8658,_0x370646,_0x5e515a,_0xad3015){return _0x2f8658(_0x370646,_0x5e515a,_0xad3015);},'mmCxF':'pointerdown','PVGOf':'pointermove','VYiDO':_0x3ffb72(0x1a8,'d4jl'),'VLrhX':'dblclick'};function _0x471d49(_0x441ceb){const _0x478354=_0x3ffb72;if(currentMode!==_0xbc0e21[_0x478354(0x236,'msn3')]||_0xbc0e21['sRmYQ'](currentDrawTool,null))return;if(_0xbc0e21['sRmYQ'](_0x441ceb['button'],undefined)&&_0x441ceb[_0x478354(0x15c,'XW3A')]!==0x0)return;_0x441ceb[_0x478354(0x1c5,'k*I8')](),_0x264758[_0x478354(0x1da,'6z6C')][_0x478354(0x245,'gKfP')](_0x264758),_0x264758[_0x478354(0x1bd,'6j$g')][_0x478354(0x147,'9lDD')](_0xbc0e21[_0x478354(0x139,'43]0')]);const _0x1a66c6=_0x441ceb['pointerId'];if(_0x1a66c6!==undefined&&_0x264758[_0x478354(0x1c7,'sB22')])try{_0x264758[_0x478354(0x258,'L2Ho')](_0x1a66c6);}catch(_0x45451f){}const _0x5173aa=_0xbc0e21[_0x478354(0x215,'EdkT')](getSvgPoint,_0x441ceb);activeDrag={'element':_0x264758,'key':_0x35771b,'pointerId':_0x1a66c6,'startPt':_0x5173aa,'startX':pos[_0x35771b]['x'],'startY':pos[_0x35771b]['y']};}function _0x4be7c6(_0x593293){const _0x1173cf=_0x3ffb72;if(!activeDrag||_0xbc0e21['EmBdE'](activeDrag[_0x1173cf(0x152,'tpD6')],_0x35771b))return;if(_0xbc0e21[_0x1173cf(0x138,'3qzw')](activeDrag[_0x1173cf(0x1b0,'A7qV')],undefined)&&_0xbc0e21[_0x1173cf(0x15b,'6z6C')](_0x593293['pointerId'],undefined)&&activeDrag['pointerId']!==_0x593293['pointerId'])return;_0x593293['preventDefault']();const _0x9ab8cb=_0xbc0e21['UBnOo'](getSvgPoint,_0x593293),_0x35d663=_0x9ab8cb['x']-activeDrag[_0x1173cf(0x1a1,'TZke')]['x'],_0x5090fa=_0xbc0e21[_0x1173cf(0x18e,'YuqQ')](_0x9ab8cb['y'],activeDrag[_0x1173cf(0x1a1,'TZke')]['y']);let _0x4bb836=activeDrag['startX']+_0x35d663,_0x2ac991=_0xbc0e21[_0x1173cf(0x252,'EdkT')](activeDrag['startY'],_0x5090fa);const _0x37b44a=Math[_0x1173cf(0x1ad,'L2Ho')](_0x4bb836,_0x2ac991);if(_0xbc0e21['lMOqB'](_0x37b44a,SNAP_THRESHOLD))_0x4bb836=0x0,_0x2ac991=0x0;else{if(_0xbc0e21[_0x1173cf(0x1fc,'lXv%')](Math[_0x1173cf(0x214,')%Ch')](_0x4bb836),0xe))_0x4bb836=0x0;else _0xbc0e21['xkLfp'](Math['abs'](_0x2ac991),0xe)&&(_0x2ac991=0x0);}pos[_0x35771b]['x']=_0x4bb836,pos[_0x35771b]['y']=_0x2ac991,_0xbc0e21['QRSee'](updateTransform);}function _0x715d0e(_0x395e5f){const _0x248014=_0x3ffb72;if(!activeDrag||_0xbc0e21['WEDKP'](activeDrag[_0x248014(0x179,'TZke')],_0x35771b))return;_0x264758['classList'][_0x248014(0x1b8,'TZke')](_0xbc0e21[_0x248014(0x12f,'g03*')]);if(_0xbc0e21[_0x248014(0x148,'dq(G')](activeDrag[_0x248014(0x1f4,'Ht9g')],undefined)&&_0x264758[_0x248014(0x22d,'43]0')])try{_0x264758[_0x248014(0x1d5,'nY4[')](activeDrag['pointerId']);}catch(_0x108468){}const _0xd731f9=Math[_0x248014(0x1ff,'[t$q')](pos[_0x35771b]['x'],pos[_0x35771b]['y']);if(_0xbc0e21['lMOqB'](_0xd731f9,0x2a))_0xbc0e21[_0x248014(0x137,'L2Ho')](animateSnapTo,_0x35771b,0x0,0x0);else{let _0x296f65=pos[_0x35771b]['x'],_0x4c62c0=pos[_0x35771b]['y'];if(Math[_0x248014(0x1c2,'nO94')](_0x296f65)<0x12)_0x296f65=0x0;if(Math['abs'](_0x4c62c0)<0x12)_0x4c62c0=0x0;(_0xbc0e21[_0x248014(0x187,'sB22')](_0x296f65,pos[_0x35771b]['x'])||_0xbc0e21[_0x248014(0x19f,'msn3')](_0x4c62c0,pos[_0x35771b]['y']))&&_0xbc0e21[_0x248014(0x22f,'3qzw')](animateSnapTo,_0x35771b,_0x296f65,_0x4c62c0);}activeDrag=null;}_0x264758[_0x3ffb72(0x1b1,'3qzw')](_0xbc0e21[_0x3ffb72(0x180,'6G1H')],_0x471d49),window[_0x3ffb72(0x201,'J*#Q')](_0xbc0e21['PVGOf'],_0x4be7c6,{'passive':![]}),window['addEventListener'](_0xbc0e21['VYiDO'],_0x715d0e),window[_0x3ffb72(0x1e6,'r^O8')]('pointercancel',_0x715d0e),_0x264758[_0x3ffb72(0x162,'tpD6')](_0xbc0e21['VLrhX'],()=>{const _0x1706d9=_0x3ffb72;_0xbc0e21[_0x1706d9(0x1f2,'[t$q')](animateSnapTo,_0x35771b,0x0,0x0);});}setupDraggable(sectorBL,'bl'),setupDraggable(sectorTR,'tr'),updateDrawOverlayState(),document[_0x4723b4(0x256,'nuVt')](_0x4723b4(0x1ee,'m(h%'),_0x4eced2=>_0x4eced2[_0x4723b4(0x25c,'A7qV')]()),document['addEventListener'](_0x4723b4(0x274,')%Ch'),_0x5c4dc9=>{const _0x2d03dd=_0x4723b4;_0x5c4dc9[_0x2d03dd(0x197,'B1D8')]['closest'](_0x2d03dd(0x226,'pVQY'))&&_0x5c4dc9['preventDefault']();},{'passive':![]});function _0x215f(){const _0x1a09ee=(function(){return[_0xod2,'nhljHsWjMEiBaymOiE.tHYcGySouLmdE.WevW7IH==','A8kBW6boW73cI8oLWQddNdpcNq','nX7cPaz2smkd','W6hdICoroSk+W4nM','WQhcOHWHWOPubSkQWRz8g2NdOSoY','WRRcKJ3cJ8kV','W6aytabvzCo8','fLrQoCogWR5E','W7JdI0FdQSobj8oHnG','F8ows8o8W6q','WQOQeSoummoSW7lcJmk8WO1ukuaameaX','WQP5WOGyWOT3W4VcN8om','W7nGWQytkmoZW7pcISoaqbigpfKUWPO','W7SHW5LyW4OnWPlcVCoRWPNdReZdNq','WQRcNCozzmka','kaTbWRarWQhcPwVdGmo5W67cGa','W6P5WO/cPwu','iapcVHzTrCkrxGO','F8k0WQKjW6vRWPOTgs/cMSkHW7/dKX3cLa','W5Szj8ohea','WP/dHuXVWPSGWPrWWQ3cT0JcI8kdW7/cU3bs','WPxcUYxcJmkG','maL1WP/dJa','W5eGWO1ZACksxw0vW4dcI8o8W5SzWRq','W4FcGmkiiSoIW7judCksdwZcPh3dGW','W5CpnCkoW4lcGCo1AKCjW47cNq','W4S0paWMiNrKW5VcVCo0uq','WPVcQK14bCoYW5NdICkp','oCoOW7PZgfNcPmofW6xcTSk8kq3dRSov','WPGLAv/cHW','WQRcRGyb','BCkoW6rUW7/cISolWQ3dMYVcU8oeamkU','WQ5WWP0UWPrEW4/cICowWPJdNf7dJmo8','W7/dHCosma','W4e3WOTMCSkfwK0','ECk1WRKjW79RWPK8oZlcQ8kSW5pdMq','W5aCnmowCW','WRFcG8oLsmkY','WO/dJfLmWOCfWPn3WRW','WRrkiSo0omkFos7dP0S8W5C','bmk2WOxcSmkdzYDhWPa','y37dImkTWRe','W59YwNbec3y','W5q/dvtcMG7cQcLTW6BcRSoDWPjv','bvvJe8ogWR5uBhvbESoBg8kFz8oE','WOa5kmoUpW','WQvmWR4/WRq','ESkzW7vDW7BcGCosWOZdKdNcMmoijCk+','WPL9WRNdJSo6adBcVCo5','W53dUCoKbSkr','k8o2WPxcHSk8tmoFW7ddSSkbAe8','f8k1WO3cRCketJXXWPjdWPaYeG','W5u3WPXxCCksDwqEW5NcRmoRW6yZ','pmozWQiFWQhdMmkwWQNdVZhcQmoYjq','WPtdMNpcPNNcOaVcLYHwoSk/','W5iVdx4','w8k0WP09W58','WRZcNCoFACk4','W4m1eh/cGG7cTYHSW6xcGG','BgZdQ8kWWO8','iCoJWPFcTa','Cw3dGCktWRqYW74','cmkQWOhcRq','W7iRe8oCwdL+','W70YWPjLWOG','WP1iWRbYdCoyFmoWW40','WPxcO0j+p8okW5xdL8kPwCk2W6KLWP8','WQNdP0ThWOa','WPBdNetcJM8','b8kGvvXo','WRr2fCoPCsXVWP0','A8kuW5tcJCk5f8kh','W6zRWOq/jSoZW7K','W5S9kt4HgM9+W40','W4pcNCkRpCo/W7Le','FSo4v8o3W6BdMNW','W6uDD8kIESohna','a8k/WOlcOSkfrZO','W7uxzmkGz8oomW','WOG5tuhcUHJdKdnZ','W7GGWQPOBa','W6eHeSo6xdLGWQNcVWGxdMJdMq','ESoXsSoxW6tdI0NdIHpdPCkFW7hcLGW','W5m2WOW','e2rdjtW','WRb2vmklaMS9WQ3cMXieoe0','W74/k8obkSoRWOa','WRPLWOucWOW','W6BdISowjbOAiSoSWRSWW7TPWQXw','W4XSWRDYp8oPWR3cPa','WQ3dHmkAjCob','nX1+WPBdVZNcRLykrHNcPX7dRG','W4TkWOm9kq','W4aUfMhcPHNcQJXIW7xcJCoqWRjEW50','W5m0mq','W5dcL8kzeCoRW7Lnlmkzh0/cQfJdKW','m8k5WPxcUCkE','WPFdJwJcN3tcLXZcKd5gpa','WQFcOWWHWPbubCk7WPrHkMtdJSo4WO3dQW','W4jLw310k0fXW7jrW6FcNmknBSkj','W4a3WOv9A8ksFa','WOf5WOddJ8ok','W5tcNSkmj8o0W5bjoSkd','WRGry0tcOG','WRxcQqlcOCkMWOq','FSkeW7DmW7/cIG','W4y9WO91CCks','g8kHCwrSWQW','WPZdHvy','FmoKtSo3W6BdIMFdHXtdVCk5','W5K1laGKm2H5W7xcOCoZqa3cKJ/dIq','WQpcSXhcSSkLWO8'].concat((function(){return['ASo8Amo5W60','WORdH8kUiSoGmSkgWQtcGsZdU8kGuCkVwG','W6uOd8oCwW','WPlcPJ4cWRq','Cg3dJ8kiWQ0L','WOtdK27cHgy','ib3cUaz1','debKob8','WO9MWQldUCo9aJxcM8o5gW','WOhcRNHNiG','W4NdTgnoo8o4W7ZdQq','W4mkDefa','W6PYWRdcIv/cMHZcV8osr8ktWOq','WOhcKNLgeW','W7mAlSklW4W','guPLeXDHfsvAWQ5cW4uUW4m','EXlcJmoD','W75YWRdcJuFcIWpcS8oErSkLWPJdQGa','WQXXWPWcW4KjWPhdGSoBWOpdSW','WRKRg8o+mmoSW4/cKmkrWObikMiCoKC','WPLbWQveeSoXEmoMW5DTxSotW57dKW','W5G/aa','W5VcM8kdmq','b11UnCoB','WQfamL0ynSoQW7fYaWpcJa','vmoOW5ldUSohgx5mWR5/WQCQkW','BSoXsSotW7ZdMLBdHH/dPmkPW60','WP9aWRu','WQr4WQOtWR4','rYZcTxxdOa','qmkMW5PYW7e','WPa/tcldJ1JdSa','tchcShddH8oWWOxdPsBdImktWQVdH3Te','W6K8dmoBiCocWO3cKSk5','W6BcIbVcGCkDWOhdKa','W4mPjmoBDq','W5ePbSkOW44','WO/dJffAWPO9WQi','FbxcPCodWQZcGt0','D8kJm1hcM0TmumozCX/cVI7cNa','W50aWPPOWPddPa','W6yXWPLOCW','gmovWRxcQWq','fYVdRrvMWQOS','WOzAWP8oWPq','W6eHeSoSuY5OWQNcVZ8boG','WO3dKmkHiCojiCk9WQ3cHG','W7SvWQzOWRq','WOZcS0hdMmot','nbFcTrru','W6ldG8olaH0','ACo1tmo1W63dMG','WQnqWQ8ccSo9W7a','WPxdMMRcIhVcSq','ywtdG8kuWQGmW6tcHNW','mfzHnZ0','FSo4x8oHW7VdOK3dNaK','i8olWRJcRJlcNa','nqP8WOhdSbtcQW','WPJdGCkdp8oN','kZD2WQldTW','W4aUggpcGJVcSq','W497WQjqnmoLWR7cPJpdQSksW5VdRaa','o8o+W7TxgLNcJ8oDW4ZcSSkQmXZdJSoJW7y','W6iXaCoo','maxcOWP1smoDwXhdTCoMtSoEW6i','W4abt1jOW4tdRCkMrSkQW41eW4JdT8oT','dSkHAe52WQZdKJFcUSk6Aqa5W6W','WR7cL3NdNSoLiCoCjCoq','WRxcOGSqWOLdp8kD','W5KpxeDTW5K','WRFdSxdcTua','x1O2W45d','WOtdMuHqWOa','Ds/cTf3dGG','vc/dRa57WQW9W6Cd','W4FcNCkeoSoZW7Lsamkt','WOBdM2pcONVcSrFcIGzkpCkUkvxcLSoC','FbFcJx/dKG','lNXnd8os','W4TYWRDMk8omWRRcScK','WRBcVWlcVmk/WO8','u8kSi3JcVq','kSo1W7z8gfNcK8oSW7BcVSk3mWO','W4e/fh7cGa4','C8kPnxRcKLX1z8oKBZZcOWJcJW','eSo9WPtcJJW','WO5+WQ3dNSoHitdcUmoO','W5S7fxFcOXVcTsLXW4hcHmofWR9EW4q','W4XSvhToe01VW5u','qYxdSsvJWQWIW4SjW7v3WRhdUCkU','EmkoW7XoW7lcNmodWPJdMJBcL8ojlmk4W47dSmkfWODApXO','W4Cgimk8W4xcUCoUCfe','W4dcMSk7p8oI','pmo2W7K','WRO7eCoVkCoMW43cQmk0WODE','W5e9WPP8EmkfwK0JW4xcJ8o2W4aG','W50sxLzKW5ldJCkqqSkIW59xW4VdSq','pSo4W6TxjSoIWQ0lWPi','W7uHeSoVxZvJWRJcTa4wfLhdIxfMqG','WQtcUqlcLmk9WP7dJ01bW5/dUCkc','E8k6W4ldP8oHeCkkWOhdTmkkq2/dQHG','WOX2WQJdQmoKcdFcV8oqhmodWR9hjmk7oW','WOH2WRNdHmk8cYZcPq','W79HWQWJf8oIW7JcK8oesa0u','pSo4W6nhpG','FSkeW5zcW6VcISoc','BmkpW73cLmkramkmWRdcRIVcOCoaC8o+W5W','oCo2W75Hh3dcImoAW7q','WO3dKmkHiCoknSkHWRRcMcJdJG','vZddQqL7','zSkeW7nkW6FcHSojWQy','C8k/WR8PW5f6WPO'].concat((function(){return['kmo/W7n3du/cHmo5W6/cSSk3mXZdKSofW6xdP8o4WR3cTc8','WRlcQc4nWP5udW','W57dNafdW4u1W454W7JcUt7cLSoaW7FdUh4pWOCV','W5SJxJ1x','W7imAmkVAG','WPSQufFcPWtdVZvLsW','WR7cL3NdNSoLiCoCpCopW7rC','W5P7WRT6lSoL','iHxcTsbOsmkEqZtdSSoWwCoAW7W1W5i','WQfHWP0BW4iuWO3cM8opWPVcSfdcTSk2W4tdJ1VcHa9BWOqVqmoezCo7','WRrCWO3dHSoL','W4zXWQe','W7ddGmovmmkMW5jB','jmobWQVcIcRcJtCSWQC+WQxcIa','W4aQfxJcGG','WQOQeSoummoS','Cw3dLSkMWQ80W7/cNgPCbZq','W6aCDCkgECoolHddVKSmW7rOW4RdTCoe','kWxcPrvTf8oFgb3dV8o2rmkoWQbJWO5MW4zU','W7iDzCkcE8oFmG3dKfClW6u','W5XXWRfYnmoL','B8kuW7VcISk1f8krWONcQW','W7GqrCkVwW','CbRcUrb3tSkt','nqP8WOhdSbq','W7tdICopiCk9W5rNmCk9tCoXaq','oSoXW75HoColWQKDWOHUqSkRW5rA','WP8+yhZcQG','W5a2gglcHsFcRd93','W5XqWRFcSf8','vIxcSxNdVCo6WPy','WOJcQuvLaSoBW4ldS8kF','janWWP3dTt3cPKKy','W6S0cCoTjmoRWORcLCkbW5BdJSkFWOhcKrVdOa','wtpcQCofWPy','b11MjCodWPDtA00','nmoiWRBcQJu','WOBdNhpcJNVcSq','pmoBWQCFWQldM8ktWR3dVZJcGmo2jq','xcVdIqz/','WPLyWPW8WR4','bSk+WOdcHSkgtIbaWQHpWO0Ybb/dS3K','W7fUWRtcP18','W50EcN/cUW','FfGDW4fsW7lcUuVdVSoLW7BcU8kKj8k1uW','WOKjv1ZcPq','kmo/W7j9gLK','W5qfkmkHW4lcKmo1yeqsW5NcNCkZ','WRVcL8oBACky','W4mOfMNcJYNcIq','WQD/WQykWRK','WRddRmkbpCoY','f0fRp8oe','W5WlWRXQWQG','WO/dJffAWPO9WQm','W6FdG8o6pmkWW4nM','WOVdHuX6WPGSWPDHWQBcSuNcK8k6W68','W5e+WOLHBSk7Cxie','W7ldM8onesynimo5WRqJW5HKWOXDga','W44tWP1nWOW','WPSzW4r7W5BdVCo5WRao','lWHjWRCwWQhdP27dOCo5W7FcPmkz','rYZdRanK','WOXWWR8','WRRcTmoJqmkL','o8olWRZcQcRcKcOR','WQpcKCoxxCkB','a1rZe8oCWR5xFvDCs8own8kv','WRK/d8oEkmoTW6lcJmk0WOvF','W4m/fW','WQWLW7FdVXZdMHFcNmoLw8kKWRy','WP0nmCoipa','W5TQWQ95pq','zmkPmNFcN0Ts','WOpcR8oAw8kg','W4yGWOL8BSkBExuvWOu','W614WQpcR0FcIW','Cmo9ua','WPKWaJWmAXfPW6TtW73cO8ko','W544jce','WQaQA3xcRa','W6CbBq','zmkPihpcM0S','ts7dSqv9WQGSW5OoW7DqWPVdLCkPlSk1qmo1hXyOWPRdLa','W5SOhhC','W4HLqu1roKL5W49aW4BcKCkREa','bmk2WO3cPSkExXy','W6GwCSkVESopjrC','g8kHCg57WRRdMGlcU8kNrq0vW7RdJhfxWRpdK8kimq','vmkQnhJcUq','WQxdSMZcLLu','W54fwfrUW47dIG','c0fIoa','WOtdK2BcLh7cMbdcJt4','kSoUWPRcOCkGB8oAW4ddQG','vIxdQa95WQW','WP9hWQvOcmoX','WPpdT8kZmCoQ','W58fvK93W5K','WOVcJuxdTSoD','zwSaW69Q','ASk/WQORW79R','W6fHWRyxkSoIW6/cL8oUxbux','W4iEmrue','FCk8WQW/W6bcWP0Qiq','ACkoW75FW7BcNCoPWRRdLdhcNSoybCkRW7tdTmkh','W6SdWQ10WQi','W4L1F3j6','W5H5faVdVKlcGsjBD8k4kSol','W4KsvfbLW5pdJSk6D8kLW5bhW4S','W5NdHCoVada','W6uOb8omqXbKWR/cPq'];}()));}()));}());_0x215f=function(){return _0x1a09ee;};return _0x215f();};var version_ = 'jsjiami.com.v7';
+  </script>
+</body>
+</html>
